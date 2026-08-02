@@ -44,6 +44,7 @@ export default function App() {
             <Link to="/">Dashboard</Link>
             <Link to="/policies">Policies</Link>
             <Link to="/returns">Returns</Link>
+            <Link to="/settings">Settings</Link>
           </NavMenu>
           <Outlet />
         </AppProvider>

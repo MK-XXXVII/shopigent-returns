@@ -10,6 +10,7 @@ import { PrismaClient } from '@prisma/client';
 import { json } from '@remix-run/node';
 import { useIndexResourceState, IndexTable, Link as Link$1, Badge, Page, Layout, BlockStack, Card, Text, EmptyState, InlineStack, Button, Tag, Banner, Modal, Checkbox, TextField } from '@shopify/polaris';
 import { useState, useEffect } from 'react';
+import * as crypto from 'node:crypto';
 
 function handleRequest(request, responseStatusCode, responseHeaders, remixContext) {
   let markup = renderToString(
@@ -59,7 +60,7 @@ shopify.registerWebhooks;
 shopify.sessionStorage;
 
 const links = () => [{ rel: "stylesheet", href: polarisStyles }];
-const loader$6 = async ({ request }) => {
+const loader$8 = async ({ request }) => {
   await authenticate.admin(request);
   return { apiKey: process.env.SHOPIFY_API_KEY || "" };
 };
@@ -85,7 +86,8 @@ function App() {
         /* @__PURE__ */ jsxs(NavMenu, { children: [
           /* @__PURE__ */ jsx(Link, { to: "/", children: "Dashboard" }),
           /* @__PURE__ */ jsx(Link, { to: "/policies", children: "Policies" }),
-          /* @__PURE__ */ jsx(Link, { to: "/returns", children: "Returns" })
+          /* @__PURE__ */ jsx(Link, { to: "/returns", children: "Returns" }),
+          /* @__PURE__ */ jsx(Link, { to: "/settings", children: "Settings" })
         ] }),
         /* @__PURE__ */ jsx(Outlet, {})
       ] }),
@@ -117,7 +119,7 @@ const route0 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   ErrorBoundary,
   default: App,
   links,
-  loader: loader$6
+  loader: loader$8
 }, Symbol.toStringTag, { value: 'Module' }));
 
 const STATUS_COLORS$1 = {
@@ -129,7 +131,7 @@ const STATUS_COLORS$1 = {
   REFUNDED: "success",
   CLOSED: "new"
 };
-const loader$5 = async ({ request }) => {
+const loader$7 = async ({ request }) => {
   const { session } = await shopify.authenticate.admin(request);
   const url = new URL(request.url);
   const status = url.searchParams.get("status") || void 0;
@@ -239,10 +241,10 @@ function ReturnsPage() {
 const route1 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   default: ReturnsPage,
-  loader: loader$5
+  loader: loader$7
 }, Symbol.toStringTag, { value: 'Module' }));
 
-async function action$2({ request }) {
+async function action$4({ request }) {
   const { topic, shop, session, admin } = await shopify.authenticate.webhook(
     request
   );
@@ -287,7 +289,7 @@ async function action$2({ request }) {
 
 const route2 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
-  action: action$2
+  action: action$4
 }, Symbol.toStringTag, { value: 'Module' }));
 
 const STATUS_COLORS = {
@@ -299,7 +301,7 @@ const STATUS_COLORS = {
   REFUNDED: "success",
   CLOSED: "new"
 };
-const loader$4 = async ({ request, params }) => {
+const loader$6 = async ({ request, params }) => {
   const { session } = await shopify.authenticate.admin(request);
   const returnReq = await prisma$1.returnRequest.findFirst({
     where: { id: params.id, shop: session.shop },
@@ -403,17 +405,17 @@ function ReturnDetailPage() {
 const route3 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   default: ReturnDetailPage,
-  loader: loader$4
+  loader: loader$6
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const loader$3 = async ({ request }) => {
+const loader$5 = async ({ request }) => {
   await authenticate.admin(request);
   return null;
 };
 
 const route4 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
-  loader: loader$3
+  loader: loader$5
 }, Symbol.toStringTag, { value: 'Module' }));
 
 function FormField({
@@ -439,7 +441,7 @@ function FormField({
     )
   ] });
 }
-const loader$2 = async ({ request }) => {
+const loader$4 = async ({ request }) => {
   const { session } = await shopify.authenticate.admin(request);
   const policies = await prisma$1.policy.findMany({
     where: { shop: session.shop },
@@ -447,7 +449,7 @@ const loader$2 = async ({ request }) => {
   });
   return json({ policies });
 };
-const action$1 = async ({ request }) => {
+const action$3 = async ({ request }) => {
   const { session } = await shopify.authenticate.admin(request);
   const formData = await request.formData();
   const _action = formData.get("_action");
@@ -634,8 +636,466 @@ function PoliciesPage() {
 
 const route5 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
-  action: action$1,
+  action: action$3,
   default: PoliciesPage,
+  loader: loader$4
+}, Symbol.toStringTag, { value: 'Module' }));
+
+const loader$3 = async ({ request }) => {
+  const { session } = await shopify.authenticate.admin(request);
+  const shop = await prisma$1.shop.findUnique({ where: { shop: session.shop } });
+  return json({ hasMcpKey: !!shop?.mcpApiKeyHash });
+};
+const action$2 = async ({ request }) => {
+  const { session } = await shopify.authenticate.admin(request);
+  const formData = await request.formData();
+  const _action = formData.get("_action");
+  if (_action === "generate_key") {
+    const key = "shpg_returns_" + [...Array(32)].map(() => Math.random().toString(36)[2]).join("");
+    const hash = crypto.createHash("sha256").update(key).digest("hex");
+    await prisma$1.shop.upsert({
+      where: { shop: session.shop },
+      create: { id: session.shop, shop: session.shop, mcpApiKeyHash: hash },
+      update: { mcpApiKeyHash: hash }
+    });
+    return json({ newKey: key });
+  }
+  return json({ ok: true });
+};
+function SettingsPage() {
+  const { hasMcpKey } = useLoaderData();
+  const fetcher = useFetcher();
+  const [copied, setCopied] = useState(false);
+  const newKey = fetcher.data?.newKey;
+  return /* @__PURE__ */ jsx(Page, { title: "Settings", children: /* @__PURE__ */ jsx(Layout, { children: /* @__PURE__ */ jsx(Layout.Section, { children: /* @__PURE__ */ jsx(Card, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "400", children: [
+    /* @__PURE__ */ jsx(Text, { variant: "headingMd", as: "h2", fontWeight: "bold", children: "MCP Server" }),
+    /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", children: "The MCP (Model Context Protocol) server lets AI agents like Claude, Codex, or Grok connect to your return management system. They can analyze returns, approve/deny, check fraud, and apply policies." }),
+    /* @__PURE__ */ jsx(Banner, { tone: "info", children: /* @__PURE__ */ jsxs("p", { children: [
+      /* @__PURE__ */ jsx("strong", { children: "Endpoint:" }),
+      " ",
+      /* @__PURE__ */ jsx("code", { children: "https://returns-app-production-8384.up.railway.app/api/mcp" })
+    ] }) }),
+    newKey ? /* @__PURE__ */ jsx(Card, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "200", children: [
+      /* @__PURE__ */ jsx(Text, { variant: "headingSm", as: "h3", tone: "critical", children: "⚠️ Save this key now — it will not be shown again!" }),
+      /* @__PURE__ */ jsx("div", { style: {
+        background: "#1a1a2e",
+        color: "#fff",
+        padding: 12,
+        borderRadius: 6,
+        fontFamily: "monospace",
+        wordBreak: "break-all",
+        fontSize: 14
+      }, children: newKey }),
+      /* @__PURE__ */ jsx(Button, { onClick: () => {
+        navigator.clipboard.writeText(newKey);
+        setCopied(true);
+      }, children: copied ? "Copied!" : "Copy to clipboard" })
+    ] }) }) : /* @__PURE__ */ jsxs(Fragment, { children: [
+      /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", children: hasMcpKey ? "An MCP API key has been generated. You can generate a new one (the old key will stop working)." : "No MCP API key has been generated yet. Generate one to enable AI agent access." }),
+      /* @__PURE__ */ jsx("div", { children: /* @__PURE__ */ jsx(
+        Button,
+        {
+          variant: "primary",
+          onClick: () => {
+            fetcher.submit({ _action: "generate_key" }, { method: "post" });
+          },
+          children: hasMcpKey ? "Regenerate Key" : "Generate MCP Key"
+        }
+      ) })
+    ] })
+  ] }) }) }) }) });
+}
+
+const route6 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+  __proto__: null,
+  action: action$2,
+  default: SettingsPage,
+  loader: loader$3
+}, Symbol.toStringTag, { value: 'Module' }));
+
+const RETURNS_TOOLS = [
+  {
+    name: "analyze_return",
+    description: "Analyze a return request against store policies and fraud signals. Returns a recommendation (approve/deny/exchange) with confidence score.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        returnId: { type: "string", description: "The return request UUID" }
+      },
+      required: ["returnId"]
+    }
+  },
+  {
+    name: "approve_return",
+    description: "Approve a pending return request. Optionally set refund amount and issue a return label.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        returnId: { type: "string", description: "The return request UUID" },
+        refundAmount: { type: "number", description: "Optional override refund amount" },
+        issueLabel: { type: "boolean", description: "Whether to generate a return label" },
+        notes: { type: "string", description: "Notes about the decision" }
+      },
+      required: ["returnId"]
+    }
+  },
+  {
+    name: "deny_return",
+    description: "Deny a pending return request with a reason.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        returnId: { type: "string", description: "The return request UUID" },
+        reason: { type: "string", description: "Reason for denial" }
+      },
+      required: ["returnId", "reason"]
+    }
+  },
+  {
+    name: "check_fraud",
+    description: "Run fraud detection signals on a return request. Checks IP velocity, history patterns, amount anomalies.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        returnId: { type: "string", description: "The return request UUID" }
+      },
+      required: ["returnId"]
+    }
+  },
+  {
+    name: "list_policies",
+    description: "List all active return policies for the store.",
+    inputSchema: {
+      type: "object",
+      properties: {}
+    }
+  },
+  {
+    name: "get_policy_recommendation",
+    description: "Get a policy-based recommendation for a return request. Evaluates against all active policies and returns the best match.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        returnId: { type: "string", description: "The return request UUID" }
+      },
+      required: ["returnId"]
+    }
+  },
+  {
+    name: "list_returns",
+    description: "List return requests, optionally filtered by status.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        status: { type: "string", description: "Filter by status: PENDING, APPROVED, DENIED, EXCHANGE, SHIPPED, REFUNDED, CLOSED" },
+        limit: { type: "number", description: "Max results (default 10)" }
+      }
+    }
+  }
+];
+
+function jsonRpcError(id, code, message) {
+  return { jsonrpc: "2.0", id, error: { code, message } };
+}
+function jsonRpcResult(id, result) {
+  return { jsonrpc: "2.0", id, result };
+}
+async function handleMcpRequest(body) {
+  const { method, id, params } = body;
+  switch (method) {
+    case "initialize":
+      return jsonRpcResult(id, {
+        protocolVersion: "2024-11-05",
+        capabilities: { tools: {}, resources: {} },
+        serverInfo: { name: "shopigent-returns", version: "0.1.0" }
+      });
+    case "tools/list":
+      return jsonRpcResult(id, { tools: RETURNS_TOOLS });
+    case "tools/call": {
+      const toolName = params?.name;
+      const args = params?.arguments || {};
+      switch (toolName) {
+        case "analyze_return": {
+          const returnReq = await prisma$1.returnRequest.findUnique({
+            where: { id: args.returnId }
+          });
+          if (!returnReq) return jsonRpcError(id, -32602, "Return not found");
+          const policies = await prisma$1.policy.findMany({
+            where: { shop: returnReq.shop, isActive: true },
+            orderBy: { priority: "asc" }
+          });
+          const items = returnReq.items;
+          const totalAmount = items.reduce((sum, i) => sum + parseFloat(i.price || "0") * (i.quantity || 0), 0);
+          const daysSinceOrder = returnReq.createdAt ? Math.floor((Date.now() - new Date(returnReq.createdAt).getTime()) / (1e3 * 60 * 60 * 24)) : 0;
+          let bestPolicy = null;
+          for (const policy of policies) {
+            const conditions = policy.conditions;
+            const matches = conditions.every((c) => {
+              if (c.field === "maxDays") return daysSinceOrder <= c.value;
+              if (c.field === "maxAmount") return totalAmount <= c.value;
+              return true;
+            });
+            if (matches) {
+              bestPolicy = policy;
+              break;
+            }
+          }
+          const autoApprove = bestPolicy?.conditions?.find((c) => c.field === "autoApprove")?.value;
+          const restockingFee = bestPolicy?.conditions?.find((c) => c.field === "restockingFee")?.value || 0;
+          const maxDays = bestPolicy?.conditions?.find((c) => c.field === "maxDays")?.value || 30;
+          const maxAmount = bestPolicy?.conditions?.find((c) => c.field === "maxAmount")?.value || 9999;
+          let recommendation;
+          let confidence;
+          if (bestPolicy && autoApprove) {
+            recommendation = "approve";
+            confidence = 0.9;
+          } else if (bestPolicy) {
+            recommendation = "review";
+            confidence = 0.6;
+          } else {
+            recommendation = "review";
+            confidence = 0.3;
+          }
+          return jsonRpcResult(id, {
+            returnId: returnReq.id,
+            orderName: returnReq.orderName,
+            customerName: returnReq.customerName,
+            totalAmount,
+            daysSinceOrder,
+            policyMatch: bestPolicy ? {
+              name: bestPolicy.name,
+              maxDays,
+              maxAmount,
+              autoApprove: !!autoApprove,
+              restockingFee
+            } : null,
+            recommendation,
+            confidence,
+            reasoning: bestPolicy ? `Order matches "${bestPolicy.name}": ${daysSinceOrder} days (≤${maxDays}), $${totalAmount} (≤$${maxAmount})${autoApprove ? ", auto-approve enabled" : ""}` : "No matching policy found. Manual review required."
+          });
+        }
+        case "approve_return": {
+          const returnReq = await prisma$1.returnRequest.findUnique({
+            where: { id: args.returnId }
+          });
+          if (!returnReq) return jsonRpcError(id, -32602, "Return not found");
+          const updated = await prisma$1.returnRequest.update({
+            where: { id: args.returnId },
+            data: {
+              status: "APPROVED",
+              decidedBy: "agent",
+              decidedAt: /* @__PURE__ */ new Date(),
+              notes: args.notes || null,
+              refundAmount: args.refundAmount || void 0,
+              labels: args.issueLabel ? [{ type: "return_label", status: "pending" }] : void 0
+            }
+          });
+          await prisma$1.decisionLog.create({
+            data: {
+              returnId: args.returnId,
+              actor: "agent",
+              action: "approve",
+              details: { refundAmount: args.refundAmount, issueLabel: args.issueLabel, notes: args.notes }
+            }
+          });
+          return jsonRpcResult(id, {
+            success: true,
+            status: "APPROVED",
+            returnId: updated.id
+          });
+        }
+        case "deny_return": {
+          const returnReq = await prisma$1.returnRequest.findUnique({
+            where: { id: args.returnId }
+          });
+          if (!returnReq) return jsonRpcError(id, -32602, "Return not found");
+          const updated = await prisma$1.returnRequest.update({
+            where: { id: args.returnId },
+            data: {
+              status: "DENIED",
+              decidedBy: "agent",
+              decidedAt: /* @__PURE__ */ new Date(),
+              notes: args.reason
+            }
+          });
+          await prisma$1.decisionLog.create({
+            data: {
+              returnId: args.returnId,
+              actor: "agent",
+              action: "deny",
+              details: { reason: args.reason }
+            }
+          });
+          return jsonRpcResult(id, { success: true, status: "DENIED", returnId: updated.id });
+        }
+        case "check_fraud": {
+          const returnReq = await prisma$1.returnRequest.findUnique({
+            where: { id: args.returnId },
+            include: { fraudSignals: true }
+          });
+          if (!returnReq) return jsonRpcError(id, -32602, "Return not found");
+          const items = returnReq.items;
+          const totalAmount = items.reduce((sum, i) => sum + parseFloat(i.price || "0") * (i.quantity || 0), 0);
+          const signals = [];
+          if (totalAmount > 1e3) {
+            signals.push({ signal: "high_value_return", score: 0.3, details: { amount: totalAmount } });
+          }
+          if (returnReq.customerEmail) {
+            const recentCount = await prisma$1.returnRequest.count({
+              where: {
+                customerEmail: returnReq.customerEmail,
+                createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1e3) }
+              }
+            });
+            if (recentCount > 2) {
+              signals.push({ signal: "frequent_returner", score: 0.5, details: { returnsIn30Days: recentCount } });
+            }
+          }
+          for (const s of signals) {
+            await prisma$1.fraudSignal.create({
+              data: {
+                returnId: args.returnId,
+                signal: s.signal,
+                score: s.score,
+                details: s.details
+              }
+            });
+          }
+          const maxScore = signals.length > 0 ? Math.max(...signals.map((s) => s.score)) : 0;
+          return jsonRpcResult(id, {
+            returnId: args.returnId,
+            riskLevel: maxScore > 0.5 ? "high" : maxScore > 0.2 ? "medium" : "low",
+            riskScore: maxScore,
+            signals
+          });
+        }
+        case "list_policies": {
+          const policies = await prisma$1.policy.findMany({
+            where: { isActive: true },
+            orderBy: { priority: "asc" }
+          });
+          return jsonRpcResult(id, {
+            policies: policies.map((p) => ({
+              id: p.id,
+              name: p.name,
+              description: p.description,
+              priority: p.priority,
+              conditions: p.conditions
+            }))
+          });
+        }
+        case "get_policy_recommendation": {
+          const returnReq = await prisma$1.returnRequest.findUnique({
+            where: { id: args.returnId }
+          });
+          if (!returnReq) return jsonRpcError(id, -32602, "Return not found");
+          const items = returnReq.items;
+          const totalAmount = items.reduce((sum, i) => sum + parseFloat(i.price || "0") * (i.quantity || 0), 0);
+          const daysSinceOrder = Math.floor((Date.now() - new Date(returnReq.createdAt).getTime()) / (1e3 * 60 * 60 * 24));
+          const policies = await prisma$1.policy.findMany({
+            where: { shop: returnReq.shop, isActive: true },
+            orderBy: { priority: "asc" }
+          });
+          let bestMatch = null;
+          for (const policy of policies) {
+            const conditions = policy.conditions;
+            const matches = conditions.every((c) => {
+              if (c.field === "maxDays") return daysSinceOrder <= c.value;
+              if (c.field === "maxAmount") return totalAmount <= c.value;
+              return true;
+            });
+            if (matches) {
+              bestMatch = policy;
+              break;
+            }
+          }
+          return jsonRpcResult(id, {
+            totalAmount,
+            daysSinceOrder,
+            bestMatch: bestMatch ? {
+              name: bestMatch.name,
+              conditions: bestMatch.conditions
+            } : null
+          });
+        }
+        case "list_returns": {
+          const where = {};
+          if (args.status) where.status = args.status;
+          const returns = await prisma$1.returnRequest.findMany({
+            where,
+            orderBy: { createdAt: "desc" },
+            take: args.limit || 10
+          });
+          return jsonRpcResult(id, {
+            returns: returns.map((r) => ({
+              id: r.id,
+              orderName: r.orderName,
+              customerName: r.customerName,
+              status: r.status,
+              totalItems: r.items.length,
+              createdAt: r.createdAt
+            }))
+          });
+        }
+        default:
+          return jsonRpcError(id, -32601, `Unknown tool: ${toolName}`);
+      }
+    }
+    default:
+      return jsonRpcError(id, -32601, `Unknown method: ${method}`);
+  }
+}
+
+const action$1 = async ({ request }) => {
+  const authHeader = request.headers.get("authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return json(
+      { jsonrpc: "2.0", id: null, error: { code: -32001, message: "Unauthorized" } },
+      { status: 401 }
+    );
+  }
+  const key = authHeader.slice(7);
+  const hash = crypto.createHash("sha256").update(key).digest("hex");
+  const shop = await prisma$1.shop.findFirst({
+    where: { mcpApiKeyHash: hash }
+  });
+  if (!shop) {
+    return json(
+      { jsonrpc: "2.0", id: null, error: { code: -32001, message: "Invalid API key" } },
+      { status: 401 }
+    );
+  }
+  const body = await request.json();
+  if (body.jsonrpc !== "2.0" || !body.method) {
+    return json(
+      { jsonrpc: "2.0", id: body.id || null, error: { code: -32600, message: "Invalid Request" } },
+      { status: 400 }
+    );
+  }
+  const response = await handleMcpRequest(body);
+  return json(response);
+};
+const loader$2 = async () => {
+  return json({
+    name: "shopigent-returns-mcp",
+    version: "0.1.0",
+    protocol: "2024-11-05",
+    description: "MCP server for Shopigent Returns — AI-agentic return management for Shopify.",
+    tools: [
+      "analyze_return",
+      "approve_return",
+      "deny_return",
+      "check_fraud",
+      "list_policies",
+      "get_policy_recommendation",
+      "list_returns"
+    ]
+  });
+};
+
+const route7 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+  __proto__: null,
+  action: action$1,
   loader: loader$2
 }, Symbol.toStringTag, { value: 'Module' }));
 
@@ -646,7 +1106,7 @@ const action = () => {
   return json({ ok: true, service: "shopigent-returns", status: "healthy" });
 };
 
-const route6 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route8 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action,
   loader: loader$1
@@ -767,13 +1227,13 @@ function Dashboard() {
   ] });
 }
 
-const route7 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route9 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   default: Dashboard,
   loader
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const serverManifest = {'entry':{'module':'/assets/entry.client-DyfKaOos.js','imports':['/assets/components-Cc6YJ0TE.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-CM4gSoWc.js','imports':['/assets/components-Cc6YJ0TE.js','/assets/context-BiUeL77I.js','/assets/context-DeYyIiJd.js'],'css':[]},'routes/returns._index':{'id':'routes/returns._index','parentId':'root','path':'returns','index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._index-BRXYRwLK.js','imports':['/assets/components-Cc6YJ0TE.js','/assets/Link-CmO3Lr94.js','/assets/Page-CPlWv2R_.js','/assets/context-BiUeL77I.js','/assets/CSSTransition-DN7ggXK3.js'],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/returns.$id':{'id':'routes/returns.$id','parentId':'root','path':'returns/:id','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._id-DOVItyYJ.js','imports':['/assets/components-Cc6YJ0TE.js','/assets/Page-CPlWv2R_.js','/assets/Tag-BvoGdaI8.js','/assets/context-BiUeL77I.js'],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-B-eqRXuS.js','imports':['/assets/components-Cc6YJ0TE.js','/assets/Page-CPlWv2R_.js','/assets/Banner-Cb6iWn5w.js','/assets/Tag-BvoGdaI8.js','/assets/context-BiUeL77I.js','/assets/context-DeYyIiJd.js','/assets/CSSTransition-DN7ggXK3.js'],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-Ca8KTJQR.js','imports':['/assets/components-Cc6YJ0TE.js','/assets/Link-CmO3Lr94.js','/assets/Page-CPlWv2R_.js','/assets/Banner-Cb6iWn5w.js','/assets/context-BiUeL77I.js','/assets/CSSTransition-DN7ggXK3.js'],'css':[]}},'url':'/assets/manifest-f887e8b1.js','version':'f887e8b1'};
+const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','imports':['/assets/components-DncgAStS.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-BrwzSzum.js','imports':['/assets/components-DncgAStS.js','/assets/context-0V2cCEm7.js','/assets/context-D_7evObr.js'],'css':[]},'routes/returns._index':{'id':'routes/returns._index','parentId':'root','path':'returns','index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._index-BZB3noWu.js','imports':['/assets/components-DncgAStS.js','/assets/Link-Cl4D9rJ-.js','/assets/Page-DpCOn8e3.js','/assets/context-0V2cCEm7.js','/assets/CSSTransition-CJwZ5D7e.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/returns.$id':{'id':'routes/returns.$id','parentId':'root','path':'returns/:id','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._id-itZptNbs.js','imports':['/assets/components-DncgAStS.js','/assets/Page-DpCOn8e3.js','/assets/Tag-DoW5JBa1.js','/assets/context-0V2cCEm7.js'],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-DY_pWtWu.js','imports':['/assets/components-DncgAStS.js','/assets/Page-DpCOn8e3.js','/assets/Banner-C_Jjjps5.js','/assets/Tag-DoW5JBa1.js','/assets/context-0V2cCEm7.js','/assets/context-D_7evObr.js','/assets/CSSTransition-CJwZ5D7e.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/settings':{'id':'routes/settings','parentId':'root','path':'settings','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/settings-Ilt1DIW4.js','imports':['/assets/components-DncgAStS.js','/assets/Page-DpCOn8e3.js','/assets/Banner-C_Jjjps5.js','/assets/context-0V2cCEm7.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/api.mcp':{'id':'routes/api.mcp','parentId':'root','path':'api/mcp','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.mcp-l0sNRNKZ.js','imports':[],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-DQBxIWG3.js','imports':['/assets/components-DncgAStS.js','/assets/Link-Cl4D9rJ-.js','/assets/Page-DpCOn8e3.js','/assets/Banner-C_Jjjps5.js','/assets/context-0V2cCEm7.js','/assets/CSSTransition-CJwZ5D7e.js','/assets/banner-context-DEryxoPe.js'],'css':[]}},'url':'/assets/manifest-919790d2.js','version':'919790d2'};
 
 /**
        * `mode` is only relevant for the old Remix compiler but
@@ -835,13 +1295,29 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-DyfKaOos.js','im
           caseSensitive: undefined,
           module: route5
         },
+  "routes/settings": {
+          id: "routes/settings",
+          parentId: "root",
+          path: "settings",
+          index: undefined,
+          caseSensitive: undefined,
+          module: route6
+        },
+  "routes/api.mcp": {
+          id: "routes/api.mcp",
+          parentId: "root",
+          path: "api/mcp",
+          index: undefined,
+          caseSensitive: undefined,
+          module: route7
+        },
   "routes/healthz": {
           id: "routes/healthz",
           parentId: "root",
           path: "healthz",
           index: undefined,
           caseSensitive: undefined,
-          module: route6
+          module: route8
         },
   "routes/_index": {
           id: "routes/_index",
@@ -849,7 +1325,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-DyfKaOos.js','im
           path: undefined,
           index: true,
           caseSensitive: undefined,
-          module: route7
+          module: route9
         }
       };
 
