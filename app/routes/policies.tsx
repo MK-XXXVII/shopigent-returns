@@ -133,10 +133,12 @@ export default function PoliciesPage() {
   const isNew = !editingId;
 
   // Close modal when submission succeeds
-  if (fetcher.state === "idle" && fetcher.data && active) {
-    setActive(false);
-    setEditingId(null);
-  }
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data) {
+      setActive(false);
+      setEditingId(null);
+    }
+  }, [fetcher.state, fetcher.data]);
 
   const openNew = () => {
     setEditingId(null);
@@ -225,7 +227,7 @@ export default function PoliciesPage() {
 
       <Modal open={active} onClose={closeModal} title={isNew ? "Create Policy" : "Edit Policy"}>
         <Modal.Section>
-          <fetcher.Form method="post">
+          <fetcher.Form method="post" id="policy-form">
             <input type="hidden" name="_action" value={isNew ? "create" : "update"} />
             {!isNew && <input type="hidden" name="id" value={editingId!} />}
             <input type="hidden" name="isActive" value="true" />
@@ -253,7 +255,13 @@ export default function PoliciesPage() {
                 onChange={u("requiresReturnLabel")}
               />
 
-              <Button submit variant="primary">
+              <Button
+                onClick={() => {
+                  const form = document.querySelector("#policy-form") as HTMLFormElement;
+                  if (form) fetcher.submit(form);
+                }}
+                variant="primary"
+              >
                 {isNew ? "Create Policy" : "Update Policy"}
               </Button>
             </BlockStack>

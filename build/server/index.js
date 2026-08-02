@@ -9,7 +9,7 @@ import { PrismaSessionStorage } from '@shopify/shopify-app-session-storage-prism
 import { PrismaClient } from '@prisma/client';
 import { json } from '@remix-run/node';
 import { Page, Layout, Banner, Card, BlockStack, InlineStack, Text, Button, Tag, Modal, Checkbox, TextField, useIndexResourceState, IndexTable, Link as Link$1, Badge } from '@shopify/polaris';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 function handleRequest(request, responseStatusCode, responseHeaders, remixContext) {
   let markup = renderToString(
@@ -267,10 +267,12 @@ function PoliciesPage() {
   const [editingId, setEditingId] = useState(null);
   const [f, setF] = useState(emptyForm());
   const isNew = !editingId;
-  if (fetcher.state === "idle" && fetcher.data && active) {
-    setActive(false);
-    setEditingId(null);
-  }
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data) {
+      setActive(false);
+      setEditingId(null);
+    }
+  }, [fetcher.state, fetcher.data]);
   const openNew = () => {
     setEditingId(null);
     setF(emptyForm());
@@ -345,7 +347,7 @@ function PoliciesPage() {
             ] })
           ] }) }, p.id);
         }) }) }),
-        /* @__PURE__ */ jsx(Modal, { open: active, onClose: closeModal, title: isNew ? "Create Policy" : "Edit Policy", children: /* @__PURE__ */ jsx(Modal.Section, { children: /* @__PURE__ */ jsxs(fetcher.Form, { method: "post", children: [
+        /* @__PURE__ */ jsx(Modal, { open: active, onClose: closeModal, title: isNew ? "Create Policy" : "Edit Policy", children: /* @__PURE__ */ jsx(Modal.Section, { children: /* @__PURE__ */ jsxs(fetcher.Form, { method: "post", id: "policy-form", children: [
           /* @__PURE__ */ jsx("input", { type: "hidden", name: "_action", value: isNew ? "create" : "update" }),
           !isNew && /* @__PURE__ */ jsx("input", { type: "hidden", name: "id", value: editingId }),
           /* @__PURE__ */ jsx("input", { type: "hidden", name: "isActive", value: "true" }),
@@ -374,7 +376,17 @@ function PoliciesPage() {
                 onChange: u("requiresReturnLabel")
               }
             ),
-            /* @__PURE__ */ jsx(Button, { submit: true, variant: "primary", children: isNew ? "Create Policy" : "Update Policy" })
+            /* @__PURE__ */ jsx(
+              Button,
+              {
+                onClick: () => {
+                  const form = document.querySelector("#policy-form");
+                  if (form) fetcher.submit(form);
+                },
+                variant: "primary",
+                children: isNew ? "Create Policy" : "Update Policy"
+              }
+            )
           ] })
         ] }) }) })
       ]
@@ -523,7 +535,7 @@ const route5 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   loader
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const serverManifest = {'entry':{'module':'/assets/entry.client-rQsLK_wk.js','imports':['/assets/components-DQ_Zdf-t.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-Dg3dJvBf.js','imports':['/assets/components-DQ_Zdf-t.js','/assets/context-DRheaFP2.js','/assets/context-clUgH11Y.js'],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-Cd7DUY6D.js','imports':['/assets/components-DQ_Zdf-t.js','/assets/Page-BSEzckm1.js','/assets/context-DRheaFP2.js','/assets/context-clUgH11Y.js'],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-ClOCyFFJ.js','imports':['/assets/components-DQ_Zdf-t.js','/assets/context-DRheaFP2.js','/assets/Page-BSEzckm1.js'],'css':[]}},'url':'/assets/manifest-b4883d6d.js','version':'b4883d6d'};
+const serverManifest = {'entry':{'module':'/assets/entry.client-rQsLK_wk.js','imports':['/assets/components-DQ_Zdf-t.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-Dg3dJvBf.js','imports':['/assets/components-DQ_Zdf-t.js','/assets/context-DRheaFP2.js','/assets/context-clUgH11Y.js'],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-CsrXpVg-.js','imports':['/assets/components-DQ_Zdf-t.js','/assets/Page-BSEzckm1.js','/assets/context-DRheaFP2.js','/assets/context-clUgH11Y.js'],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-ClOCyFFJ.js','imports':['/assets/components-DQ_Zdf-t.js','/assets/context-DRheaFP2.js','/assets/Page-BSEzckm1.js'],'css':[]}},'url':'/assets/manifest-08b9b03a.js','version':'08b9b03a'};
 
 /**
        * `mode` is only relevant for the old Remix compiler but
