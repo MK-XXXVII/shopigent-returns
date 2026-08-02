@@ -18,18 +18,20 @@ enum ReturnStatus {
 }
 
 model Session {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   shop            String
   state           String
-  isOnline        Boolean  @default(false)
+  isOnline        Boolean   @default(false)
   scope           String?
   expires         DateTime?
   accessToken     String?
+  refreshToken    String?
+  refreshTokenExpires DateTime?
   userId          BigInt?
   firstName       String?
   lastName        String?
   email           String?
-  accountOwner    Boolean  @default(false)
+  accountOwner    Boolean   @default(false)
   locale          String?
   collaborator    Boolean?
   emailVerified   Boolean?
