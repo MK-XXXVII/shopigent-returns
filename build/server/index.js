@@ -1,13 +1,14 @@
 import { jsx, jsxs } from 'react/jsx-runtime';
-import { RemixServer, Meta, Links, Outlet, ScrollRestoration, Scripts, useRouteError, isRouteErrorResponse, useLoaderData, useFetcher } from '@remix-run/react';
+import { RemixServer, useLoaderData, Meta, Links, Link, Outlet, ScrollRestoration, Scripts, useRouteError, isRouteErrorResponse, useFetcher } from '@remix-run/react';
 import { renderToString } from 'react-dom/server';
-import { AppProvider, Page, Layout, Banner, Modal, BlockStack, TextField, Checkbox, Button, InlineStack, Text, Tag, useIndexResourceState, IndexTable, Link, Badge, Card } from '@shopify/polaris';
+import { AppProvider } from '@shopify/shopify-app-remix/react';
+import { NavMenu, TitleBar } from '@shopify/app-bridge-react';
 import '@shopify/shopify-app-remix/server/adapters/node';
 import { shopifyApp, AppDistribution, ApiVersion } from '@shopify/shopify-app-remix/server';
 import { PrismaSessionStorage } from '@shopify/shopify-app-session-storage-prisma';
 import { PrismaClient } from '@prisma/client';
 import { json } from '@remix-run/node';
-import { TitleBar } from '@shopify/app-bridge-react';
+import { Page, Layout, Banner, Modal, BlockStack, TextField, Checkbox, Button, InlineStack, Text, Tag, useIndexResourceState, IndexTable, Link as Link$1, Badge, Card } from '@shopify/polaris';
 import { useState } from 'react';
 
 function handleRequest(request, responseStatusCode, responseHeaders, remixContext) {
@@ -26,52 +27,7 @@ const entryServer = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.definePropert
   default: handleRequest
 }, Symbol.toStringTag, { value: 'Module' }));
 
-function App() {
-  return /* @__PURE__ */ jsxs("html", { children: [
-    /* @__PURE__ */ jsxs("head", { children: [
-      /* @__PURE__ */ jsx("meta", { charSet: "utf-8" }),
-      /* @__PURE__ */ jsx("meta", { name: "viewport", content: "width=device-width,initial-scale=1" }),
-      /* @__PURE__ */ jsx("link", { rel: "preconnect", href: "https://cdn.shopify.com/" }),
-      /* @__PURE__ */ jsx(
-        "link",
-        {
-          rel: "stylesheet",
-          href: "https://cdn.shopify.com/static/fonts/inter/v4/inter.css"
-        }
-      ),
-      /* @__PURE__ */ jsx(Meta, {}),
-      /* @__PURE__ */ jsx(Links, {})
-    ] }),
-    /* @__PURE__ */ jsxs("body", { children: [
-      /* @__PURE__ */ jsx(AppProvider, { i18n: {}, children: /* @__PURE__ */ jsx(Outlet, {}) }),
-      /* @__PURE__ */ jsx(ScrollRestoration, {}),
-      /* @__PURE__ */ jsx(Scripts, {})
-    ] })
-  ] });
-}
-function ErrorBoundary() {
-  const error = useRouteError();
-  if (isRouteErrorResponse(error)) {
-    return /* @__PURE__ */ jsxs("div", { children: [
-      /* @__PURE__ */ jsxs("h1", { children: [
-        error.status,
-        " ",
-        error.statusText
-      ] }),
-      /* @__PURE__ */ jsx("p", { children: error.data })
-    ] });
-  }
-  return /* @__PURE__ */ jsxs("div", { children: [
-    /* @__PURE__ */ jsx("h1", { children: "Error" }),
-    /* @__PURE__ */ jsx("p", { children: error?.message ?? "Unknown error" })
-  ] });
-}
-
-const route0 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
-  __proto__: null,
-  ErrorBoundary,
-  default: App
-}, Symbol.toStringTag, { value: 'Module' }));
+const polarisStyles = "/assets/styles-DqWBAKNB.css";
 
 let prisma;
 if (process.env.NODE_ENV === "production") {
@@ -101,6 +57,68 @@ const authenticate = shopify.authenticate;
 shopify.login;
 shopify.registerWebhooks;
 shopify.sessionStorage;
+
+const links = () => [{ rel: "stylesheet", href: polarisStyles }];
+const loader$4 = async ({ request }) => {
+  await authenticate.admin(request);
+  return { apiKey: process.env.SHOPIFY_API_KEY || "" };
+};
+function App() {
+  const { apiKey } = useLoaderData();
+  return /* @__PURE__ */ jsxs("html", { children: [
+    /* @__PURE__ */ jsxs("head", { children: [
+      /* @__PURE__ */ jsx("meta", { charSet: "utf-8" }),
+      /* @__PURE__ */ jsx("meta", { name: "viewport", content: "width=device-width,initial-scale=1" }),
+      /* @__PURE__ */ jsx("link", { rel: "preconnect", href: "https://cdn.shopify.com/" }),
+      /* @__PURE__ */ jsx(
+        "link",
+        {
+          rel: "stylesheet",
+          href: "https://cdn.shopify.com/static/fonts/inter/v4/inter.css"
+        }
+      ),
+      /* @__PURE__ */ jsx(Meta, {}),
+      /* @__PURE__ */ jsx(Links, {})
+    ] }),
+    /* @__PURE__ */ jsxs("body", { children: [
+      /* @__PURE__ */ jsxs(AppProvider, { isEmbeddedApp: true, apiKey, children: [
+        /* @__PURE__ */ jsxs(NavMenu, { children: [
+          /* @__PURE__ */ jsx(Link, { to: "/", children: "Dashboard" }),
+          /* @__PURE__ */ jsx(Link, { to: "/policies", children: "Policies" }),
+          /* @__PURE__ */ jsx(Link, { to: "/returns", children: "Returns" })
+        ] }),
+        /* @__PURE__ */ jsx(Outlet, {})
+      ] }),
+      /* @__PURE__ */ jsx(ScrollRestoration, {}),
+      /* @__PURE__ */ jsx(Scripts, {})
+    ] })
+  ] });
+}
+function ErrorBoundary() {
+  const error = useRouteError();
+  if (isRouteErrorResponse(error)) {
+    return /* @__PURE__ */ jsxs("div", { children: [
+      /* @__PURE__ */ jsxs("h1", { children: [
+        error.status,
+        " ",
+        error.statusText
+      ] }),
+      /* @__PURE__ */ jsx("p", { children: error.data })
+    ] });
+  }
+  return /* @__PURE__ */ jsxs("div", { children: [
+    /* @__PURE__ */ jsx("h1", { children: "Error" }),
+    /* @__PURE__ */ jsx("p", { children: error?.message ?? "Unknown error" })
+  ] });
+}
+
+const route0 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+  __proto__: null,
+  ErrorBoundary,
+  default: App,
+  links,
+  loader: loader$4
+}, Symbol.toStringTag, { value: 'Module' }));
 
 async function action$2({ request }) {
   const { topic, shop, session, admin } = await shopify.authenticate.webhook(
@@ -537,7 +555,7 @@ function Dashboard() {
         selected: selectedResources.includes(id),
         position: index,
         children: [
-          /* @__PURE__ */ jsx(IndexTable.Cell, { children: /* @__PURE__ */ jsx(Link, { url: `/returns/${id}`, children: orderName || "—" }) }),
+          /* @__PURE__ */ jsx(IndexTable.Cell, { children: /* @__PURE__ */ jsx(Link$1, { url: `/returns/${id}`, children: orderName || "—" }) }),
           /* @__PURE__ */ jsx(IndexTable.Cell, { children: customerName || "—" }),
           /* @__PURE__ */ jsx(IndexTable.Cell, { children: /* @__PURE__ */ jsx(Badge, { tone: statusBadge(status).status, children: statusBadge(status).children }) }),
           /* @__PURE__ */ jsx(IndexTable.Cell, { children: new Date(createdAt).toLocaleDateString() })
@@ -598,7 +616,7 @@ const route5 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   loader
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const serverManifest = {'entry':{'module':'/assets/entry.client-BM2sQaNZ.js','imports':['/assets/components-BV-Eltkj.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-DcWKIdpw.js','imports':['/assets/components-BV-Eltkj.js','/assets/context-p7I9nrgR.js','/assets/context-CAZ9AeGk.js'],'css':['/assets/root-DqWBAKNB.css']},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-B945Rswi.js','imports':['/assets/components-BV-Eltkj.js','/assets/TitleBar-QMgE2qeQ.js','/assets/context-p7I9nrgR.js','/assets/context-CAZ9AeGk.js'],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-DA5imfse.js','imports':['/assets/components-BV-Eltkj.js','/assets/context-p7I9nrgR.js','/assets/TitleBar-QMgE2qeQ.js'],'css':[]}},'url':'/assets/manifest-d95ed352.js','version':'d95ed352'};
+const serverManifest = {'entry':{'module':'/assets/entry.client-rQsLK_wk.js','imports':['/assets/components-DQ_Zdf-t.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-QesI13tm.js','imports':['/assets/components-DQ_Zdf-t.js','/assets/context-C6dfzWjK.js','/assets/context-clUgH11Y.js'],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-CXjTV4-s.js','imports':['/assets/components-DQ_Zdf-t.js','/assets/TitleBar-CrGAmSCW.js','/assets/context-C6dfzWjK.js','/assets/context-clUgH11Y.js'],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-CVhrEynX.js','imports':['/assets/components-DQ_Zdf-t.js','/assets/context-C6dfzWjK.js','/assets/TitleBar-CrGAmSCW.js'],'css':[]}},'url':'/assets/manifest-8f841f78.js','version':'8f841f78'};
 
 /**
        * `mode` is only relevant for the old Remix compiler but
