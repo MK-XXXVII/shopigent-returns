@@ -8,7 +8,7 @@ import { shopifyApp, AppDistribution, ApiVersion } from '@shopify/shopify-app-re
 import { PrismaSessionStorage } from '@shopify/shopify-app-session-storage-prisma';
 import { PrismaClient } from '@prisma/client';
 import { json } from '@remix-run/node';
-import { Page, Layout, Banner, Card, BlockStack, InlineStack, Text, Button, Tag, Modal, Checkbox, TextField, useIndexResourceState, IndexTable, Link as Link$1, Badge } from '@shopify/polaris';
+import { useIndexResourceState, IndexTable, Link as Link$1, Badge, Page, Layout, BlockStack, Card, Text, EmptyState, InlineStack, Button, Tag, Banner, Modal, Checkbox, TextField } from '@shopify/polaris';
 import { useState, useEffect } from 'react';
 
 function handleRequest(request, responseStatusCode, responseHeaders, remixContext) {
@@ -59,7 +59,7 @@ shopify.registerWebhooks;
 shopify.sessionStorage;
 
 const links = () => [{ rel: "stylesheet", href: polarisStyles }];
-const loader$4 = async ({ request }) => {
+const loader$6 = async ({ request }) => {
   await authenticate.admin(request);
   return { apiKey: process.env.SHOPIFY_API_KEY || "" };
 };
@@ -117,7 +117,129 @@ const route0 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   ErrorBoundary,
   default: App,
   links,
-  loader: loader$4
+  loader: loader$6
+}, Symbol.toStringTag, { value: 'Module' }));
+
+const STATUS_COLORS$1 = {
+  PENDING: "warning",
+  APPROVED: "success",
+  DENIED: "critical",
+  EXCHANGE: "info",
+  SHIPPED: "info",
+  REFUNDED: "success",
+  CLOSED: "new"
+};
+const loader$5 = async ({ request }) => {
+  const { session } = await shopify.authenticate.admin(request);
+  const url = new URL(request.url);
+  const status = url.searchParams.get("status") || void 0;
+  const where = { shop: session.shop };
+  if (status) where.status = status;
+  const returns = await prisma$1.returnRequest.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    take: 50
+  });
+  const counts = await prisma$1.returnRequest.groupBy({
+    by: ["status"],
+    where: { shop: session.shop },
+    _count: true
+  });
+  const countMap = {};
+  counts.forEach((c) => {
+    countMap[c.status] = c._count;
+  });
+  return json({ returns, counts: countMap, currentStatus: status || "all" });
+};
+function statusBadge$1(status) {
+  return {
+    children: status.charAt(0) + status.slice(1).toLowerCase(),
+    tone: STATUS_COLORS$1[status] || "info"
+  };
+}
+function ReturnsPage() {
+  const { returns, counts, currentStatus } = useLoaderData();
+  const resourceName = { singular: "return", plural: "returns" };
+  const { selectedResources, allResourcesSelected, handleSelectionChange } = useIndexResourceState(returns);
+  const totalCount = Object.values(counts).reduce((a, b) => a + b, 0);
+  const rowMarkup = returns.map(
+    ({ id, orderName, customerName, status, createdAt }, index) => {
+      const badge = statusBadge$1(status);
+      return /* @__PURE__ */ jsxs(
+        IndexTable.Row,
+        {
+          id,
+          selected: selectedResources.includes(id),
+          position: index,
+          children: [
+            /* @__PURE__ */ jsx(IndexTable.Cell, { children: /* @__PURE__ */ jsx(Link$1, { url: `/returns/${id}`, children: orderName || "—" }) }),
+            /* @__PURE__ */ jsx(IndexTable.Cell, { children: customerName || "—" }),
+            /* @__PURE__ */ jsx(IndexTable.Cell, { children: /* @__PURE__ */ jsx(Badge, { tone: badge.tone, children: badge.children }) }),
+            /* @__PURE__ */ jsx(IndexTable.Cell, { children: new Date(createdAt).toLocaleDateString() })
+          ]
+        },
+        id
+      );
+    }
+  );
+  return /* @__PURE__ */ jsx(Page, { title: "Returns", children: /* @__PURE__ */ jsx(Layout, { children: /* @__PURE__ */ jsx(Layout.Section, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "400", children: [
+    /* @__PURE__ */ jsx("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 12 }, children: [
+      { label: "All", count: totalCount, key: "all", color: "#5c6ac4" },
+      { label: "Pending", count: counts.PENDING || 0, key: "PENDING", color: "#ecc134" },
+      { label: "Approved", count: counts.APPROVED || 0, key: "APPROVED", color: "#50b83c" },
+      { label: "Denied", count: counts.DENIED || 0, key: "DENIED", color: "#de3617" },
+      { label: "Refunded", count: counts.REFUNDED || 0, key: "REFUNDED", color: "#47c1bf" }
+    ].map(({ label, count, key, color }) => /* @__PURE__ */ jsx(Card, { children: /* @__PURE__ */ jsxs(
+      "div",
+      {
+        style: {
+          cursor: "pointer",
+          borderLeft: `3px solid ${color}`,
+          paddingLeft: 8,
+          opacity: currentStatus === key ? 1 : 0.7
+        },
+        onClick: () => {
+          const params = new URLSearchParams(window.location.search);
+          if (key === "all") params.delete("status");
+          else params.set("status", key);
+          window.location.search = params.toString();
+        },
+        children: [
+          /* @__PURE__ */ jsx(Text, { variant: "headingXl", as: "p", fontWeight: "bold", children: count }),
+          /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "span", tone: "subdued", children: label })
+        ]
+      }
+    ) }, key)) }),
+    /* @__PURE__ */ jsx(Card, { children: returns.length === 0 ? /* @__PURE__ */ jsx(
+      EmptyState,
+      {
+        heading: "No returns yet",
+        image: "",
+        children: /* @__PURE__ */ jsx("p", { children: "Returns will appear here when customers submit them or when orders are fulfilled." })
+      }
+    ) : /* @__PURE__ */ jsx(
+      IndexTable,
+      {
+        resourceName,
+        itemCount: returns.length,
+        selectedItemsCount: allResourcesSelected ? "All" : selectedResources.length,
+        onSelectionChange: handleSelectionChange,
+        headings: [
+          { title: "Order" },
+          { title: "Customer" },
+          { title: "Status" },
+          { title: "Date" }
+        ],
+        children: rowMarkup
+      }
+    ) })
+  ] }) }) }) });
+}
+
+const route1 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+  __proto__: null,
+  default: ReturnsPage,
+  loader: loader$5
 }, Symbol.toStringTag, { value: 'Module' }));
 
 async function action$2({ request }) {
@@ -163,9 +285,125 @@ async function action$2({ request }) {
   return new Response(null, { status: 200 });
 }
 
-const route1 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route2 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action: action$2
+}, Symbol.toStringTag, { value: 'Module' }));
+
+const STATUS_COLORS = {
+  PENDING: "warning",
+  APPROVED: "success",
+  DENIED: "critical",
+  EXCHANGE: "info",
+  SHIPPED: "info",
+  REFUNDED: "success",
+  CLOSED: "new"
+};
+const loader$4 = async ({ request, params }) => {
+  const { session } = await shopify.authenticate.admin(request);
+  const returnReq = await prisma$1.returnRequest.findFirst({
+    where: { id: params.id, shop: session.shop },
+    include: {
+      fraudSignals: true,
+      decisionLogs: { orderBy: { createdAt: "desc" } }
+    }
+  });
+  if (!returnReq) throw new Response("Not found", { status: 404 });
+  return json({ return: returnReq });
+};
+function ReturnDetailPage() {
+  const { return: r } = useLoaderData();
+  const items = r.items;
+  const logs = r.decisionLogs;
+  return /* @__PURE__ */ jsx(
+    Page,
+    {
+      title: `Return ${r.orderName || r.id.slice(0, 8)}`,
+      backAction: { url: "/returns" },
+      children: /* @__PURE__ */ jsx(Layout, { children: /* @__PURE__ */ jsx(Layout.Section, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "400", children: [
+        /* @__PURE__ */ jsx(Card, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "300", children: [
+          /* @__PURE__ */ jsxs(InlineStack, { align: "space-between", children: [
+            /* @__PURE__ */ jsxs(BlockStack, { gap: "100", children: [
+              /* @__PURE__ */ jsx(Text, { variant: "headingMd", as: "h2", fontWeight: "bold", children: "Status" }),
+              /* @__PURE__ */ jsx(Badge, { tone: STATUS_COLORS[r.status] || "info", children: r.status })
+            ] }),
+            r.status === "PENDING" && /* @__PURE__ */ jsxs(InlineStack, { gap: "200", children: [
+              /* @__PURE__ */ jsx(Button, { tone: "critical", children: "Deny" }),
+              /* @__PURE__ */ jsx(Button, { variant: "primary", tone: "success", children: "Approve" })
+            ] })
+          ] }),
+          r.customerName && /* @__PURE__ */ jsxs(Text, { variant: "bodyMd", as: "p", children: [
+            /* @__PURE__ */ jsx("strong", { children: "Customer:" }),
+            " ",
+            r.customerName,
+            " ",
+            r.customerEmail && `(${r.customerEmail})`
+          ] }),
+          r.reason && /* @__PURE__ */ jsxs(Text, { variant: "bodyMd", as: "p", children: [
+            /* @__PURE__ */ jsx("strong", { children: "Reason:" }),
+            " ",
+            r.reason
+          ] }),
+          r.notes && /* @__PURE__ */ jsxs(Text, { variant: "bodyMd", as: "p", children: [
+            /* @__PURE__ */ jsx("strong", { children: "Notes:" }),
+            " ",
+            r.notes
+          ] }),
+          /* @__PURE__ */ jsxs(Text, { variant: "bodySm", as: "p", tone: "subdued", children: [
+            "Created: ",
+            new Date(r.createdAt).toLocaleString()
+          ] })
+        ] }) }),
+        /* @__PURE__ */ jsx(Card, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "200", children: [
+          /* @__PURE__ */ jsxs(Text, { variant: "headingMd", as: "h2", fontWeight: "bold", children: [
+            "Items (",
+            items.length,
+            ")"
+          ] }),
+          items.map((item, i) => /* @__PURE__ */ jsxs(BlockStack, { gap: "100", children: [
+            /* @__PURE__ */ jsxs(InlineStack, { align: "space-between", children: [
+              /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "span", fontWeight: "bold", children: item.title }),
+              /* @__PURE__ */ jsxs(Text, { variant: "bodyMd", as: "span", children: [
+                "x",
+                item.quantity,
+                " ",
+                item.price && `$${item.price}`
+              ] })
+            ] }),
+            item.sku && /* @__PURE__ */ jsx(Tag, { children: item.sku }),
+            item.reason && /* @__PURE__ */ jsxs(Text, { variant: "bodySm", as: "p", tone: "subdued", children: [
+              "Reason: ",
+              item.reason
+            ] })
+          ] }, i))
+        ] }) }),
+        r.fraudSignals.length > 0 && /* @__PURE__ */ jsx(Card, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "200", children: [
+          /* @__PURE__ */ jsx(Text, { variant: "headingMd", as: "h2", fontWeight: "bold", children: "Fraud Signals" }),
+          r.fraudSignals.map((s) => /* @__PURE__ */ jsxs(InlineStack, { gap: "200", children: [
+            /* @__PURE__ */ jsxs(Badge, { tone: s.score > 0.5 ? "critical" : "warning", children: [
+              (s.score * 100).toFixed(0),
+              "%"
+            ] }),
+            /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "span", children: s.signal })
+          ] }, s.id))
+        ] }) }),
+        logs.length > 0 && /* @__PURE__ */ jsx(Card, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "200", children: [
+          /* @__PURE__ */ jsx(Text, { variant: "headingMd", as: "h2", fontWeight: "bold", children: "Activity Log" }),
+          logs.map((log) => /* @__PURE__ */ jsx(BlockStack, { gap: "100", children: /* @__PURE__ */ jsxs(InlineStack, { gap: "200", children: [
+            /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "span", fontWeight: "bold", children: log.actor }),
+            /* @__PURE__ */ jsx(Tag, { children: log.action }),
+            /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "span", tone: "subdued", children: new Date(log.createdAt).toLocaleString() })
+          ] }) }, log.id))
+        ] }) })
+      ] }) }) })
+    }
+  );
+}
+
+const route3 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+  __proto__: null,
+  default: ReturnDetailPage,
+  loader: loader$4
 }, Symbol.toStringTag, { value: 'Module' }));
 
 const loader$3 = async ({ request }) => {
@@ -173,7 +411,7 @@ const loader$3 = async ({ request }) => {
   return null;
 };
 
-const route2 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route4 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   loader: loader$3
 }, Symbol.toStringTag, { value: 'Module' }));
@@ -394,7 +632,7 @@ function PoliciesPage() {
   );
 }
 
-const route3 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route5 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action: action$1,
   default: PoliciesPage,
@@ -408,7 +646,7 @@ const action = () => {
   return json({ ok: true, service: "shopigent-returns", status: "healthy" });
 };
 
-const route4 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route6 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action,
   loader: loader$1
@@ -529,13 +767,13 @@ function Dashboard() {
   ] });
 }
 
-const route5 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route7 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   default: Dashboard,
   loader
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const serverManifest = {'entry':{'module':'/assets/entry.client-rQsLK_wk.js','imports':['/assets/components-DQ_Zdf-t.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-Dg3dJvBf.js','imports':['/assets/components-DQ_Zdf-t.js','/assets/context-DRheaFP2.js','/assets/context-clUgH11Y.js'],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-CsrXpVg-.js','imports':['/assets/components-DQ_Zdf-t.js','/assets/Page-BSEzckm1.js','/assets/context-DRheaFP2.js','/assets/context-clUgH11Y.js'],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-ClOCyFFJ.js','imports':['/assets/components-DQ_Zdf-t.js','/assets/context-DRheaFP2.js','/assets/Page-BSEzckm1.js'],'css':[]}},'url':'/assets/manifest-08b9b03a.js','version':'08b9b03a'};
+const serverManifest = {'entry':{'module':'/assets/entry.client-DyfKaOos.js','imports':['/assets/components-Cc6YJ0TE.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-CM4gSoWc.js','imports':['/assets/components-Cc6YJ0TE.js','/assets/context-BiUeL77I.js','/assets/context-DeYyIiJd.js'],'css':[]},'routes/returns._index':{'id':'routes/returns._index','parentId':'root','path':'returns','index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._index-BRXYRwLK.js','imports':['/assets/components-Cc6YJ0TE.js','/assets/Link-CmO3Lr94.js','/assets/Page-CPlWv2R_.js','/assets/context-BiUeL77I.js','/assets/CSSTransition-DN7ggXK3.js'],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/returns.$id':{'id':'routes/returns.$id','parentId':'root','path':'returns/:id','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._id-DOVItyYJ.js','imports':['/assets/components-Cc6YJ0TE.js','/assets/Page-CPlWv2R_.js','/assets/Tag-BvoGdaI8.js','/assets/context-BiUeL77I.js'],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-B-eqRXuS.js','imports':['/assets/components-Cc6YJ0TE.js','/assets/Page-CPlWv2R_.js','/assets/Banner-Cb6iWn5w.js','/assets/Tag-BvoGdaI8.js','/assets/context-BiUeL77I.js','/assets/context-DeYyIiJd.js','/assets/CSSTransition-DN7ggXK3.js'],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-Ca8KTJQR.js','imports':['/assets/components-Cc6YJ0TE.js','/assets/Link-CmO3Lr94.js','/assets/Page-CPlWv2R_.js','/assets/Banner-Cb6iWn5w.js','/assets/context-BiUeL77I.js','/assets/CSSTransition-DN7ggXK3.js'],'css':[]}},'url':'/assets/manifest-f887e8b1.js','version':'f887e8b1'};
 
 /**
        * `mode` is only relevant for the old Remix compiler but
@@ -557,13 +795,29 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-rQsLK_wk.js','im
           caseSensitive: undefined,
           module: route0
         },
+  "routes/returns._index": {
+          id: "routes/returns._index",
+          parentId: "root",
+          path: "returns",
+          index: true,
+          caseSensitive: undefined,
+          module: route1
+        },
   "routes/api.webhooks": {
           id: "routes/api.webhooks",
           parentId: "root",
           path: "api/webhooks",
           index: undefined,
           caseSensitive: undefined,
-          module: route1
+          module: route2
+        },
+  "routes/returns.$id": {
+          id: "routes/returns.$id",
+          parentId: "root",
+          path: "returns/:id",
+          index: undefined,
+          caseSensitive: undefined,
+          module: route3
         },
   "routes/api.auth.$": {
           id: "routes/api.auth.$",
@@ -571,7 +825,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-rQsLK_wk.js','im
           path: "api/auth/*",
           index: undefined,
           caseSensitive: undefined,
-          module: route2
+          module: route4
         },
   "routes/policies": {
           id: "routes/policies",
@@ -579,7 +833,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-rQsLK_wk.js','im
           path: "policies",
           index: undefined,
           caseSensitive: undefined,
-          module: route3
+          module: route5
         },
   "routes/healthz": {
           id: "routes/healthz",
@@ -587,7 +841,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-rQsLK_wk.js','im
           path: "healthz",
           index: undefined,
           caseSensitive: undefined,
-          module: route4
+          module: route6
         },
   "routes/_index": {
           id: "routes/_index",
@@ -595,7 +849,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-rQsLK_wk.js','im
           path: undefined,
           index: true,
           caseSensitive: undefined,
-          module: route5
+          module: route7
         }
       };
 
