@@ -12,6 +12,8 @@ import {
   InlineStack,
   Modal,
   Tag,
+  Card,
+  List,
 } from "@shopify/polaris";
 import { useState, useEffect } from "react";
 import shopify from "../shopify.server";
@@ -182,36 +184,39 @@ export default function PoliciesPage() {
               const autoApprove = getCond(c, "autoApprove")?.value;
               const fee = getCond(c, "restockingFee")?.value ?? 0;
               return (
-                <div key={p.id} style={{
-                  borderLeft: `4px solid ${p.isActive ? "#2e7d32" : "#9e9e9e"}`,
-                  background: "#1a1a2e", borderRadius: 8, padding: 16, marginBottom: 12,
-                }}>
-                  <BlockStack gap="200">
-                    <InlineStack align="space-between">
-                      <Text variant="headingSm" as="h3" fontWeight="bold">
+                <Card key={p.id}>
+                <BlockStack gap="200">
+                  <InlineStack align="space-between" wrap={false}>
+                    <BlockStack gap="100">
+                      <Text variant="headingMd" as="h3" fontWeight="bold">
                         {p.name}
-                        {!p.isActive && <Tag tone="critical" style={{ marginLeft: 8 }}>Disabled</Tag>}
                       </Text>
-                      <InlineStack gap="200">
-                        <Button size="slim" onClick={() => {
-                          fetcher.submit({ _action: "toggle", id: p.id }, { method: "post" });
-                        }}>{p.isActive ? "Disable" : "Enable"}</Button>
-                        <Button size="slim" onClick={() => openEdit(p)}>Edit</Button>
-                        <Button size="slim" tone="critical" onClick={() => {
-                          fetcher.submit({ _action: "delete", id: p.id }, { method: "post" });
-                        }}>Delete</Button>
-                      </InlineStack>
+                      {p.description && (
+                        <Text variant="bodySm" as="p" tone="subdued">
+                          {p.description}
+                        </Text>
+                      )}
+                    </BlockStack>
+                    <InlineStack gap="200" align="end">
+                      <Button size="slim" onClick={() => {
+                        fetcher.submit({ _action: "toggle", id: p.id }, { method: "post" });
+                      }}>{p.isActive ? "Disable" : "Enable"}</Button>
+                      <Button size="slim" onClick={() => openEdit(p)}>Edit</Button>
+                      <Button size="slim" tone="critical" onClick={() => {
+                        fetcher.submit({ _action: "delete", id: p.id }, { method: "post" });
+                      }}>Delete</Button>
                     </InlineStack>
-                    {p.description && <Text variant="bodySm" as="p" tone="subdued">{p.description}</Text>}
-                    <InlineStack gap="300" wrap={true}>
-                      <Tag>Priority: {p.priority}</Tag>
-                      <Tag>Days: ≤{getCond(c, "maxDays")?.value ?? 30}</Tag>
-                      <Tag>Max: ${getCond(c, "maxAmount")?.value ?? 200}</Tag>
-                      {autoApprove && <Tag tone="success">Auto-approve</Tag>}
-                      {Number(fee) > 0 && <Tag>Fee: {fee}%</Tag>}
-                    </InlineStack>
-                  </BlockStack>
-                </div>
+                  </InlineStack>
+                  {!p.isActive && <Banner tone="critical">This policy is disabled</Banner>}
+                  <InlineStack gap="200" wrap={true}>
+                    <Tag tone="info">Priority {p.priority}</Tag>
+                    <Tag tone="info">≤{getCond(c, "maxDays")?.value ?? 30} days</Tag>
+                    <Tag tone="info">≤ ${getCond(c, "maxAmount")?.value ?? 200}</Tag>
+                    {autoApprove && <Tag tone="success">Auto-approve</Tag>}
+                    {Number(fee) > 0 && <Tag tone="warning">{fee}% restocking fee</Tag>}
+                  </InlineStack>
+                </BlockStack>
+              </Card>
               );
             })
           )}

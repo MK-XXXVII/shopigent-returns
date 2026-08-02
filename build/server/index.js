@@ -8,7 +8,7 @@ import { shopifyApp, AppDistribution, ApiVersion } from '@shopify/shopify-app-re
 import { PrismaSessionStorage } from '@shopify/shopify-app-session-storage-prisma';
 import { PrismaClient } from '@prisma/client';
 import { json } from '@remix-run/node';
-import { Page, Layout, Banner, BlockStack, InlineStack, Text, Tag, Button, Modal, Checkbox, TextField, useIndexResourceState, IndexTable, Link as Link$1, Badge, Card } from '@shopify/polaris';
+import { Page, Layout, Banner, Card, BlockStack, InlineStack, Text, Button, Tag, Modal, Checkbox, TextField, useIndexResourceState, IndexTable, Link as Link$1, Badge } from '@shopify/polaris';
 import { useState } from 'react';
 
 function handleRequest(request, responseStatusCode, responseHeaders, remixContext) {
@@ -306,19 +306,13 @@ function PoliciesPage() {
           const c = p.conditions;
           const autoApprove = getCond(c, "autoApprove")?.value;
           const fee = getCond(c, "restockingFee")?.value ?? 0;
-          return /* @__PURE__ */ jsx("div", { style: {
-            borderLeft: `4px solid ${p.isActive ? "#2e7d32" : "#9e9e9e"}`,
-            background: "#1a1a2e",
-            borderRadius: 8,
-            padding: 16,
-            marginBottom: 12
-          }, children: /* @__PURE__ */ jsxs(BlockStack, { gap: "200", children: [
-            /* @__PURE__ */ jsxs(InlineStack, { align: "space-between", children: [
-              /* @__PURE__ */ jsxs(Text, { variant: "headingSm", as: "h3", fontWeight: "bold", children: [
-                p.name,
-                !p.isActive && /* @__PURE__ */ jsx(Tag, { tone: "critical", style: { marginLeft: 8 }, children: "Disabled" })
+          return /* @__PURE__ */ jsx(Card, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "200", children: [
+            /* @__PURE__ */ jsxs(InlineStack, { align: "space-between", wrap: false, children: [
+              /* @__PURE__ */ jsxs(BlockStack, { gap: "100", children: [
+                /* @__PURE__ */ jsx(Text, { variant: "headingMd", as: "h3", fontWeight: "bold", children: p.name }),
+                p.description && /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "p", tone: "subdued", children: p.description })
               ] }),
-              /* @__PURE__ */ jsxs(InlineStack, { gap: "200", children: [
+              /* @__PURE__ */ jsxs(InlineStack, { gap: "200", align: "end", children: [
                 /* @__PURE__ */ jsx(Button, { size: "slim", onClick: () => {
                   fetcher.submit({ _action: "toggle", id: p.id }, { method: "post" });
                 }, children: p.isActive ? "Disable" : "Enable" }),
@@ -328,25 +322,25 @@ function PoliciesPage() {
                 }, children: "Delete" })
               ] })
             ] }),
-            p.description && /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "p", tone: "subdued", children: p.description }),
-            /* @__PURE__ */ jsxs(InlineStack, { gap: "300", wrap: true, children: [
-              /* @__PURE__ */ jsxs(Tag, { children: [
-                "Priority: ",
+            !p.isActive && /* @__PURE__ */ jsx(Banner, { tone: "critical", children: "This policy is disabled" }),
+            /* @__PURE__ */ jsxs(InlineStack, { gap: "200", wrap: true, children: [
+              /* @__PURE__ */ jsxs(Tag, { tone: "info", children: [
+                "Priority ",
                 p.priority
               ] }),
-              /* @__PURE__ */ jsxs(Tag, { children: [
-                "Days: ≤",
-                getCond(c, "maxDays")?.value ?? 30
+              /* @__PURE__ */ jsxs(Tag, { tone: "info", children: [
+                "≤",
+                getCond(c, "maxDays")?.value ?? 30,
+                " days"
               ] }),
-              /* @__PURE__ */ jsxs(Tag, { children: [
-                "Max: $",
+              /* @__PURE__ */ jsxs(Tag, { tone: "info", children: [
+                "≤ $",
                 getCond(c, "maxAmount")?.value ?? 200
               ] }),
               autoApprove && /* @__PURE__ */ jsx(Tag, { tone: "success", children: "Auto-approve" }),
-              Number(fee) > 0 && /* @__PURE__ */ jsxs(Tag, { children: [
-                "Fee: ",
+              Number(fee) > 0 && /* @__PURE__ */ jsxs(Tag, { tone: "warning", children: [
                 fee,
-                "%"
+                "% restocking fee"
               ] })
             ] })
           ] }) }, p.id);
@@ -529,7 +523,7 @@ const route5 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   loader
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const serverManifest = {'entry':{'module':'/assets/entry.client-rQsLK_wk.js','imports':['/assets/components-DQ_Zdf-t.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-QesI13tm.js','imports':['/assets/components-DQ_Zdf-t.js','/assets/context-C6dfzWjK.js','/assets/context-clUgH11Y.js'],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-B216P6jO.js','imports':['/assets/components-DQ_Zdf-t.js','/assets/Page-BCfr31u2.js','/assets/context-C6dfzWjK.js','/assets/context-clUgH11Y.js'],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-CGGEEXo8.js','imports':['/assets/components-DQ_Zdf-t.js','/assets/context-C6dfzWjK.js','/assets/Page-BCfr31u2.js'],'css':[]}},'url':'/assets/manifest-b87809ef.js','version':'b87809ef'};
+const serverManifest = {'entry':{'module':'/assets/entry.client-rQsLK_wk.js','imports':['/assets/components-DQ_Zdf-t.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-Dg3dJvBf.js','imports':['/assets/components-DQ_Zdf-t.js','/assets/context-DRheaFP2.js','/assets/context-clUgH11Y.js'],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-Cd7DUY6D.js','imports':['/assets/components-DQ_Zdf-t.js','/assets/Page-BSEzckm1.js','/assets/context-DRheaFP2.js','/assets/context-clUgH11Y.js'],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-ClOCyFFJ.js','imports':['/assets/components-DQ_Zdf-t.js','/assets/context-DRheaFP2.js','/assets/Page-BSEzckm1.js'],'css':[]}},'url':'/assets/manifest-b4883d6d.js','version':'b4883d6d'};
 
 /**
        * `mode` is only relevant for the old Remix compiler but
