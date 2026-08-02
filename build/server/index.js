@@ -1,7 +1,6 @@
 import { jsx, jsxs } from 'react/jsx-runtime';
 import { RemixServer, Meta, Links, Outlet, ScrollRestoration, Scripts, useRouteError, isRouteErrorResponse, useLoaderData } from '@remix-run/react';
-import { isbot } from 'isbot';
-import { renderToReadableStream } from 'react-dom/server';
+import { renderToString } from 'react-dom/server';
 import { AppProvider, useIndexResourceState, IndexTable, Link, Badge, Page, Layout, BlockStack, Text, Card, Banner } from '@shopify/polaris';
 import '@shopify/shopify-app-remix/server/adapters/node';
 import { shopifyApp, DeliveryMethod, AppDistribution, ApiVersion } from '@shopify/shopify-app-remix/server';
@@ -11,22 +10,12 @@ import { PrismaClient } from '@prisma/client';
 import { json } from '@remix-run/node';
 import { TitleBar } from '@shopify/app-bridge-react';
 
-async function handleRequest(request, responseStatusCode, responseHeaders, remixContext) {
-  const body = await renderToReadableStream(
-    /* @__PURE__ */ jsx(RemixServer, { context: remixContext, url: request.url }),
-    {
-      signal: request.signal,
-      onError(error) {
-        console.error(error);
-        responseStatusCode = 500;
-      }
-    }
+function handleRequest(request, responseStatusCode, responseHeaders, remixContext) {
+  let markup = renderToString(
+    /* @__PURE__ */ jsx(RemixServer, { context: remixContext, url: request.url })
   );
-  if (isbot(request.headers.get("user-agent") || "")) {
-    await body.allReady;
-  }
   responseHeaders.set("Content-Type", "text/html; charset=utf-8");
-  return new Response(body, {
+  return new Response("<!DOCTYPE html>" + markup, {
     status: responseStatusCode,
     headers: responseHeaders
   });
