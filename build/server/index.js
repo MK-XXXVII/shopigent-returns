@@ -1,4 +1,4 @@
-import { jsx, jsxs } from 'react/jsx-runtime';
+import { jsx, jsxs, Fragment } from 'react/jsx-runtime';
 import { RemixServer, useLoaderData, Meta, Links, Link, Outlet, ScrollRestoration, Scripts, useRouteError, isRouteErrorResponse, useFetcher } from '@remix-run/react';
 import { renderToString } from 'react-dom/server';
 import { AppProvider } from '@shopify/shopify-app-remix/react';
@@ -8,7 +8,7 @@ import { shopifyApp, AppDistribution, ApiVersion } from '@shopify/shopify-app-re
 import { PrismaSessionStorage } from '@shopify/shopify-app-session-storage-prisma';
 import { PrismaClient } from '@prisma/client';
 import { json } from '@remix-run/node';
-import { Page, Layout, Banner, Modal, BlockStack, TextField, Checkbox, Button, InlineStack, Text, Tag, useIndexResourceState, IndexTable, Link as Link$1, Badge, Card } from '@shopify/polaris';
+import { Page, Layout, Banner, BlockStack, InlineStack, Text, Tag, Button, Modal, Checkbox, TextField, useIndexResourceState, IndexTable, Link as Link$1, Badge, Card } from '@shopify/polaris';
 import { useState } from 'react';
 
 function handleRequest(request, responseStatusCode, responseHeaders, remixContext) {
@@ -178,6 +178,29 @@ const route2 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   loader: loader$3
 }, Symbol.toStringTag, { value: 'Module' }));
 
+function FormField({
+  label,
+  name,
+  type,
+  value,
+  onChange,
+  ...rest
+}) {
+  return /* @__PURE__ */ jsxs(Fragment, { children: [
+    /* @__PURE__ */ jsx("input", { type: "hidden", name, value }),
+    /* @__PURE__ */ jsx(
+      TextField,
+      {
+        label,
+        type,
+        value,
+        onChange,
+        autoComplete: "off",
+        ...rest
+      }
+    )
+  ] });
+}
 const loader$2 = async ({ request }) => {
   const { session } = await shopify.authenticate.admin(request);
   const policies = await prisma$1.policy.findMany({
@@ -197,42 +220,15 @@ const action$1 = async ({ request }) => {
     const priority = parseInt(formData.get("priority")) || 0;
     const isActive = formData.get("isActive") === "true";
     const conditions = [
-      {
-        field: "maxDays",
-        operator: "lte",
-        value: parseInt(formData.get("maxDays")) || 30
-      },
-      {
-        field: "maxAmount",
-        operator: "lte",
-        value: parseFloat(formData.get("maxAmount")) || 9999
-      },
-      {
-        field: "autoApprove",
-        operator: "eq",
-        value: formData.get("autoApprove") === "true"
-      },
-      {
-        field: "restockingFee",
-        operator: "eq",
-        value: parseFloat(formData.get("restockingFee")) || 0
-      },
-      {
-        field: "requiresReturnLabel",
-        operator: "eq",
-        value: formData.get("requiresReturnLabel") === "true"
-      }
+      { field: "maxDays", operator: "lte", value: parseInt(formData.get("maxDays")) || 30 },
+      { field: "maxAmount", operator: "lte", value: parseFloat(formData.get("maxAmount")) || 9999 },
+      { field: "autoApprove", operator: "eq", value: formData.get("autoApprove") === "true" },
+      { field: "restockingFee", operator: "eq", value: parseFloat(formData.get("restockingFee")) || 0 },
+      { field: "requiresReturnLabel", operator: "eq", value: formData.get("requiresReturnLabel") === "true" }
     ];
     if (_action === "create") {
       await prisma$1.policy.create({
-        data: {
-          shop: session.shop,
-          name,
-          description,
-          priority,
-          isActive,
-          conditions
-        }
+        data: { shop: session.shop, name, description, priority, isActive, conditions }
       });
     } else if (id) {
       await prisma$1.policy.update({
@@ -241,235 +237,148 @@ const action$1 = async ({ request }) => {
       });
     }
   } else if (_action === "delete") {
-    const id = formData.get("id");
-    await prisma$1.policy.delete({ where: { id } });
+    await prisma$1.policy.delete({ where: { id: formData.get("id") } });
   } else if (_action === "toggle") {
     const id = formData.get("id");
     const policy = await prisma$1.policy.findUnique({ where: { id } });
     if (policy) {
-      await prisma$1.policy.update({
-        where: { id },
-        data: { isActive: !policy.isActive }
-      });
+      await prisma$1.policy.update({ where: { id }, data: { isActive: !policy.isActive } });
     }
   }
   return json({ ok: true });
 };
-function PolicyCard({
-  policy,
-  onEdit
-}) {
-  const fetcher = useFetcher();
-  const conditions = policy.conditions;
-  const getCondition = (field) => conditions.find((c) => c.field === field);
-  const maxDays = getCondition("maxDays")?.value ?? 30;
-  const maxAmount = getCondition("maxAmount")?.value ?? 9999;
-  const autoApprove = getCondition("autoApprove")?.value;
-  const restockingFee = getCondition("restockingFee")?.value ?? 0;
-  return /* @__PURE__ */ jsx(
-    "div",
-    {
-      style: {
-        borderLeft: `4px solid ${policy.isActive ? "#2e7d32" : "#9e9e9e"}`,
-        background: "#1a1a2e",
-        borderRadius: 8,
-        padding: 16,
-        marginBottom: 12
-      },
-      children: /* @__PURE__ */ jsxs(BlockStack, { gap: "200", children: [
-        /* @__PURE__ */ jsxs(InlineStack, { align: "space-between", children: [
-          /* @__PURE__ */ jsxs(Text, { variant: "headingSm", as: "h3", fontWeight: "bold", children: [
-            policy.name,
-            !policy.isActive && /* @__PURE__ */ jsx(Tag, { tone: "critical", style: { marginLeft: 8 }, children: "Disabled" })
-          ] }),
-          /* @__PURE__ */ jsxs(InlineStack, { gap: "200", children: [
-            /* @__PURE__ */ jsx(
-              Button,
-              {
-                size: "slim",
-                onClick: () => fetcher.submit(
-                  { _action: "toggle", id: policy.id },
-                  { method: "post" }
-                ),
-                children: policy.isActive ? "Disable" : "Enable"
-              }
-            ),
-            /* @__PURE__ */ jsx(Button, { size: "slim", onClick: () => onEdit(policy), children: "Edit" }),
-            /* @__PURE__ */ jsx(
-              Button,
-              {
-                size: "slim",
-                tone: "critical",
-                onClick: () => fetcher.submit(
-                  { _action: "delete", id: policy.id },
-                  { method: "post" }
-                ),
-                children: "Delete"
-              }
-            )
-          ] })
-        ] }),
-        policy.description && /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "p", tone: "subdued", children: policy.description }),
-        /* @__PURE__ */ jsxs(InlineStack, { gap: "300", wrap: true, children: [
-          /* @__PURE__ */ jsxs(Tag, { children: [
-            "Priority: ",
-            policy.priority
-          ] }),
-          /* @__PURE__ */ jsxs(Tag, { children: [
-            "Days: ≤",
-            maxDays
-          ] }),
-          /* @__PURE__ */ jsxs(Tag, { children: [
-            "Max: $",
-            maxAmount
-          ] }),
-          autoApprove && /* @__PURE__ */ jsx(Tag, { tone: "success", children: "Auto-approve" }),
-          restockingFee > 0 && /* @__PURE__ */ jsxs(Tag, { children: [
-            "Fee: ",
-            restockingFee,
-            "%"
-          ] })
-        ] })
-      ] })
-    }
-  );
+function getCond(conditions, field) {
+  return conditions.find((c) => c.field === field);
 }
+const emptyForm = () => ({
+  name: "",
+  description: "",
+  priority: "0",
+  maxDays: "30",
+  maxAmount: "200",
+  autoApprove: false,
+  restockingFee: "0",
+  requiresReturnLabel: false
+});
 function PoliciesPage() {
   const { policies } = useLoaderData();
   const fetcher = useFetcher();
   const [active, setActive] = useState(false);
-  const [editing, setEditing] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [f, setF] = useState(emptyForm());
+  const isNew = !editingId;
   const openNew = () => {
-    setEditing(null);
+    setEditingId(null);
+    setF(emptyForm());
     setActive(true);
   };
   const openEdit = (p) => {
-    setEditing(p);
+    const c = p.conditions;
+    setEditingId(p.id);
+    setF({
+      name: p.name,
+      description: p.description || "",
+      priority: String(p.priority),
+      maxDays: String(getCond(c, "maxDays")?.value ?? 30),
+      maxAmount: String(getCond(c, "maxAmount")?.value ?? 200),
+      autoApprove: getCond(c, "autoApprove")?.value === true,
+      restockingFee: String(getCond(c, "restockingFee")?.value ?? 0),
+      requiresReturnLabel: getCond(c, "requiresReturnLabel")?.value === true
+    });
     setActive(true);
   };
   const closeModal = () => {
     setActive(false);
-    setEditing(null);
+    setEditingId(null);
   };
-  const isNew = !editing;
-  const c = editing?.conditions || [];
+  const u = (field) => (val) => setF((prev) => ({ ...prev, [field]: val }));
   return /* @__PURE__ */ jsxs(
     Page,
     {
       title: "Return Policies",
       primaryAction: { content: "Add Policy", onAction: openNew },
       children: [
-        /* @__PURE__ */ jsx(TitleBar, { title: "Shopigent Returns" }),
-        /* @__PURE__ */ jsx(Layout, { children: /* @__PURE__ */ jsx(Layout.Section, { children: policies.length === 0 ? /* @__PURE__ */ jsx(Banner, { tone: "info", children: /* @__PURE__ */ jsx("p", { children: "No policies yet. Create your first return policy to start automating return decisions." }) }) : policies.map((p) => /* @__PURE__ */ jsx(PolicyCard, { policy: p, onEdit: openEdit }, p.id)) }) }),
-        /* @__PURE__ */ jsx(
-          Modal,
-          {
-            open: active,
-            onClose: closeModal,
-            title: isNew ? "Create Policy" : "Edit Policy",
-            children: /* @__PURE__ */ jsx(Modal.Section, { children: /* @__PURE__ */ jsxs(fetcher.Form, { method: "post", children: [
-              /* @__PURE__ */ jsx(
-                "input",
-                {
-                  type: "hidden",
-                  name: "_action",
-                  value: isNew ? "create" : "update"
-                }
-              ),
-              !isNew && /* @__PURE__ */ jsx("input", { type: "hidden", name: "id", value: editing.id }),
-              /* @__PURE__ */ jsx("input", { type: "hidden", name: "isActive", value: "true" }),
-              /* @__PURE__ */ jsxs(BlockStack, { gap: "400", children: [
-                /* @__PURE__ */ jsx(
-                  TextField,
-                  {
-                    label: "Policy Name",
-                    name: "name",
-                    defaultValue: editing?.name || "",
-                    required: true,
-                    autoComplete: "off"
-                  }
-                ),
-                /* @__PURE__ */ jsx(
-                  TextField,
-                  {
-                    label: "Description",
-                    name: "description",
-                    defaultValue: editing?.description || "",
-                    multiline: 2,
-                    autoComplete: "off"
-                  }
-                ),
-                /* @__PURE__ */ jsx(
-                  TextField,
-                  {
-                    label: "Priority (lower = checked first)",
-                    name: "priority",
-                    type: "number",
-                    defaultValue: String(editing?.priority ?? 0),
-                    autoComplete: "off"
-                  }
-                ),
-                /* @__PURE__ */ jsx(
-                  TextField,
-                  {
-                    label: "Max Days for Return",
-                    name: "maxDays",
-                    type: "number",
-                    defaultValue: String(
-                      c.find((x) => x.field === "maxDays")?.value ?? 30
-                    ),
-                    autoComplete: "off"
-                  }
-                ),
-                /* @__PURE__ */ jsx(
-                  TextField,
-                  {
-                    label: "Max Amount for Auto-approve ($)",
-                    name: "maxAmount",
-                    type: "number",
-                    prefix: "$",
-                    step: "0.01",
-                    defaultValue: String(
-                      c.find((x) => x.field === "maxAmount")?.value ?? 9999
-                    ),
-                    autoComplete: "off"
-                  }
-                ),
-                /* @__PURE__ */ jsx(
-                  Checkbox,
-                  {
-                    label: "Auto-approve returns matching this policy",
-                    name: "autoApprove",
-                    defaultChecked: c.find((x) => x.field === "autoApprove")?.value === true
-                  }
-                ),
-                /* @__PURE__ */ jsx(
-                  TextField,
-                  {
-                    label: "Restocking Fee (%)",
-                    name: "restockingFee",
-                    type: "number",
-                    suffix: "%",
-                    step: "0.5",
-                    defaultValue: String(
-                      c.find((x) => x.field === "restockingFee")?.value ?? 0
-                    ),
-                    autoComplete: "off"
-                  }
-                ),
-                /* @__PURE__ */ jsx(
-                  Checkbox,
-                  {
-                    label: "Require return label",
-                    name: "requiresReturnLabel",
-                    defaultChecked: c.find((x) => x.field === "requiresReturnLabel")?.value === true
-                  }
-                ),
-                /* @__PURE__ */ jsx(Button, { submit: true, variant: "primary", children: isNew ? "Create Policy" : "Update Policy" })
+        /* @__PURE__ */ jsx(Layout, { children: /* @__PURE__ */ jsx(Layout.Section, { children: policies.length === 0 ? /* @__PURE__ */ jsx(Banner, { tone: "info", children: /* @__PURE__ */ jsx("p", { children: "No policies yet. Create your first return policy to start automating return decisions." }) }) : policies.map((p) => {
+          const c = p.conditions;
+          const autoApprove = getCond(c, "autoApprove")?.value;
+          const fee = getCond(c, "restockingFee")?.value ?? 0;
+          return /* @__PURE__ */ jsx("div", { style: {
+            borderLeft: `4px solid ${p.isActive ? "#2e7d32" : "#9e9e9e"}`,
+            background: "#1a1a2e",
+            borderRadius: 8,
+            padding: 16,
+            marginBottom: 12
+          }, children: /* @__PURE__ */ jsxs(BlockStack, { gap: "200", children: [
+            /* @__PURE__ */ jsxs(InlineStack, { align: "space-between", children: [
+              /* @__PURE__ */ jsxs(Text, { variant: "headingSm", as: "h3", fontWeight: "bold", children: [
+                p.name,
+                !p.isActive && /* @__PURE__ */ jsx(Tag, { tone: "critical", style: { marginLeft: 8 }, children: "Disabled" })
+              ] }),
+              /* @__PURE__ */ jsxs(InlineStack, { gap: "200", children: [
+                /* @__PURE__ */ jsx(Button, { size: "slim", onClick: () => {
+                  fetcher.submit({ _action: "toggle", id: p.id }, { method: "post" });
+                }, children: p.isActive ? "Disable" : "Enable" }),
+                /* @__PURE__ */ jsx(Button, { size: "slim", onClick: () => openEdit(p), children: "Edit" }),
+                /* @__PURE__ */ jsx(Button, { size: "slim", tone: "critical", onClick: () => {
+                  fetcher.submit({ _action: "delete", id: p.id }, { method: "post" });
+                }, children: "Delete" })
               ] })
-            ] }) })
-          }
-        )
+            ] }),
+            p.description && /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "p", tone: "subdued", children: p.description }),
+            /* @__PURE__ */ jsxs(InlineStack, { gap: "300", wrap: true, children: [
+              /* @__PURE__ */ jsxs(Tag, { children: [
+                "Priority: ",
+                p.priority
+              ] }),
+              /* @__PURE__ */ jsxs(Tag, { children: [
+                "Days: ≤",
+                getCond(c, "maxDays")?.value ?? 30
+              ] }),
+              /* @__PURE__ */ jsxs(Tag, { children: [
+                "Max: $",
+                getCond(c, "maxAmount")?.value ?? 200
+              ] }),
+              autoApprove && /* @__PURE__ */ jsx(Tag, { tone: "success", children: "Auto-approve" }),
+              Number(fee) > 0 && /* @__PURE__ */ jsxs(Tag, { children: [
+                "Fee: ",
+                fee,
+                "%"
+              ] })
+            ] })
+          ] }) }, p.id);
+        }) }) }),
+        /* @__PURE__ */ jsx(Modal, { open: active, onClose: closeModal, title: isNew ? "Create Policy" : "Edit Policy", children: /* @__PURE__ */ jsx(Modal.Section, { children: /* @__PURE__ */ jsxs(fetcher.Form, { method: "post", children: [
+          /* @__PURE__ */ jsx("input", { type: "hidden", name: "_action", value: isNew ? "create" : "update" }),
+          !isNew && /* @__PURE__ */ jsx("input", { type: "hidden", name: "id", value: editingId }),
+          /* @__PURE__ */ jsx("input", { type: "hidden", name: "isActive", value: "true" }),
+          /* @__PURE__ */ jsx("input", { type: "hidden", name: "autoApprove", value: String(f.autoApprove) }),
+          /* @__PURE__ */ jsx("input", { type: "hidden", name: "requiresReturnLabel", value: String(f.requiresReturnLabel) }),
+          /* @__PURE__ */ jsxs(BlockStack, { gap: "400", children: [
+            /* @__PURE__ */ jsx(FormField, { label: "Policy Name", name: "name", value: f.name, onChange: u("name"), required: true }),
+            /* @__PURE__ */ jsx(FormField, { label: "Description", name: "description", value: f.description, onChange: u("description"), multiline: 2 }),
+            /* @__PURE__ */ jsx(FormField, { label: "Priority (lower = checked first)", name: "priority", type: "number", value: f.priority, onChange: u("priority") }),
+            /* @__PURE__ */ jsx(FormField, { label: "Max Days for Return", name: "maxDays", type: "number", value: f.maxDays, onChange: u("maxDays") }),
+            /* @__PURE__ */ jsx(FormField, { label: "Max Amount for Auto-approve ($)", name: "maxAmount", type: "number", prefix: "$", step: "0.01", value: f.maxAmount, onChange: u("maxAmount") }),
+            /* @__PURE__ */ jsx(
+              Checkbox,
+              {
+                label: "Auto-approve returns matching this policy",
+                checked: f.autoApprove,
+                onChange: u("autoApprove")
+              }
+            ),
+            /* @__PURE__ */ jsx(FormField, { label: "Restocking Fee (%)", name: "restockingFee", type: "number", suffix: "%", step: "0.5", value: f.restockingFee, onChange: u("restockingFee") }),
+            /* @__PURE__ */ jsx(
+              Checkbox,
+              {
+                label: "Require return label",
+                checked: f.requiresReturnLabel,
+                onChange: u("requiresReturnLabel")
+              }
+            ),
+            /* @__PURE__ */ jsx(Button, { submit: true, variant: "primary", children: isNew ? "Create Policy" : "Update Policy" })
+          ] })
+        ] }) }) })
       ]
     }
   );
@@ -616,7 +525,7 @@ const route5 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   loader
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const serverManifest = {'entry':{'module':'/assets/entry.client-rQsLK_wk.js','imports':['/assets/components-DQ_Zdf-t.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-QesI13tm.js','imports':['/assets/components-DQ_Zdf-t.js','/assets/context-C6dfzWjK.js','/assets/context-clUgH11Y.js'],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-CXjTV4-s.js','imports':['/assets/components-DQ_Zdf-t.js','/assets/TitleBar-CrGAmSCW.js','/assets/context-C6dfzWjK.js','/assets/context-clUgH11Y.js'],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-CVhrEynX.js','imports':['/assets/components-DQ_Zdf-t.js','/assets/context-C6dfzWjK.js','/assets/TitleBar-CrGAmSCW.js'],'css':[]}},'url':'/assets/manifest-8f841f78.js','version':'8f841f78'};
+const serverManifest = {'entry':{'module':'/assets/entry.client-rQsLK_wk.js','imports':['/assets/components-DQ_Zdf-t.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-QesI13tm.js','imports':['/assets/components-DQ_Zdf-t.js','/assets/context-C6dfzWjK.js','/assets/context-clUgH11Y.js'],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-B-wxXQi4.js','imports':['/assets/components-DQ_Zdf-t.js','/assets/Page-BCfr31u2.js','/assets/context-C6dfzWjK.js','/assets/context-clUgH11Y.js'],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-CGGEEXo8.js','imports':['/assets/components-DQ_Zdf-t.js','/assets/context-C6dfzWjK.js','/assets/Page-BCfr31u2.js'],'css':[]}},'url':'/assets/manifest-7c17b1d3.js','version':'7c17b1d3'};
 
 /**
        * `mode` is only relevant for the old Remix compiler but
