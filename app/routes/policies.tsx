@@ -13,7 +13,7 @@ import {
   Modal,
   Tag,
 } from "@shopify/polaris";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import shopify from "../shopify.server";
 import prisma from "../lib/db.server";
 
@@ -129,6 +129,12 @@ export default function PoliciesPage() {
   const [f, setF] = useState(emptyForm());
 
   const isNew = !editingId;
+
+  // Close modal when submission succeeds
+  if (fetcher.state === "idle" && fetcher.data && active) {
+    setActive(false);
+    setEditingId(null);
+  }
 
   const openNew = () => {
     setEditingId(null);
