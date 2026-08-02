@@ -96,6 +96,10 @@ const shopify = shopifyApp({
     expiringOfflineAccessTokens: true
   }
 });
+const authenticate = shopify.authenticate;
+shopify.login;
+shopify.registerWebhooks;
+shopify.sessionStorage;
 
 async function action$1({ request }) {
   const { topic, shop, session, admin } = await shopify.authenticate.webhook(
@@ -145,6 +149,16 @@ const route1 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   action: action$1
 }, Symbol.toStringTag, { value: 'Module' }));
 
+const loader$2 = async ({ request }) => {
+  await authenticate.admin(request);
+  return null;
+};
+
+const route2 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+  __proto__: null,
+  loader: loader$2
+}, Symbol.toStringTag, { value: 'Module' }));
+
 const loader$1 = () => {
   return json({ ok: true, service: "shopigent-returns", status: "healthy" });
 };
@@ -152,7 +166,7 @@ const action = () => {
   return json({ ok: true, service: "shopigent-returns", status: "healthy" });
 };
 
-const route2 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route3 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action,
   loader: loader$1
@@ -273,13 +287,13 @@ function Dashboard() {
   ] });
 }
 
-const route3 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route4 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   default: Dashboard,
   loader
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const serverManifest = {'entry':{'module':'/assets/entry.client-Bqo-IvZX.js','imports':['/assets/components-BwhtaCD-.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-DZ-6-OcD.js','imports':['/assets/components-BwhtaCD-.js','/assets/context-BIm_pb6h.js'],'css':['/assets/root-DqWBAKNB.css']},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-C8OliW_H.js','imports':['/assets/components-BwhtaCD-.js','/assets/context-BIm_pb6h.js'],'css':[]}},'url':'/assets/manifest-7ec1f824.js','version':'7ec1f824'};
+const serverManifest = {'entry':{'module':'/assets/entry.client-Bqo-IvZX.js','imports':['/assets/components-BwhtaCD-.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-DZ-6-OcD.js','imports':['/assets/components-BwhtaCD-.js','/assets/context-BIm_pb6h.js'],'css':['/assets/root-DqWBAKNB.css']},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-C8OliW_H.js','imports':['/assets/components-BwhtaCD-.js','/assets/context-BIm_pb6h.js'],'css':[]}},'url':'/assets/manifest-3268e3ca.js','version':'3268e3ca'};
 
 /**
        * `mode` is only relevant for the old Remix compiler but
@@ -309,13 +323,21 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-Bqo-IvZX.js','im
           caseSensitive: undefined,
           module: route1
         },
+  "routes/api.auth.$": {
+          id: "routes/api.auth.$",
+          parentId: "root",
+          path: "api/auth/*",
+          index: undefined,
+          caseSensitive: undefined,
+          module: route2
+        },
   "routes/healthz": {
           id: "routes/healthz",
           parentId: "root",
           path: "healthz",
           index: undefined,
           caseSensitive: undefined,
-          module: route2
+          module: route3
         },
   "routes/_index": {
           id: "routes/_index",
@@ -323,7 +345,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-Bqo-IvZX.js','im
           path: undefined,
           index: true,
           caseSensitive: undefined,
-          module: route3
+          module: route4
         }
       };
 
