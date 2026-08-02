@@ -1,0 +1,189 @@
+import { json, type LoaderFunctionArgs } from "@remix-run/node";
+import { useLoaderData } from "@remix-run/react";
+import {
+  Page,
+  Layout,
+  Card,
+  BlockStack,
+  Text,
+  Banner,
+  IndexTable,
+  Thumbnail,
+  Badge,
+  useIndexResourceState,
+  Link,
+} from "@shopify/polaris";
+import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
+import shopify from "../shopify.server";
+import prisma from "../lib/db.server";
+
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  const { session } = await shopify.authenticate.admin(request);
+  const shop = session.shop;
+
+  const totalReturns = await prisma.returnRequest.count({ where: { shop } });
+  const pendingReturns = await prisma.returnRequest.count({
+    where: { shop, status: "PENDING" },
+  });
+  const approvedToday = await prisma.returnRequest.count({
+    where: {
+      shop,
+      status: "APPROVED",
+      decidedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+    },
+  });
+  const totalRefunded = await prisma.returnRequest.aggregate({
+    where: { shop, status: "REFUNDED" },
+    _sum: { refundAmount: true },
+  });
+
+  const recentReturns = await prisma.returnRequest.findMany({
+    where: { shop },
+    orderBy: { createdAt: "desc" },
+    take: 10,
+  });
+
+  return json({
+    stats: {
+      totalReturns,
+      pendingReturns,
+      approvedToday,
+      totalRefunded: totalRefunded._sum.refundAmount || 0,
+    },
+    recentReturns,
+  });
+};
+
+function statusBadge(status: string) {
+  const map: Record<string, { children: string; status: "success" | "warning" | "critical" | "info" | "new" }> = {
+    PENDING: { children: "Pending", status: "warning" },
+    APPROVED: { children: "Approved", status: "success" },
+    DENIED: { children: "Denied", status: "critical" },
+    EXCHANGE: { children: "Exchange", status: "info" },
+    SHIPPED: { children: "Shipped", status: "info" },
+    REFUNDED: { children: "Refunded", status: "success" },
+    CLOSED: { children: "Closed", status: "new" },
+  };
+  return map[status] || { children: status, status: "info" as const };
+}
+
+export default function Dashboard() {
+  const { stats, recentReturns } = useLoaderData<typeof loader>();
+
+  const resourceName = {
+    singular: "return",
+    plural: "returns",
+  };
+
+  const { selectedResources, allResourcesSelected, handleSelectionChange } =
+    useIndexResourceState(recentReturns);
+
+  const rowMarkup = recentReturns.map(
+    ({ id, orderName, customerName, status, createdAt }, index) => (
+      <IndexTable.Row
+        id={id}
+        key={id}
+        selected={selectedResources.includes(id)}
+        position={index}
+      >
+        <IndexTable.Cell>
+          <Link url={`/returns/${id}`}>{orderName || "—"}</Link>
+        </IndexTable.Cell>
+        <IndexTable.Cell>{customerName || "—"}</IndexTable.Cell>
+        <IndexTable.Cell>
+          <Badge tone={statusBadge(status).status}>
+            {statusBadge(status).children}
+          </Badge>
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          {new Date(createdAt).toLocaleDateString()}
+        </IndexTable.Cell>
+      </IndexTable.Row>
+    )
+  );
+
+  return (
+    <Page title="Dashboard">
+      <TitleBar title="Shopigent Returns" />
+      <Layout>
+        <Layout.Section>
+          <BlockStack gap="400">
+            <Text variant="headingMd" as="h2">
+              Overview
+            </Text>
+            <Layout>
+              <Layout.Section variant="oneThird">
+                <Card>
+                  <BlockStack gap="200">
+                    <Text variant="headingXl" as="p" fontWeight="bold">
+                      {stats.totalReturns}
+                    </Text>
+                    <Text variant="bodySm" as="span" tone="subdued">
+                      Total Returns
+                    </Text>
+                  </BlockStack>
+                </Card>
+              </Layout.Section>
+              <Layout.Section variant="oneThird">
+                <Card>
+                  <BlockStack gap="200">
+                    <Text variant="headingXl" as="p" fontWeight="bold" tone="critical">
+                      {stats.pendingReturns}
+                    </Text>
+                    <Text variant="bodySm" as="span" tone="subdued">
+                      Pending Review
+                    </Text>
+                  </BlockStack>
+                </Card>
+              </Layout.Section>
+              <Layout.Section variant="oneThird">
+                <Card>
+                  <BlockStack gap="200">
+                    <Text variant="headingXl" as="p" fontWeight="bold" tone="success">
+                      ${Number(stats.totalRefunded).toFixed(2)}
+                    </Text>
+                    <Text variant="bodySm" as="span" tone="subdued">
+                      Total Refunded
+                    </Text>
+                  </BlockStack>
+                </Card>
+              </Layout.Section>
+            </Layout>
+          </BlockStack>
+        </Layout.Section>
+
+        <Layout.Section>
+          <Card>
+            <BlockStack gap="200">
+              <Text variant="headingMd" as="h2">
+                Recent Returns
+              </Text>
+              {recentReturns.length === 0 ? (
+                <Banner tone="info">
+                  <p>No returns yet. Returns will appear here when customers submit them.</p>
+                </Banner>
+              ) : (
+                <IndexTable
+                  resourceName={resourceName}
+                  itemCount={recentReturns.length}
+                  selectedItemsCount={
+                    allResourcesSelected ? "All" : selectedResources.length
+                  }
+                  onSelectionChange={handleSelectionChange}
+                  headings={[
+                    { title: "Order" },
+                    { title: "Customer" },
+                    { title: "Status" },
+                    { title: "Date" },
+                  ]}
+                >
+                  {rowMarkup}
+                </IndexTable>
+              )}
+            </BlockStack>
+          </Card>
+        </Layout.Section>
+      </Layout>
+    </Page>
+  );
+}

@@ -1,0 +1,27 @@
+# Shopigent Returns — Shopify App Config
+name = "Shopigent Returns"
+client_id = "a45ad07cce34cbc2e422170fd2032a5a"
+application_url = "https://returns-app-production.up.railway.app"
+embedded = true
+
+[access_scopes]
+# Use --override when deploying to update scopes via CLI
+scopes = "write_products,read_products,write_orders,read_orders,read_customers,write_customers,write_fulfillments,read_fulfillments,read_inventory,write_inventory,write_draft_orders,read_draft_orders,write_price_rules,read_price_rules,write_discounts,read_discounts"
+
+[webhooks]
+api_version = "2024-10"
+
+  [[webhooks.subscriptions]]
+  topics = ["app/uninstalled"]
+  uri = "/api/webhooks/app/uninstalled"
+  compliance_topics = ["privacy/redact", "customers/data_request"]
+
+  [[webhooks.subscriptions]]
+  topics = ["orders/fulfilled"]
+  uri = "/api/webhooks/orders/fulfilled"
+
+[auth]
+redirect_urls = ["/api/auth/callback"]
+
+[features]
+app_home = "/"

@@ -1,0 +1,8 @@
+[build]
+buildCommand = "npm install && npm run build"
+watchPatterns = ["**"]
+
+[deploy]
+startCommand = "npm run setup && npm run start"
+healthcheckPath = "/api/auth"
+healthcheckTimeout = 100
