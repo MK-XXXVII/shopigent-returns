@@ -4,5 +4,5 @@ watchPatterns = ["**"]
 
 [deploy]
 startCommand = "npx prisma migrate deploy && npx prisma generate && npm run start"
-healthcheckPath = "/"
+healthcheckPath = "/healthz"
 healthcheckTimeout = 100
