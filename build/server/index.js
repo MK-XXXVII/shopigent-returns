@@ -3,9 +3,8 @@ import { RemixServer, Meta, Links, Outlet, ScrollRestoration, Scripts, useRouteE
 import { renderToString } from 'react-dom/server';
 import { AppProvider, useIndexResourceState, IndexTable, Link, Badge, Page, Layout, BlockStack, Text, Card, Banner } from '@shopify/polaris';
 import '@shopify/shopify-app-remix/server/adapters/node';
-import { shopifyApp, DeliveryMethod, AppDistribution, ApiVersion } from '@shopify/shopify-app-remix/server';
+import { shopifyApp, AppDistribution, ApiVersion } from '@shopify/shopify-app-remix/server';
 import { PrismaSessionStorage } from '@shopify/shopify-app-session-storage-prisma';
-import { restResources } from '@shopify/shopify-api/rest/admin/2024-10';
 import { PrismaClient } from '@prisma/client';
 import { json } from '@remix-run/node';
 import { TitleBar } from '@shopify/app-bridge-react';
@@ -85,36 +84,17 @@ if (process.env.NODE_ENV === "production") {
 const prisma$1 = prisma;
 
 const shopify = shopifyApp({
-  api: {
-    restResources,
-    apiVersion: ApiVersion.October24,
-    distribution: AppDistribution.AppStore,
-    future: {
-      expiringOfflineAccessTokens: true
-    },
-    hooks: {
-      afterAuth: async ({ session }) => {
-        shopify.registerWebhooks({ session });
-      }
-    }
-  },
-  appUrl: process.env.SHOPIFY_APP_URL,
-  auth: {
-    path: "/api/auth",
-    callbackPath: "/api/auth/callback"
-  },
-  webhooks: {
-    APP_UNINSTALLED: {
-      deliveryMethod: DeliveryMethod.Http,
-      callbackUrl: "/api/webhooks/app/uninstalled"
-    },
-    ORDERS_FULFILLED: {
-      deliveryMethod: DeliveryMethod.Http,
-      callbackUrl: "/api/webhooks/orders/fulfilled"
-    }
-  },
+  apiKey: process.env.SHOPIFY_API_KEY || "",
+  apiSecretKey: process.env.SHOPIFY_API_SECRET || "",
+  apiVersion: ApiVersion.October24,
+  scopes: process.env.SCOPES?.split(","),
+  appUrl: process.env.SHOPIFY_APP_URL || "",
+  authPathPrefix: "/api/auth",
   sessionStorage: new PrismaSessionStorage(prisma$1),
-  useOnlineTokens: true
+  distribution: AppDistribution.AppStore,
+  future: {
+    expiringOfflineAccessTokens: true
+  }
 });
 
 async function action({ request }) {

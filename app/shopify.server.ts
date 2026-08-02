@@ -1,45 +1,24 @@
 import "@shopify/shopify-app-remix/server/adapters/node";
 import {
   AppDistribution,
-  DeliveryMethod,
   shopifyApp,
   ApiVersion,
 } from "@shopify/shopify-app-remix/server";
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
-import { restResources } from "@shopify/shopify-api/rest/admin/2024-10";
 import prisma from "./lib/db.server";
 
 const shopify = shopifyApp({
-  api: {
-    restResources,
-    apiVersion: ApiVersion.October24,
-    distribution: AppDistribution.AppStore,
-    future: {
-      expiringOfflineAccessTokens: true,
-    },
-    hooks: {
-      afterAuth: async ({ session }) => {
-        shopify.registerWebhooks({ session });
-      },
-    },
-  },
-  appUrl: process.env.SHOPIFY_APP_URL!,
-  auth: {
-    path: "/api/auth",
-    callbackPath: "/api/auth/callback",
-  },
-  webhooks: {
-    APP_UNINSTALLED: {
-      deliveryMethod: DeliveryMethod.Http,
-      callbackUrl: "/api/webhooks/app/uninstalled",
-    },
-    ORDERS_FULFILLED: {
-      deliveryMethod: DeliveryMethod.Http,
-      callbackUrl: "/api/webhooks/orders/fulfilled",
-    },
-  },
+  apiKey: process.env.SHOPIFY_API_KEY || "",
+  apiSecretKey: process.env.SHOPIFY_API_SECRET || "",
+  apiVersion: ApiVersion.October24,
+  scopes: process.env.SCOPES?.split(","),
+  appUrl: process.env.SHOPIFY_APP_URL || "",
+  authPathPrefix: "/api/auth",
   sessionStorage: new PrismaSessionStorage(prisma),
-  useOnlineTokens: true,
+  distribution: AppDistribution.AppStore,
+  future: {
+    expiringOfflineAccessTokens: true,
+  },
 });
 
 export default shopify;
