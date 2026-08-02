@@ -1,13 +1,14 @@
 import { jsx, jsxs } from 'react/jsx-runtime';
-import { RemixServer, Meta, Links, Outlet, ScrollRestoration, Scripts, useRouteError, isRouteErrorResponse, useLoaderData } from '@remix-run/react';
+import { RemixServer, Meta, Links, Outlet, ScrollRestoration, Scripts, useRouteError, isRouteErrorResponse, useLoaderData, useFetcher } from '@remix-run/react';
 import { renderToString } from 'react-dom/server';
-import { AppProvider, useIndexResourceState, IndexTable, Link, Badge, Page, Layout, BlockStack, Text, Card, Banner } from '@shopify/polaris';
+import { AppProvider, Page, Layout, Banner, Modal, BlockStack, TextField, Checkbox, Button, InlineStack, Text, Tag, useIndexResourceState, IndexTable, Link, Badge, Card } from '@shopify/polaris';
 import '@shopify/shopify-app-remix/server/adapters/node';
 import { shopifyApp, AppDistribution, ApiVersion } from '@shopify/shopify-app-remix/server';
 import { PrismaSessionStorage } from '@shopify/shopify-app-session-storage-prisma';
 import { PrismaClient } from '@prisma/client';
 import { json } from '@remix-run/node';
 import { TitleBar } from '@shopify/app-bridge-react';
+import { useState } from 'react';
 
 function handleRequest(request, responseStatusCode, responseHeaders, remixContext) {
   let markup = renderToString(
@@ -101,7 +102,7 @@ shopify.login;
 shopify.registerWebhooks;
 shopify.sessionStorage;
 
-async function action$1({ request }) {
+async function action$2({ request }) {
   const { topic, shop, session, admin } = await shopify.authenticate.webhook(
     request
   );
@@ -146,16 +147,320 @@ async function action$1({ request }) {
 
 const route1 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
-  action: action$1
+  action: action$2
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const loader$2 = async ({ request }) => {
+const loader$3 = async ({ request }) => {
   await authenticate.admin(request);
   return null;
 };
 
 const route2 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
+  loader: loader$3
+}, Symbol.toStringTag, { value: 'Module' }));
+
+const loader$2 = async ({ request }) => {
+  const { session } = await shopify.authenticate.admin(request);
+  const policies = await prisma$1.policy.findMany({
+    where: { shop: session.shop },
+    orderBy: [{ priority: "asc" }, { createdAt: "desc" }]
+  });
+  return json({ policies });
+};
+const action$1 = async ({ request }) => {
+  const { session } = await shopify.authenticate.admin(request);
+  const formData = await request.formData();
+  const _action = formData.get("_action");
+  if (_action === "create" || _action === "update") {
+    const id = formData.get("id");
+    const name = formData.get("name");
+    const description = formData.get("description");
+    const priority = parseInt(formData.get("priority")) || 0;
+    const isActive = formData.get("isActive") === "true";
+    const conditions = [
+      {
+        field: "maxDays",
+        operator: "lte",
+        value: parseInt(formData.get("maxDays")) || 30
+      },
+      {
+        field: "maxAmount",
+        operator: "lte",
+        value: parseFloat(formData.get("maxAmount")) || 9999
+      },
+      {
+        field: "autoApprove",
+        operator: "eq",
+        value: formData.get("autoApprove") === "true"
+      },
+      {
+        field: "restockingFee",
+        operator: "eq",
+        value: parseFloat(formData.get("restockingFee")) || 0
+      },
+      {
+        field: "requiresReturnLabel",
+        operator: "eq",
+        value: formData.get("requiresReturnLabel") === "true"
+      }
+    ];
+    if (_action === "create") {
+      await prisma$1.policy.create({
+        data: {
+          shop: session.shop,
+          name,
+          description,
+          priority,
+          isActive,
+          conditions
+        }
+      });
+    } else if (id) {
+      await prisma$1.policy.update({
+        where: { id },
+        data: { name, description, priority, isActive, conditions }
+      });
+    }
+  } else if (_action === "delete") {
+    const id = formData.get("id");
+    await prisma$1.policy.delete({ where: { id } });
+  } else if (_action === "toggle") {
+    const id = formData.get("id");
+    const policy = await prisma$1.policy.findUnique({ where: { id } });
+    if (policy) {
+      await prisma$1.policy.update({
+        where: { id },
+        data: { isActive: !policy.isActive }
+      });
+    }
+  }
+  return json({ ok: true });
+};
+function PolicyCard({
+  policy,
+  onEdit
+}) {
+  const fetcher = useFetcher();
+  const conditions = policy.conditions;
+  const getCondition = (field) => conditions.find((c) => c.field === field);
+  const maxDays = getCondition("maxDays")?.value ?? 30;
+  const maxAmount = getCondition("maxAmount")?.value ?? 9999;
+  const autoApprove = getCondition("autoApprove")?.value;
+  const restockingFee = getCondition("restockingFee")?.value ?? 0;
+  return /* @__PURE__ */ jsx(
+    "div",
+    {
+      style: {
+        borderLeft: `4px solid ${policy.isActive ? "#2e7d32" : "#9e9e9e"}`,
+        background: "#1a1a2e",
+        borderRadius: 8,
+        padding: 16,
+        marginBottom: 12
+      },
+      children: /* @__PURE__ */ jsxs(BlockStack, { gap: "200", children: [
+        /* @__PURE__ */ jsxs(InlineStack, { align: "space-between", children: [
+          /* @__PURE__ */ jsxs(Text, { variant: "headingSm", as: "h3", fontWeight: "bold", children: [
+            policy.name,
+            !policy.isActive && /* @__PURE__ */ jsx(Tag, { tone: "critical", style: { marginLeft: 8 }, children: "Disabled" })
+          ] }),
+          /* @__PURE__ */ jsxs(InlineStack, { gap: "200", children: [
+            /* @__PURE__ */ jsx(
+              Button,
+              {
+                size: "slim",
+                onClick: () => fetcher.submit(
+                  { _action: "toggle", id: policy.id },
+                  { method: "post" }
+                ),
+                children: policy.isActive ? "Disable" : "Enable"
+              }
+            ),
+            /* @__PURE__ */ jsx(Button, { size: "slim", onClick: () => onEdit(policy), children: "Edit" }),
+            /* @__PURE__ */ jsx(
+              Button,
+              {
+                size: "slim",
+                tone: "critical",
+                onClick: () => fetcher.submit(
+                  { _action: "delete", id: policy.id },
+                  { method: "post" }
+                ),
+                children: "Delete"
+              }
+            )
+          ] })
+        ] }),
+        policy.description && /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "p", tone: "subdued", children: policy.description }),
+        /* @__PURE__ */ jsxs(InlineStack, { gap: "300", wrap: true, children: [
+          /* @__PURE__ */ jsxs(Tag, { children: [
+            "Priority: ",
+            policy.priority
+          ] }),
+          /* @__PURE__ */ jsxs(Tag, { children: [
+            "Days: ≤",
+            maxDays
+          ] }),
+          /* @__PURE__ */ jsxs(Tag, { children: [
+            "Max: $",
+            maxAmount
+          ] }),
+          autoApprove && /* @__PURE__ */ jsx(Tag, { tone: "success", children: "Auto-approve" }),
+          restockingFee > 0 && /* @__PURE__ */ jsxs(Tag, { children: [
+            "Fee: ",
+            restockingFee,
+            "%"
+          ] })
+        ] })
+      ] })
+    }
+  );
+}
+function PoliciesPage() {
+  const { policies } = useLoaderData();
+  const fetcher = useFetcher();
+  const [active, setActive] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const openNew = () => {
+    setEditing(null);
+    setActive(true);
+  };
+  const openEdit = (p) => {
+    setEditing(p);
+    setActive(true);
+  };
+  const closeModal = () => {
+    setActive(false);
+    setEditing(null);
+  };
+  const isNew = !editing;
+  const c = editing?.conditions || [];
+  return /* @__PURE__ */ jsxs(
+    Page,
+    {
+      title: "Return Policies",
+      primaryAction: { content: "Add Policy", onAction: openNew },
+      children: [
+        /* @__PURE__ */ jsx(TitleBar, { title: "Shopigent Returns" }),
+        /* @__PURE__ */ jsx(Layout, { children: /* @__PURE__ */ jsx(Layout.Section, { children: policies.length === 0 ? /* @__PURE__ */ jsx(Banner, { tone: "info", children: /* @__PURE__ */ jsx("p", { children: "No policies yet. Create your first return policy to start automating return decisions." }) }) : policies.map((p) => /* @__PURE__ */ jsx(PolicyCard, { policy: p, onEdit: openEdit }, p.id)) }) }),
+        /* @__PURE__ */ jsx(
+          Modal,
+          {
+            open: active,
+            onClose: closeModal,
+            title: isNew ? "Create Policy" : "Edit Policy",
+            children: /* @__PURE__ */ jsx(Modal.Section, { children: /* @__PURE__ */ jsxs(fetcher.Form, { method: "post", children: [
+              /* @__PURE__ */ jsx(
+                "input",
+                {
+                  type: "hidden",
+                  name: "_action",
+                  value: isNew ? "create" : "update"
+                }
+              ),
+              !isNew && /* @__PURE__ */ jsx("input", { type: "hidden", name: "id", value: editing.id }),
+              /* @__PURE__ */ jsx("input", { type: "hidden", name: "isActive", value: "true" }),
+              /* @__PURE__ */ jsxs(BlockStack, { gap: "400", children: [
+                /* @__PURE__ */ jsx(
+                  TextField,
+                  {
+                    label: "Policy Name",
+                    name: "name",
+                    defaultValue: editing?.name || "",
+                    required: true,
+                    autoComplete: "off"
+                  }
+                ),
+                /* @__PURE__ */ jsx(
+                  TextField,
+                  {
+                    label: "Description",
+                    name: "description",
+                    defaultValue: editing?.description || "",
+                    multiline: 2,
+                    autoComplete: "off"
+                  }
+                ),
+                /* @__PURE__ */ jsx(
+                  TextField,
+                  {
+                    label: "Priority (lower = checked first)",
+                    name: "priority",
+                    type: "number",
+                    defaultValue: String(editing?.priority ?? 0),
+                    autoComplete: "off"
+                  }
+                ),
+                /* @__PURE__ */ jsx(
+                  TextField,
+                  {
+                    label: "Max Days for Return",
+                    name: "maxDays",
+                    type: "number",
+                    defaultValue: String(
+                      c.find((x) => x.field === "maxDays")?.value ?? 30
+                    ),
+                    autoComplete: "off"
+                  }
+                ),
+                /* @__PURE__ */ jsx(
+                  TextField,
+                  {
+                    label: "Max Amount for Auto-approve ($)",
+                    name: "maxAmount",
+                    type: "number",
+                    prefix: "$",
+                    step: "0.01",
+                    defaultValue: String(
+                      c.find((x) => x.field === "maxAmount")?.value ?? 9999
+                    ),
+                    autoComplete: "off"
+                  }
+                ),
+                /* @__PURE__ */ jsx(
+                  Checkbox,
+                  {
+                    label: "Auto-approve returns matching this policy",
+                    name: "autoApprove",
+                    defaultChecked: c.find((x) => x.field === "autoApprove")?.value === true
+                  }
+                ),
+                /* @__PURE__ */ jsx(
+                  TextField,
+                  {
+                    label: "Restocking Fee (%)",
+                    name: "restockingFee",
+                    type: "number",
+                    suffix: "%",
+                    step: "0.5",
+                    defaultValue: String(
+                      c.find((x) => x.field === "restockingFee")?.value ?? 0
+                    ),
+                    autoComplete: "off"
+                  }
+                ),
+                /* @__PURE__ */ jsx(
+                  Checkbox,
+                  {
+                    label: "Require return label",
+                    name: "requiresReturnLabel",
+                    defaultChecked: c.find((x) => x.field === "requiresReturnLabel")?.value === true
+                  }
+                ),
+                /* @__PURE__ */ jsx(Button, { submit: true, variant: "primary", children: isNew ? "Create Policy" : "Update Policy" })
+              ] })
+            ] }) })
+          }
+        )
+      ]
+    }
+  );
+}
+
+const route3 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+  __proto__: null,
+  action: action$1,
+  default: PoliciesPage,
   loader: loader$2
 }, Symbol.toStringTag, { value: 'Module' }));
 
@@ -166,7 +471,7 @@ const action = () => {
   return json({ ok: true, service: "shopigent-returns", status: "healthy" });
 };
 
-const route3 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route4 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action,
   loader: loader$1
@@ -287,13 +592,13 @@ function Dashboard() {
   ] });
 }
 
-const route4 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route5 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   default: Dashboard,
   loader
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const serverManifest = {'entry':{'module':'/assets/entry.client-Bqo-IvZX.js','imports':['/assets/components-BwhtaCD-.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-DZ-6-OcD.js','imports':['/assets/components-BwhtaCD-.js','/assets/context-BIm_pb6h.js'],'css':['/assets/root-DqWBAKNB.css']},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-C8OliW_H.js','imports':['/assets/components-BwhtaCD-.js','/assets/context-BIm_pb6h.js'],'css':[]}},'url':'/assets/manifest-3268e3ca.js','version':'3268e3ca'};
+const serverManifest = {'entry':{'module':'/assets/entry.client-BM2sQaNZ.js','imports':['/assets/components-BV-Eltkj.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-DcWKIdpw.js','imports':['/assets/components-BV-Eltkj.js','/assets/context-p7I9nrgR.js','/assets/context-CAZ9AeGk.js'],'css':['/assets/root-DqWBAKNB.css']},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-B945Rswi.js','imports':['/assets/components-BV-Eltkj.js','/assets/TitleBar-QMgE2qeQ.js','/assets/context-p7I9nrgR.js','/assets/context-CAZ9AeGk.js'],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-DA5imfse.js','imports':['/assets/components-BV-Eltkj.js','/assets/context-p7I9nrgR.js','/assets/TitleBar-QMgE2qeQ.js'],'css':[]}},'url':'/assets/manifest-d95ed352.js','version':'d95ed352'};
 
 /**
        * `mode` is only relevant for the old Remix compiler but
@@ -331,13 +636,21 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-Bqo-IvZX.js','im
           caseSensitive: undefined,
           module: route2
         },
+  "routes/policies": {
+          id: "routes/policies",
+          parentId: "root",
+          path: "policies",
+          index: undefined,
+          caseSensitive: undefined,
+          module: route3
+        },
   "routes/healthz": {
           id: "routes/healthz",
           parentId: "root",
           path: "healthz",
           index: undefined,
           caseSensitive: undefined,
-          module: route3
+          module: route4
         },
   "routes/_index": {
           id: "routes/_index",
@@ -345,7 +658,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-Bqo-IvZX.js','im
           path: undefined,
           index: true,
           caseSensitive: undefined,
-          module: route4
+          module: route5
         }
       };
 
