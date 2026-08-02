@@ -3,7 +3,7 @@ import {
   AppDistribution,
   DeliveryMethod,
   shopifyApp,
-  LATEST_API_VERSION,
+  ApiVersion,
 } from "@shopify/shopify-app-remix/server";
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 import { restResources } from "@shopify/shopify-api/rest/admin/2024-10";
@@ -12,7 +12,7 @@ import prisma from "./lib/db.server";
 const shopify = shopifyApp({
   api: {
     restResources,
-    apiVersion: LATEST_API_VERSION,
+    apiVersion: ApiVersion.October24,
     distribution: AppDistribution.AppStore,
     future: {
       expiringOfflineAccessTokens: true,
@@ -37,7 +37,7 @@ const shopify = shopifyApp({
       callbackUrl: "/api/webhooks/orders/fulfilled",
     },
   },
-  sessionStorage: PrismaSessionStorage(prisma),
+  sessionStorage: new PrismaSessionStorage(prisma),
   useOnlineTokens: true,
 });
 

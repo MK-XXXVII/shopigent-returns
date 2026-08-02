@@ -4,5 +4,5 @@ watchPatterns = ["**"]
 
 [deploy]
 startCommand = "npm run setup && npm run start"
-healthcheckPath = "/api/auth"
+healthcheckPath = "/"
 healthcheckTimeout = 100

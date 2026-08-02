@@ -4,7 +4,7 @@ import { isbot } from 'isbot';
 import { renderToReadableStream } from 'react-dom/server';
 import { AppProvider, useIndexResourceState, IndexTable, Link, Badge, Page, Layout, BlockStack, Text, Card, Banner } from '@shopify/polaris';
 import '@shopify/shopify-app-remix/server/adapters/node';
-import { shopifyApp, DeliveryMethod, AppDistribution, LATEST_API_VERSION } from '@shopify/shopify-app-remix/server';
+import { shopifyApp, DeliveryMethod, AppDistribution, ApiVersion } from '@shopify/shopify-app-remix/server';
 import { PrismaSessionStorage } from '@shopify/shopify-app-session-storage-prisma';
 import { restResources } from '@shopify/shopify-api/rest/admin/2024-10';
 import { PrismaClient } from '@prisma/client';
@@ -98,7 +98,7 @@ const prisma$1 = prisma;
 const shopify = shopifyApp({
   api: {
     restResources,
-    apiVersion: LATEST_API_VERSION,
+    apiVersion: ApiVersion.October24,
     distribution: AppDistribution.AppStore,
     future: {
       expiringOfflineAccessTokens: true
@@ -123,7 +123,7 @@ const shopify = shopifyApp({
       callbackUrl: "/api/webhooks/orders/fulfilled"
     }
   },
-  sessionStorage: PrismaSessionStorage(prisma$1),
+  sessionStorage: new PrismaSessionStorage(prisma$1),
   useOnlineTokens: true
 });
 
