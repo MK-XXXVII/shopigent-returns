@@ -3,6 +3,6 @@ buildCommand = "npm install && npm run build"
 watchPatterns = ["**"]
 
 [deploy]
-startCommand = "npm run setup && npm run start"
+startCommand = "npx prisma migrate deploy && npx prisma generate && npm run start"
 healthcheckPath = "/"
 healthcheckTimeout = 100
