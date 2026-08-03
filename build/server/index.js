@@ -829,6 +829,91 @@ async function executeRefund(shop, accessToken, orderId, amount, restock = true,
   return executeResult?.data?.refundCreate?.refund;
 }
 
+const RESEND_API = "https://api.resend.com/emails";
+async function sendEmail(payload) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    console.log("[email] No RESEND_API_KEY configured, skipping email");
+    return false;
+  }
+  try {
+    const response = await fetch(RESEND_API, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        from: process.env.EMAIL_FROM || "Shopigent Returns <returns@shopigent.com>",
+        to: payload.to,
+        subject: payload.subject,
+        html: payload.html
+      })
+    });
+    if (!response.ok) {
+      const err = await response.text();
+      console.error(`[email] Failed: ${err}`);
+      return false;
+    }
+    console.log(`[email] Sent to ${payload.to}: ${payload.subject}`);
+    return true;
+  } catch (err) {
+    console.error(`[email] Error: ${err.message}`);
+    return false;
+  }
+}
+function returnApprovedEmail(customerName, orderName, refundAmount) {
+  const refundLine = refundAmount ? `<p>Refund amount: <strong>$${refundAmount.toFixed(2)}</strong></p>` : "";
+  return {
+    to: "",
+    subject: `Return Approved — ${orderName}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #50b83c;">✅ Return Approved</h2>
+        <p>Hi ${customerName},</p>
+        <p>Your return for order <strong>${orderName}</strong> has been <strong>approved</strong>!</p>
+        ${refundLine}
+        <p>Your refund will be processed within 3-5 business days.</p>
+        <hr style="border: 1px solid #eee;" />
+        <p style="color: #666; font-size: 12px;">Shopigent Returns — AI-powered return management</p>
+      </div>
+    `
+  };
+}
+function returnDeniedEmail(customerName, orderName, reason) {
+  return {
+    to: "",
+    subject: `Return Update — ${orderName}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #de3617;">Return Update</h2>
+        <p>Hi ${customerName},</p>
+        <p>After reviewing your return request for order <strong>${orderName}</strong>, we're unable to approve it at this time.</p>
+        <p><strong>Reason:</strong> ${reason}</p>
+        <p>If you have any questions, please contact our support team.</p>
+        <hr style="border: 1px solid #eee;" />
+        <p style="color: #666; font-size: 12px;">Shopigent Returns — AI-powered return management</p>
+      </div>
+    `
+  };
+}
+function refundProcessedEmail(customerName, orderName, amount) {
+  return {
+    to: "",
+    subject: `Refund Processed — ${orderName}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #47c1bf;">💰 Refund Processed</h2>
+        <p>Hi ${customerName},</p>
+        <p>Your refund of <strong>$${amount.toFixed(2)}</strong> for order <strong>${orderName}</strong> has been processed.</p>
+        <p>The refund will appear on your original payment method within 3-5 business days.</p>
+        <hr style="border: 1px solid #eee;" />
+        <p style="color: #666; font-size: 12px;">Shopigent Returns — AI-powered return management</p>
+      </div>
+    `
+  };
+}
+
 const RETURNS_TOOLS = [
   {
     name: "analyze_return",
@@ -1045,6 +1130,10 @@ async function handleMcpRequest(body) {
               }
             }
           });
+          if (returnReq.customerEmail) {
+            const emailData = refundResult?.id ? refundProcessedEmail(returnReq.customerName || "Customer", returnReq.orderName || "", totalAmount) : returnApprovedEmail(returnReq.customerName || "Customer", returnReq.orderName || "", totalAmount);
+            sendEmail({ ...emailData, to: returnReq.customerEmail });
+          }
           return jsonRpcResult(id, {
             success: true,
             status: updated.status,
@@ -1076,6 +1165,9 @@ async function handleMcpRequest(body) {
               details: { reason: args.reason }
             }
           });
+          if (returnReq.customerEmail) {
+            sendEmail({ ...returnDeniedEmail(returnReq.customerName || "Customer", returnReq.orderName || "", args.reason), to: returnReq.customerEmail });
+          }
           return jsonRpcResult(id, { success: true, status: "DENIED", returnId: updated.id });
         }
         case "check_fraud": {

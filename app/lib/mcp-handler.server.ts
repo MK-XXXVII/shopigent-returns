@@ -1,5 +1,6 @@
 import prisma from "./db.server";
 import { executeRefund } from "./shopify-admin.server";
+import { sendEmail, returnApprovedEmail, returnDeniedEmail, refundProcessedEmail } from "./email.server";
 import { RETURNS_TOOLS } from "./mcp-types";
 
 function jsonRpcError(id: string | number, code: number, message: string) {
@@ -163,6 +164,14 @@ export async function handleMcpRequest(body: any) {
             },
           });
 
+          // Send email notification
+          if (returnReq.customerEmail) {
+            const emailData = refundResult?.id
+              ? refundProcessedEmail(returnReq.customerName || "Customer", returnReq.orderName || "", totalAmount)
+              : returnApprovedEmail(returnReq.customerName || "Customer", returnReq.orderName || "", totalAmount);
+            sendEmail({ ...emailData, to: returnReq.customerEmail });
+          }
+
           return jsonRpcResult(id, {
             success: true,
             status: updated.status,
@@ -197,6 +206,11 @@ export async function handleMcpRequest(body: any) {
               details: { reason: args.reason },
             },
           });
+
+          // Send email notification
+          if (returnReq.customerEmail) {
+            sendEmail({ ...returnDeniedEmail(returnReq.customerName || "Customer", returnReq.orderName || "", args.reason), to: returnReq.customerEmail });
+          }
 
           return jsonRpcResult(id, { success: true, status: "DENIED", returnId: updated.id });
         }
