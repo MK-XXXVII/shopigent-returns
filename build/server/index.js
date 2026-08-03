@@ -57,7 +57,7 @@ const shopify = shopifyApp({
 });
 const authenticate = shopify.authenticate;
 shopify.login;
-shopify.registerWebhooks;
+const registerWebhooks = shopify.registerWebhooks;
 shopify.sessionStorage;
 
 const links = () => [{ rel: "stylesheet", href: polarisStyles }];
@@ -249,48 +249,67 @@ const route1 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   loader: loader$8
 }, Symbol.toStringTag, { value: 'Module' }));
 
-async function action$5({ request }) {
-  const { topic, shop, session, admin } = await shopify.authenticate.webhook(
-    request
-  );
-  switch (topic) {
-    case "APP_UNINSTALLED": {
-      await prisma$1.shop.updateMany({
-        where: { shop },
-        data: { uninstalledAt: /* @__PURE__ */ new Date() }
-      });
-      break;
-    }
-    case "ORDERS_FULFILLED": {
-      const payload = await request.json();
-      const orderId = payload.id;
-      const orderName = payload.name;
-      const customerEmail = payload.email || payload.contact_email;
-      const customerName = payload.customer ? `${payload.customer.first_name || ""} ${payload.customer.last_name || ""}`.trim() : null;
-      await prisma$1.returnRequest.create({
-        data: {
-          shop,
-          orderId: `gid://shopify/Order/${orderId}`,
-          orderName,
-          customerEmail,
-          customerName,
-          items: (payload.line_items || []).map((item) => ({
-            variantId: `gid://shopify/ProductVariant/${item.variant_id}`,
-            title: item.title,
-            quantity: item.quantity,
-            price: item.price,
-            sku: item.sku
-          })),
-          status: "PENDING"
+const action$5 = async ({ request }) => {
+  try {
+    const { topic, shop, session, admin } = await shopify.authenticate.webhook(request);
+    const payload = await request.json();
+    console.log(`[webhook] Received ${topic} for ${shop}`);
+    switch (topic) {
+      case "APP_UNINSTALLED": {
+        await prisma$1.shop.updateMany({
+          where: { shop },
+          data: { uninstalledAt: /* @__PURE__ */ new Date() }
+        });
+        console.log(`[webhook] Shop uninstalled: ${shop}`);
+        break;
+      }
+      case "ORDERS_FULFILLED": {
+        const orderId = payload.id;
+        const orderName = payload.name || `#${orderId}`;
+        const customerEmail = payload.email || payload.contact_email || "";
+        const customerName = payload.customer ? `${payload.customer.first_name || ""} ${payload.customer.last_name || ""}`.trim() : "";
+        const lineItems = (payload.line_items || []).map((item) => ({
+          variantId: `gid://shopify/ProductVariant/${item.variant_id}`,
+          title: item.title,
+          quantity: item.quantity,
+          price: item.price || "0",
+          sku: item.sku || ""
+        }));
+        const existing = await prisma$1.returnRequest.findFirst({
+          where: { shop, orderId: `gid://shopify/Order/${orderId}` }
+        });
+        if (existing) {
+          console.log(`[webhook] Return already exists for order ${orderName}, skipping`);
+          break;
         }
-      });
-      break;
+        await prisma$1.returnRequest.create({
+          data: {
+            shop,
+            orderId: `gid://shopify/Order/${orderId}`,
+            orderName,
+            customerEmail,
+            customerName,
+            items: lineItems,
+            status: "PENDING"
+          }
+        });
+        console.log(`[webhook] Created return for order ${orderName} (${lineItems.length} items)`);
+        break;
+      }
+      case "CUSTOMERS_DATA_REQUEST":
+      case "PRIVACY_REDACT": {
+        console.log(`[webhook] GDPR ${topic} for ${shop}`);
+        break;
+      }
+      default:
+        console.log(`[webhook] Unhandled topic: ${topic}`);
     }
-    default:
-      throw new Response("Unhandled webhook topic", { status: 404 });
+    return new Response(null, { status: 200 });
+  } catch (error) {
+    console.error(`[webhook] Error:`, error.message);
+    return new Response(error.message, { status: 401 });
   }
-  return new Response(null, { status: 200 });
-}
+};
 
 const route2 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
@@ -414,7 +433,12 @@ const route3 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
 }, Symbol.toStringTag, { value: 'Module' }));
 
 const loader$6 = async ({ request }) => {
-  await authenticate.admin(request);
+  const { session } = await authenticate.admin(request);
+  try {
+    await registerWebhooks({ session });
+  } catch (error) {
+    console.log(`[auth] Webhook registration: ${error}`);
+  }
   return null;
 };
 

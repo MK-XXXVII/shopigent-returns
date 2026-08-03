@@ -13,12 +13,12 @@ api_version = "2024-10"
 
   [[webhooks.subscriptions]]
   topics = ["app/uninstalled"]
-  uri = "/api/webhooks/app/uninstalled"
+  uri = "/api/webhooks"
   compliance_topics = ["privacy/redact", "customers/data_request"]
 
   [[webhooks.subscriptions]]
   topics = ["orders/fulfilled"]
-  uri = "/api/webhooks/orders/fulfilled"
+  uri = "/api/webhooks"
 
 [auth]
 redirect_urls = ["/api/auth/callback"]
