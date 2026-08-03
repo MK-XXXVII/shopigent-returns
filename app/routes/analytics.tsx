@@ -41,7 +41,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   // Average resolution time (for decided returns)
   const decidedReturns = await prisma.returnRequest.findMany({
-    where: { shop, decidedAt: { not: null }, createdAt: { not: null } },
+    where: { shop, decidedAt: { not: null } },
     select: { createdAt: true, decidedAt: true },
   });
   let avgResolutionHours = 0;

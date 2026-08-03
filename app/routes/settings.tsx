@@ -10,7 +10,6 @@ import {
   Banner,
   Button,
   InlineStack,
-  List,
 } from "@shopify/polaris";
 import { useState } from "react";
 import shopify from "../shopify.server";
@@ -145,20 +144,10 @@ export default function SettingsPage() {
                 is automatically generated. Choose your provider:
               </Text>
               <Banner tone="info">
-                <BlockStack gap="200">
-                  <Text variant="bodyMd" as="p" fontWeight="bold">
-                    Supported providers:
-                  </Text>
-                  <List type="bullet">
-                    <List.Item><Text variant="bodyMd" as="span" fontWeight="bold">SendCloud</Text> — PostNL, DHL, DPD (EU/NL)</List.Item>
-                    <List.Item><Text variant="bodyMd" as="span" fontWeight="bold">Shippo</Text> — UPS, FedEx, USPS (US/global)</List.Item>
-                    <List.Item><Text variant="bodyMd" as="span" fontWeight="bold">EasyPost</Text> — UPS, FedEx, USPS, DHL, DPD (global)</List.Item>
-                  </List>
-                  <Text variant="bodyMd" as="p">
-                    Configure via Railway variables: <code>LABEL_PROVIDER=sendcloud</code> +
-                    <code>SENDCLOUD_API_KEY</code> + <code>SENDCLOUD_API_SECRET</code>
-                  </Text>
-                </BlockStack>
+                <Text variant="bodyMd" as="p">
+                  <strong>Supported providers:</strong> SendCloud (EU/NL), Shippo (US/global), EasyPost (global).
+                  Configure via Railway variables: <code>LABEL_PROVIDER=sendcloud</code> + <code>SENDCLOUD_API_KEY</code> + <code>SENDCLOUD_API_SECRET</code>
+                </Text>
               </Banner>
             </BlockStack>
           </Card>
