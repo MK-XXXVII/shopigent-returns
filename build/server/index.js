@@ -925,6 +925,225 @@ function refundProcessedEmail(customerName, orderName, amount) {
   };
 }
 
+function getLabelProvider() {
+  return process.env.LABEL_PROVIDER || "sendcloud";
+}
+async function createReturnLabel(request) {
+  const provider = getLabelProvider();
+  switch (provider) {
+    case "sendcloud":
+      return createSendCloudLabel(request);
+    case "shippo":
+      return createShippoLabel(request);
+    case "easypost":
+      return createEasyPostLabel(request);
+    default:
+      return { success: false, error: `Unknown label provider: ${provider}` };
+  }
+}
+async function createSendCloudLabel(req) {
+  const apiKey = process.env.SENDCLOUD_API_KEY;
+  const apiSecret = process.env.SENDCLOUD_API_SECRET;
+  if (!apiKey || !apiSecret) {
+    return { success: false, error: "SendCloud not configured (SENDCLOUD_API_KEY + SENDCLOUD_API_SECRET)" };
+  }
+  try {
+    const response = await fetch("https://panel.sendcloud.sc/api/v2/labels", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Basic " + Buffer.from(`${apiKey}:${apiSecret}`).toString("base64")
+      },
+      body: JSON.stringify({
+        label: {
+          order_number: req.orderName,
+          order_id: req.orderName,
+          name: req.customerName,
+          email: req.customerEmail,
+          telephone: req.customerPhone || "",
+          address: req.customerAddress?.line1 || req.shopAddress.line1,
+          address_2: req.customerAddress?.line2 || req.shopAddress.line2 || "",
+          city: req.customerAddress?.city || req.shopAddress.city,
+          postal_code: req.customerAddress?.postalCode || req.shopAddress.postalCode,
+          country: req.customerAddress?.country || req.shopAddress.country,
+          to_service_point: false,
+          parcel_items: req.items.map((item) => ({
+            description: item.title,
+            quantity: item.quantity,
+            weight: (req.weight || 1) / req.items.length,
+            value: 0
+          })),
+          request_label: true,
+          label_format: "pdf"
+        }
+      })
+    });
+    if (!response.ok) {
+      const err = await response.text();
+      return { success: false, error: `SendCloud error: ${response.status} ${err}` };
+    }
+    const data = await response.json();
+    const label = data.label || data;
+    return {
+      success: true,
+      labelUrl: label.label_printer_url || label.label_url,
+      trackingNumber: label.tracking_number,
+      labelId: String(label.id),
+      cost: label.total_price ? parseFloat(label.total_price) : void 0
+    };
+  } catch (err) {
+    return { success: false, error: `SendCloud error: ${err.message}` };
+  }
+}
+async function createShippoLabel(req) {
+  const apiKey = process.env.SHIPPO_API_KEY;
+  if (!apiKey) {
+    return { success: false, error: "Shippo not configured (SHIPPO_API_KEY)" };
+  }
+  try {
+    const shipmentResp = await fetch("https://api.goshippo.com/shipments/", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `ShippoToken ${apiKey}`
+      },
+      body: JSON.stringify({
+        address_from: {
+          name: "Returns",
+          street1: req.shopAddress.line1,
+          street2: req.shopAddress.line2 || "",
+          city: req.shopAddress.city,
+          state: req.shopAddress.state || "",
+          zip: req.shopAddress.postalCode,
+          country: req.shopAddress.country
+        },
+        address_to: {
+          name: req.customerName,
+          street1: req.customerAddress?.line1 || req.shopAddress.line1,
+          street2: req.customerAddress?.line2 || "",
+          city: req.customerAddress?.city || req.shopAddress.city,
+          state: req.customerAddress?.state || "",
+          zip: req.customerAddress?.postalCode || req.shopAddress.postalCode,
+          country: req.customerAddress?.country || req.shopAddress.country
+        },
+        parcels: [{
+          length: "30",
+          width: "20",
+          height: "10",
+          distance_unit: "cm",
+          weight: String(req.weight || 1),
+          mass_unit: "kg"
+        }],
+        async: false
+      })
+    });
+    if (!shipmentResp.ok) {
+      return { success: false, error: `Shippo shipment failed: ${await shipmentResp.text()}` };
+    }
+    const shipment = await shipmentResp.json();
+    if (!shipment.rates?.length) {
+      return { success: false, error: "No shipping rates available" };
+    }
+    const rateId = shipment.rates[0].object_id;
+    const labelResp = await fetch("https://api.goshippo.com/transactions/", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `ShippoToken ${apiKey}`
+      },
+      body: JSON.stringify({
+        rate: rateId,
+        label_file_type: "PDF",
+        async: false
+      })
+    });
+    if (!labelResp.ok) {
+      return { success: false, error: `Shippo label failed: ${await labelResp.text()}` };
+    }
+    const label = await labelResp.json();
+    return {
+      success: true,
+      labelUrl: label.label_url,
+      trackingNumber: label.tracking_number,
+      labelId: label.object_id,
+      cost: label.amount ? parseFloat(label.amount) : void 0
+    };
+  } catch (err) {
+    return { success: false, error: `Shippo error: ${err.message}` };
+  }
+}
+async function createEasyPostLabel(req) {
+  const apiKey = process.env.EASYPOST_API_KEY;
+  if (!apiKey) {
+    return { success: false, error: "EasyPost not configured (EASYPOST_API_KEY)" };
+  }
+  try {
+    const shipmentResp = await fetch("https://api.easypost.com/v2/shipments", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        shipment: {
+          from_address: {
+            street1: req.shopAddress.line1,
+            street2: req.shopAddress.line2 || "",
+            city: req.shopAddress.city,
+            state: req.shopAddress.state || "",
+            zip: req.shopAddress.postalCode,
+            country: req.shopAddress.country
+          },
+          to_address: {
+            name: req.customerName,
+            street1: req.customerAddress?.line1 || req.shopAddress.line1,
+            street2: req.customerAddress?.line2 || "",
+            city: req.customerAddress?.city || req.shopAddress.city,
+            state: req.customerAddress?.state || "",
+            zip: req.customerAddress?.postalCode || req.shopAddress.postalCode,
+            country: req.customerAddress?.country || req.shopAddress.country
+          },
+          parcel: {
+            length: 30,
+            width: 20,
+            height: 10,
+            weight: req.weight || 1
+          }
+        }
+      })
+    });
+    if (!shipmentResp.ok) {
+      return { success: false, error: `EasyPost shipment failed: ${await shipmentResp.text()}` };
+    }
+    const shipment = await shipmentResp.json();
+    if (!shipment.rates?.length) {
+      return { success: false, error: "No shipping rates available" };
+    }
+    const rate = shipment.rates.sort((a, b) => parseFloat(a.rate) - parseFloat(b.rate))[0];
+    const buyResp = await fetch(`https://api.easypost.com/v2/shipments/${shipment.id}/buy`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({ rate: { id: rate.id } })
+    });
+    if (!buyResp.ok) {
+      return { success: false, error: `EasyPost buy failed: ${await buyResp.text()}` };
+    }
+    const bought = await buyResp.json();
+    return {
+      success: true,
+      labelUrl: bought.postage_label?.label_url,
+      trackingNumber: bought.tracking_code,
+      labelId: bought.id,
+      cost: parseFloat(rate.rate)
+    };
+  } catch (err) {
+    return { success: false, error: `EasyPost error: ${err.message}` };
+  }
+}
+
 const RETURNS_TOOLS = [
   {
     name: "analyze_return",
@@ -1115,6 +1334,23 @@ async function handleMcpRequest(body) {
               refundResult = { error: err.message };
             }
           }
+          let labelResult = null;
+          if (args.issueLabel) {
+            labelResult = await createReturnLabel({
+              orderName: returnReq.orderName || returnReq.id,
+              customerName: returnReq.customerName || "Customer",
+              customerEmail: returnReq.customerEmail || "",
+              items,
+              weight: 1,
+              description: returnReq.reason || "Customer return",
+              shopAddress: {
+                line1: process.env.SHOP_ADDRESS_LINE1 || "",
+                city: process.env.SHOP_ADDRESS_CITY || "",
+                postalCode: process.env.SHOP_ADDRESS_ZIP || "",
+                country: process.env.SHOP_ADDRESS_COUNTRY || "NL"
+              }
+            });
+          }
           const updated = await prisma$1.returnRequest.update({
             where: { id: args.returnId },
             data: {
@@ -1124,7 +1360,7 @@ async function handleMcpRequest(body) {
               notes: args.notes || null,
               refundAmount: totalAmount,
               refundId: refundResult?.id || null,
-              labels: args.issueLabel ? [{ type: "return_label", status: "pending" }] : void 0
+              labels: labelResult?.success ? [{ type: "return_label", status: "ready", url: labelResult.labelUrl, tracking: labelResult.trackingNumber }] : args.issueLabel ? [{ type: "return_label", status: "failed", error: labelResult?.error }] : void 0
             }
           });
           await prisma$1.decisionLog.create({

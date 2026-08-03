@@ -1,6 +1,7 @@
 import prisma from "./db.server";
 import { executeRefund } from "./shopify-admin.server";
 import { sendEmail, returnApprovedEmail, returnDeniedEmail, refundProcessedEmail } from "./email.server";
+import { createReturnLabel } from "./label-provider.server";
 import { RETURNS_TOOLS } from "./mcp-types";
 
 function jsonRpcError(id: string | number, code: number, message: string) {
@@ -136,6 +137,25 @@ export async function handleMcpRequest(body: any) {
             }
           }
 
+          // Generate return label if requested
+          let labelResult = null;
+          if (args.issueLabel) {
+            labelResult = await createReturnLabel({
+              orderName: returnReq.orderName || returnReq.id,
+              customerName: returnReq.customerName || "Customer",
+              customerEmail: returnReq.customerEmail || "",
+              items: items,
+              weight: 1,
+              description: returnReq.reason || "Customer return",
+              shopAddress: {
+                line1: process.env.SHOP_ADDRESS_LINE1 || "",
+                city: process.env.SHOP_ADDRESS_CITY || "",
+                postalCode: process.env.SHOP_ADDRESS_ZIP || "",
+                country: process.env.SHOP_ADDRESS_COUNTRY || "NL",
+              },
+            });
+          }
+
           const updated = await prisma.returnRequest.update({
             where: { id: args.returnId },
             data: {
@@ -145,7 +165,11 @@ export async function handleMcpRequest(body: any) {
               notes: args.notes || null,
               refundAmount: totalAmount,
               refundId: refundResult?.id || null,
-              labels: args.issueLabel ? [{ type: "return_label", status: "pending" }] : undefined,
+              labels: labelResult?.success
+                ? [{ type: "return_label", status: "ready", url: labelResult.labelUrl, tracking: labelResult.trackingNumber }]
+                : args.issueLabel
+                  ? [{ type: "return_label", status: "failed", error: labelResult?.error }]
+                  : undefined,
             },
           });
 
