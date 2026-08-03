@@ -1,4 +1,5 @@
 import prisma from "./db.server";
+import { executeRefund } from "./shopify-admin.server";
 import { RETURNS_TOOLS } from "./mcp-types";
 
 function jsonRpcError(id: string | number, code: number, message: string) {
@@ -106,14 +107,43 @@ export async function handleMcpRequest(body: any) {
           });
           if (!returnReq) return jsonRpcError(id, -32602, "Return not found");
 
+          // Calculate refund amount
+          const items = returnReq.items as any[];
+          const totalAmount = args.refundAmount || items.reduce(
+            (sum: number, i: any) => sum + (parseFloat(i.price || "0") * (i.quantity || 0)), 0
+          );
+
+          // Get the store's offline access token
+          const session = await prisma.session.findFirst({
+            where: { shop: returnReq.shop, isOnline: false },
+          });
+
+          let refundResult = null;
+          if (session?.accessToken) {
+            try {
+              const orderIdNum = returnReq.orderId.replace("gid://shopify/Order/", "");
+              refundResult = await executeRefund(
+                returnReq.shop,
+                session.accessToken,
+                orderIdNum,
+                totalAmount,
+                true,
+                args.notes || "Auto-approved by Shopigent Returns AI agent"
+              );
+            } catch (err: any) {
+              refundResult = { error: err.message };
+            }
+          }
+
           const updated = await prisma.returnRequest.update({
             where: { id: args.returnId },
             data: {
-              status: "APPROVED",
+              status: refundResult?.id ? "REFUNDED" : "APPROVED",
               decidedBy: "agent",
               decidedAt: new Date(),
               notes: args.notes || null,
-              refundAmount: args.refundAmount || undefined,
+              refundAmount: totalAmount,
+              refundId: refundResult?.id || null,
               labels: args.issueLabel ? [{ type: "return_label", status: "pending" }] : undefined,
             },
           });
@@ -122,15 +152,24 @@ export async function handleMcpRequest(body: any) {
             data: {
               returnId: args.returnId,
               actor: "agent",
-              action: "approve",
-              details: { refundAmount: args.refundAmount, issueLabel: args.issueLabel, notes: args.notes },
+              action: refundResult?.id ? "refund" : "approve",
+              details: {
+                refundAmount: totalAmount,
+                refundTransactionId: refundResult?.id || null,
+                refundError: refundResult?.error || null,
+                issueLabel: args.issueLabel,
+                notes: args.notes,
+              },
             },
           });
 
           return jsonRpcResult(id, {
             success: true,
-            status: "APPROVED",
+            status: updated.status,
             returnId: updated.id,
+            refundExecuted: !!refundResult?.id,
+            refundId: refundResult?.id || null,
+            refundError: refundResult?.error || null,
           });
         }
 

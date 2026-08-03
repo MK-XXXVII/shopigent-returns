@@ -718,6 +718,93 @@ const route6 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   loader: loader$4
 }, Symbol.toStringTag, { value: 'Module' }));
 
+const SHOPIFY_API_VERSION = "2024-10";
+async function shopifyAdminQuery(shop, accessToken, query, variables) {
+  const response = await fetch(
+    `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Access-Token": accessToken
+      },
+      body: JSON.stringify({ query, variables })
+    }
+  );
+  return response.json();
+}
+async function executeRefund(shop, accessToken, orderId, amount, restock = true, reason = "Customer return") {
+  const orderGid = orderId.startsWith("gid://") ? orderId : `gid://shopify/Order/${orderId}`;
+  const calculateMutation = `mutation calculate($input: CalculateRefundInput!) {
+    calculateRefund(input: $input) {
+      refund {
+        id
+        transactions {
+          id
+          amountSet { shopMoney { amount } }
+          kind
+        }
+        orderAdjustments {
+          id
+          amountSet { shopMoney { amount } }
+          reason
+        }
+      }
+      userErrors { field message }
+    }
+  }`;
+  const calculateResult = await shopifyAdminQuery(shop, accessToken, calculateMutation, {
+    input: {
+      orderId: orderGid,
+      amount: { amount, currencyCode: "USD" },
+      refundLineItems: [],
+      restock
+    }
+  });
+  const errors = calculateResult?.data?.calculateRefund?.userErrors;
+  if (errors?.length > 0) {
+    throw new Error(`Refund calculation failed: ${errors.map((e) => e.message).join(", ")}`);
+  }
+  const calculatedRefund = calculateResult?.data?.calculateRefund?.refund;
+  if (!calculatedRefund) {
+    throw new Error("Failed to calculate refund");
+  }
+  const executeMutation = `mutation execute($input: RefundInput!) {
+    refundCreate(input: $input) {
+      refund {
+        id
+        transactions {
+          id
+          status
+          processedAt
+          amountSet { shopMoney { amount } }
+        }
+      }
+      userErrors { field message }
+    }
+  }`;
+  const executeResult = await shopifyAdminQuery(shop, accessToken, executeMutation, {
+    input: {
+      orderId: orderGid,
+      amount: { amount, currencyCode: "USD" },
+      restock,
+      note: reason,
+      transactions: calculatedRefund.transactions?.map((t) => ({
+        id: t.id,
+        amount: { amount, currencyCode: "USD" },
+        kind: "refund",
+        gateway: t.id
+      })),
+      refundLineItems: []
+    }
+  });
+  const execErrors = executeResult?.data?.refundCreate?.userErrors;
+  if (execErrors?.length > 0) {
+    throw new Error(`Refund execution failed: ${execErrors.map((e) => e.message).join(", ")}`);
+  }
+  return executeResult?.data?.refundCreate?.refund;
+}
+
 const RETURNS_TOOLS = [
   {
     name: "analyze_return",
@@ -884,14 +971,39 @@ async function handleMcpRequest(body) {
             where: { id: args.returnId }
           });
           if (!returnReq) return jsonRpcError(id, -32602, "Return not found");
+          const items = returnReq.items;
+          const totalAmount = args.refundAmount || items.reduce(
+            (sum, i) => sum + parseFloat(i.price || "0") * (i.quantity || 0),
+            0
+          );
+          const session = await prisma$1.session.findFirst({
+            where: { shop: returnReq.shop, isOnline: false }
+          });
+          let refundResult = null;
+          if (session?.accessToken) {
+            try {
+              const orderIdNum = returnReq.orderId.replace("gid://shopify/Order/", "");
+              refundResult = await executeRefund(
+                returnReq.shop,
+                session.accessToken,
+                orderIdNum,
+                totalAmount,
+                true,
+                args.notes || "Auto-approved by Shopigent Returns AI agent"
+              );
+            } catch (err) {
+              refundResult = { error: err.message };
+            }
+          }
           const updated = await prisma$1.returnRequest.update({
             where: { id: args.returnId },
             data: {
-              status: "APPROVED",
+              status: refundResult?.id ? "REFUNDED" : "APPROVED",
               decidedBy: "agent",
               decidedAt: /* @__PURE__ */ new Date(),
               notes: args.notes || null,
-              refundAmount: args.refundAmount || void 0,
+              refundAmount: totalAmount,
+              refundId: refundResult?.id || null,
               labels: args.issueLabel ? [{ type: "return_label", status: "pending" }] : void 0
             }
           });
@@ -899,14 +1011,23 @@ async function handleMcpRequest(body) {
             data: {
               returnId: args.returnId,
               actor: "agent",
-              action: "approve",
-              details: { refundAmount: args.refundAmount, issueLabel: args.issueLabel, notes: args.notes }
+              action: refundResult?.id ? "refund" : "approve",
+              details: {
+                refundAmount: totalAmount,
+                refundTransactionId: refundResult?.id || null,
+                refundError: refundResult?.error || null,
+                issueLabel: args.issueLabel,
+                notes: args.notes
+              }
             }
           });
           return jsonRpcResult(id, {
             success: true,
-            status: "APPROVED",
-            returnId: updated.id
+            status: updated.status,
+            returnId: updated.id,
+            refundExecuted: !!refundResult?.id,
+            refundId: refundResult?.id || null,
+            refundError: refundResult?.error || null
           });
         }
         case "deny_return": {
