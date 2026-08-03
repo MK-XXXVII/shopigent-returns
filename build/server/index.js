@@ -61,7 +61,7 @@ shopify.registerWebhooks;
 shopify.sessionStorage;
 
 const links = () => [{ rel: "stylesheet", href: polarisStyles }];
-const loader$8 = async ({ request }) => {
+const loader$9 = async ({ request }) => {
   await authenticate.admin(request);
   return { apiKey: process.env.SHOPIFY_API_KEY || "" };
 };
@@ -120,7 +120,7 @@ const route0 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   ErrorBoundary,
   default: App,
   links,
-  loader: loader$8
+  loader: loader$9
 }, Symbol.toStringTag, { value: 'Module' }));
 
 const STATUS_COLORS$1 = {
@@ -132,7 +132,7 @@ const STATUS_COLORS$1 = {
   REFUNDED: "success",
   CLOSED: "new"
 };
-const loader$7 = async ({ request }) => {
+const loader$8 = async ({ request }) => {
   const { session } = await shopify.authenticate.admin(request);
   const url = new URL(request.url);
   const status = url.searchParams.get("status") || void 0;
@@ -242,10 +242,10 @@ function ReturnsPage() {
 const route1 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   default: ReturnsPage,
-  loader: loader$7
+  loader: loader$8
 }, Symbol.toStringTag, { value: 'Module' }));
 
-async function action$4({ request }) {
+async function action$5({ request }) {
   const { topic, shop, session, admin } = await shopify.authenticate.webhook(
     request
   );
@@ -290,7 +290,7 @@ async function action$4({ request }) {
 
 const route2 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
-  action: action$4
+  action: action$5
 }, Symbol.toStringTag, { value: 'Module' }));
 
 const STATUS_COLORS = {
@@ -302,7 +302,7 @@ const STATUS_COLORS = {
   REFUNDED: "success",
   CLOSED: "new"
 };
-const loader$6 = async ({ request, params }) => {
+const loader$7 = async ({ request, params }) => {
   const { session } = await shopify.authenticate.admin(request);
   const returnReq = await prisma$1.returnRequest.findFirst({
     where: { id: params.id, shop: session.shop },
@@ -406,17 +406,17 @@ function ReturnDetailPage() {
 const route3 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   default: ReturnDetailPage,
-  loader: loader$6
+  loader: loader$7
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const loader$5 = async ({ request }) => {
+const loader$6 = async ({ request }) => {
   await authenticate.admin(request);
   return null;
 };
 
 const route4 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
-  loader: loader$5
+  loader: loader$6
 }, Symbol.toStringTag, { value: 'Module' }));
 
 function FormField({
@@ -442,7 +442,7 @@ function FormField({
     )
   ] });
 }
-const loader$4 = async ({ request }) => {
+const loader$5 = async ({ request }) => {
   const { session } = await shopify.authenticate.admin(request);
   const policies = await prisma$1.policy.findMany({
     where: { shop: session.shop },
@@ -450,7 +450,7 @@ const loader$4 = async ({ request }) => {
   });
   return json({ policies });
 };
-const action$3 = async ({ request }) => {
+const action$4 = async ({ request }) => {
   const { session } = await shopify.authenticate.admin(request);
   const formData = await request.formData();
   const _action = formData.get("_action");
@@ -637,17 +637,17 @@ function PoliciesPage() {
 
 const route5 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
-  action: action$3,
+  action: action$4,
   default: PoliciesPage,
-  loader: loader$4
+  loader: loader$5
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const loader$3 = async ({ request }) => {
+const loader$4 = async ({ request }) => {
   const { session } = await shopify.authenticate.admin(request);
   const shop = await prisma$1.shop.findUnique({ where: { shop: session.shop } });
   return json({ hasMcpKey: !!shop?.mcpApiKeyHash });
 };
-const action$2 = async ({ request }) => {
+const action$3 = async ({ request }) => {
   const { session } = await shopify.authenticate.admin(request);
   const formData = await request.formData();
   const _action = formData.get("_action");
@@ -709,9 +709,9 @@ function SettingsPage() {
 
 const route6 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
-  action: action$2,
+  action: action$3,
   default: SettingsPage,
-  loader: loader$3
+  loader: loader$4
 }, Symbol.toStringTag, { value: 'Module' }));
 
 const RETURNS_TOOLS = [
@@ -1047,7 +1047,7 @@ async function handleMcpRequest(body) {
   }
 }
 
-const action$1 = async ({ request }) => {
+const action$2 = async ({ request }) => {
   const authHeader = request.headers.get("authorization");
   if (!authHeader?.startsWith("Bearer ")) {
     return json(
@@ -1076,7 +1076,7 @@ const action$1 = async ({ request }) => {
   const response = await handleMcpRequest(body);
   return json(response);
 };
-const loader$2 = async () => {
+const loader$3 = async () => {
   return json({
     name: "shopigent-returns-mcp",
     version: "0.1.0",
@@ -1096,24 +1096,24 @@ const loader$2 = async () => {
 
 const route7 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
-  action: action$1,
-  loader: loader$2
+  action: action$2,
+  loader: loader$3
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const loader$1 = () => {
+const loader$2 = () => {
   return json({ ok: true, service: "shopigent-returns", status: "healthy" });
 };
-const action = () => {
+const action$1 = () => {
   return json({ ok: true, service: "shopigent-returns", status: "healthy" });
 };
 
 const route8 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
-  action,
-  loader: loader$1
+  action: action$1,
+  loader: loader$2
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const loader = async ({ request }) => {
+const loader$1 = async ({ request }) => {
   const { session } = await shopify.authenticate.admin(request);
   const shop = session.shop;
   const totalReturns = await prisma$1.returnRequest.count({ where: { shop } });
@@ -1231,10 +1231,308 @@ function Dashboard() {
 const route9 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   default: Dashboard,
+  loader: loader$1
+}, Symbol.toStringTag, { value: 'Module' }));
+
+const loader = async ({ request }) => {
+  const url = new URL(request.url);
+  const shop = url.searchParams.get("shop") || "bundlebuzz-store.myshopify.com";
+  return json({ shop });
+};
+const action = async ({ request }) => {
+  const formData = await request.formData();
+  const _action = formData.get("_action");
+  const shop = formData.get("shop") || "bundlebuzz-store.myshopify.com";
+  const email = formData.get("email");
+  formData.get("orderName");
+  const session = await prisma$1.session.findFirst({
+    where: { shop, isOnline: false }
+  });
+  if (!session?.accessToken) {
+    return json({ error: "Store not connected. Please try again later." }, { status: 400 });
+  }
+  if (_action === "lookup") {
+    const query = `{
+      customers(first: 1, query: "${email}") {
+        edges {
+          node {
+            id
+            firstName
+            lastName
+            orders(first: 20, sortKey: CREATED_AT, reverse: true) {
+              edges {
+                node {
+                  id
+                  name
+                  createdAt
+                  totalPriceSet {
+                    shopMoney { amount currencyCode }
+                  }
+                  fulfillments(first: 5) { edges { node { status } } }
+                  lineItems(first: 20) {
+                    edges {
+                      node {
+                        id
+                        title
+                        quantity
+                        variant { id sku }
+                        originalUnitPriceSet { shopMoney { amount } }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }`;
+    try {
+      const response = await fetch(
+        `https://${shop}/admin/api/2024-10/graphql.json`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Shopify-Access-Token": session.accessToken
+          },
+          body: JSON.stringify({ query })
+        }
+      );
+      const data = await response.json();
+      const customer = data?.data?.customers?.edges?.[0]?.node;
+      if (!customer) {
+        return json({ error: "No customer found with this email." });
+      }
+      const orders = customer.orders.edges.map((e) => {
+        const node = e.node;
+        const items = node.lineItems.edges.map((li) => ({
+          id: li.node.id,
+          title: li.node.title,
+          quantity: li.node.quantity,
+          sku: li.node.variant?.sku || "",
+          price: li.node.originalUnitPriceSet?.shopMoney?.amount || "0",
+          variantId: li.node.variant?.id || ""
+        }));
+        return {
+          id: node.id,
+          name: node.name,
+          createdAt: node.createdAt,
+          total: node.totalPriceSet?.shopMoney?.amount || "0",
+          currency: node.totalPriceSet?.shopMoney?.currencyCode || "USD",
+          items,
+          fulfilled: node.fulfillments?.edges?.length > 0
+        };
+      });
+      return json({ customer: { name: `${customer.firstName || ""} ${customer.lastName || ""}`.trim() }, orders });
+    } catch (err) {
+      return json({ error: `Failed to look up orders: ${err.message}` });
+    }
+  }
+  if (_action === "submit_return") {
+    const orderId = formData.get("orderId");
+    const customerName = formData.get("customerName");
+    const customerEmail = formData.get("customerEmail");
+    const reason = formData.get("reason");
+    const selectedItems = JSON.parse(formData.get("selectedItems") || "[]");
+    const orderName2 = formData.get("orderName2");
+    if (!orderId || selectedItems.length === 0) {
+      return json({ error: "Please select at least one item to return." });
+    }
+    await prisma$1.returnRequest.create({
+      data: {
+        shop,
+        orderId,
+        orderName: orderName2,
+        customerEmail,
+        customerName,
+        items: selectedItems,
+        reason,
+        status: "PENDING"
+      }
+    });
+    return json({ success: true, message: "Return request submitted! We'll review it shortly." });
+  }
+  return json({ error: "Invalid action" });
+};
+function ReturnPortal() {
+  const { shop } = useLoaderData();
+  const fetcher = useFetcher();
+  const [email, setEmail] = useState("");
+  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [selectedItems, setSelectedItems] = useState([]);
+  const [reason, setReason] = useState("");
+  const data = fetcher.data;
+  const isLookup = fetcher.state === "submitting" && fetcher.formData?.get("_action") === "lookup";
+  const orders = data?.orders || [];
+  const customer = data?.customer;
+  const error = data?.error;
+  const success = data?.success;
+  const toggleItem = (itemId) => {
+    setSelectedItems(
+      (prev) => prev.includes(itemId) ? prev.filter((id) => id !== itemId) : [...prev, itemId]
+    );
+  };
+  const handleLookup = () => {
+    setSelectedOrder(null);
+    setSelectedItems([]);
+    setReason("");
+  };
+  if (success) {
+    return /* @__PURE__ */ jsx("div", { style: { maxWidth: 600, margin: "40px auto", padding: 20 }, children: /* @__PURE__ */ jsx(Card, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "400", align: "center", children: [
+      /* @__PURE__ */ jsx(Text, { variant: "headingXl", as: "h1", alignment: "center", tone: "success", children: "✅ Return Submitted!" }),
+      /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", alignment: "center", children: data.message }),
+      /* @__PURE__ */ jsx(Button, { onClick: () => window.location.reload(), children: "Submit Another Return" })
+    ] }) }) });
+  }
+  return /* @__PURE__ */ jsx("div", { style: { maxWidth: 800, margin: "40px auto", padding: 20 }, children: /* @__PURE__ */ jsx(Card, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "400", children: [
+    /* @__PURE__ */ jsx(Text, { variant: "headingXl", as: "h1", fontWeight: "bold", children: "Start a Return" }),
+    /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", tone: "subdued", children: "Enter your email and find your order to start a return or exchange." }),
+    /* @__PURE__ */ jsxs(fetcher.Form, { method: "post", onSubmit: handleLookup, children: [
+      /* @__PURE__ */ jsx("input", { type: "hidden", name: "_action", value: "lookup" }),
+      /* @__PURE__ */ jsx("input", { type: "hidden", name: "shop", value: shop }),
+      /* @__PURE__ */ jsxs(BlockStack, { gap: "300", children: [
+        /* @__PURE__ */ jsx(
+          TextField,
+          {
+            label: "Email Address",
+            type: "email",
+            name: "email",
+            value: email,
+            onChange: setEmail,
+            placeholder: "your@email.com",
+            autoComplete: "email",
+            required: true
+          }
+        ),
+        /* @__PURE__ */ jsx(Button, { submit: true, variant: "primary", loading: isLookup, disabled: !email, children: "Look Up My Orders" })
+      ] })
+    ] }),
+    error && /* @__PURE__ */ jsx(Banner, { tone: "critical", children: error }),
+    orders.length > 0 && customer && /* @__PURE__ */ jsxs(BlockStack, { gap: "300", children: [
+      /* @__PURE__ */ jsxs(Text, { variant: "headingMd", as: "h2", fontWeight: "bold", children: [
+        "Welcome, ",
+        customer.name,
+        "!"
+      ] }),
+      /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", children: "Select an order to return items from:" }),
+      orders.map((order) => {
+        const orderTotal = parseFloat(order.total);
+        const isSelected = selectedOrder === order.id;
+        return /* @__PURE__ */ jsxs(
+          Card,
+          {
+            background: isSelected ? "bg-surface-experimental" : void 0,
+            children: [
+              /* @__PURE__ */ jsx(
+                "div",
+                {
+                  style: { cursor: "pointer" },
+                  onClick: () => {
+                    setSelectedOrder(isSelected ? null : order.id);
+                    setSelectedItems([]);
+                  },
+                  children: /* @__PURE__ */ jsxs(InlineStack, { align: "space-between", children: [
+                    /* @__PURE__ */ jsxs(BlockStack, { gap: "100", children: [
+                      /* @__PURE__ */ jsx(Text, { variant: "headingSm", as: "h3", fontWeight: "bold", children: order.name }),
+                      /* @__PURE__ */ jsxs(Text, { variant: "bodySm", as: "p", tone: "subdued", children: [
+                        new Date(order.createdAt).toLocaleDateString(),
+                        " · ",
+                        order.currency,
+                        " $",
+                        orderTotal.toFixed(2)
+                      ] })
+                    ] }),
+                    order.fulfilled && /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "span", tone: "success", children: "Delivered" })
+                  ] })
+                }
+              ),
+              isSelected && /* @__PURE__ */ jsx("div", { style: { marginTop: 16 }, children: /* @__PURE__ */ jsxs(fetcher.Form, { method: "post", children: [
+                /* @__PURE__ */ jsx("input", { type: "hidden", name: "_action", value: "submit_return" }),
+                /* @__PURE__ */ jsx("input", { type: "hidden", name: "shop", value: shop }),
+                /* @__PURE__ */ jsx("input", { type: "hidden", name: "orderId", value: order.id }),
+                /* @__PURE__ */ jsx("input", { type: "hidden", name: "orderName2", value: order.name }),
+                /* @__PURE__ */ jsx("input", { type: "hidden", name: "customerName", value: customer.name }),
+                /* @__PURE__ */ jsx("input", { type: "hidden", name: "customerEmail", value: email }),
+                /* @__PURE__ */ jsx("input", { type: "hidden", name: "selectedItems", value: JSON.stringify(
+                  order.items.filter((i) => selectedItems.includes(i.id))
+                ) }),
+                /* @__PURE__ */ jsx("input", { type: "hidden", name: "reason", value: reason }),
+                /* @__PURE__ */ jsxs(BlockStack, { gap: "300", children: [
+                  /* @__PURE__ */ jsx(Text, { variant: "headingSm", as: "h4", fontWeight: "bold", children: "Select items to return:" }),
+                  order.items.map((item) => /* @__PURE__ */ jsxs(
+                    "div",
+                    {
+                      style: {
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 12,
+                        padding: "8px 0",
+                        borderBottom: "1px solid #e0e0e0"
+                      },
+                      children: [
+                        /* @__PURE__ */ jsx(
+                          Checkbox,
+                          {
+                            label: "",
+                            checked: selectedItems.includes(item.id),
+                            onChange: () => toggleItem(item.id)
+                          }
+                        ),
+                        /* @__PURE__ */ jsxs("div", { style: { flex: 1 }, children: [
+                          /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "span", fontWeight: "bold", children: item.title }),
+                          /* @__PURE__ */ jsxs(Text, { variant: "bodySm", as: "p", tone: "subdued", children: [
+                            "x",
+                            item.quantity,
+                            " · $",
+                            item.price,
+                            item.sku && ` · SKU: ${item.sku}`
+                          ] })
+                        ] })
+                      ]
+                    },
+                    item.id
+                  )),
+                  /* @__PURE__ */ jsx(
+                    TextField,
+                    {
+                      label: "Reason for return",
+                      name: "reason",
+                      value: reason,
+                      onChange: setReason,
+                      placeholder: "e.g. Wrong size, defective, changed mind...",
+                      multiline: 2
+                    }
+                  ),
+                  /* @__PURE__ */ jsx(
+                    Button,
+                    {
+                      submit: true,
+                      variant: "primary",
+                      disabled: selectedItems.length === 0,
+                      children: "Submit Return Request"
+                    }
+                  )
+                ] })
+              ] }) })
+            ]
+          },
+          order.id
+        );
+      })
+    ] }),
+    !isLookup && orders.length === 0 && !error && /* @__PURE__ */ jsx(Banner, { tone: "info", children: /* @__PURE__ */ jsx("p", { children: "Enter your email above to find your orders and start a return." }) })
+  ] }) }) });
+}
+
+const route10 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+  __proto__: null,
+  action,
+  default: ReturnPortal,
   loader
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','imports':['/assets/components-DncgAStS.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-BrwzSzum.js','imports':['/assets/components-DncgAStS.js','/assets/context-0V2cCEm7.js','/assets/context-D_7evObr.js'],'css':[]},'routes/returns._index':{'id':'routes/returns._index','parentId':'root','path':'returns','index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._index-BZB3noWu.js','imports':['/assets/components-DncgAStS.js','/assets/Link-Cl4D9rJ-.js','/assets/Page-DpCOn8e3.js','/assets/context-0V2cCEm7.js','/assets/CSSTransition-CJwZ5D7e.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/returns.$id':{'id':'routes/returns.$id','parentId':'root','path':'returns/:id','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._id-itZptNbs.js','imports':['/assets/components-DncgAStS.js','/assets/Page-DpCOn8e3.js','/assets/Tag-DoW5JBa1.js','/assets/context-0V2cCEm7.js'],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-DY_pWtWu.js','imports':['/assets/components-DncgAStS.js','/assets/Page-DpCOn8e3.js','/assets/Banner-C_Jjjps5.js','/assets/Tag-DoW5JBa1.js','/assets/context-0V2cCEm7.js','/assets/context-D_7evObr.js','/assets/CSSTransition-CJwZ5D7e.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/settings':{'id':'routes/settings','parentId':'root','path':'settings','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/settings-Ilt1DIW4.js','imports':['/assets/components-DncgAStS.js','/assets/Page-DpCOn8e3.js','/assets/Banner-C_Jjjps5.js','/assets/context-0V2cCEm7.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/api.mcp':{'id':'routes/api.mcp','parentId':'root','path':'api/mcp','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.mcp-l0sNRNKZ.js','imports':[],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-DQBxIWG3.js','imports':['/assets/components-DncgAStS.js','/assets/Link-Cl4D9rJ-.js','/assets/Page-DpCOn8e3.js','/assets/Banner-C_Jjjps5.js','/assets/context-0V2cCEm7.js','/assets/CSSTransition-CJwZ5D7e.js','/assets/banner-context-DEryxoPe.js'],'css':[]}},'url':'/assets/manifest-919790d2.js','version':'919790d2'};
+const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','imports':['/assets/components-DncgAStS.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-BLjUq9pY.js','imports':['/assets/components-DncgAStS.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/context-D_7evObr.js'],'css':[]},'routes/returns._index':{'id':'routes/returns._index','parentId':'root','path':'returns','index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._index-C3iLomyR.js','imports':['/assets/components-DncgAStS.js','/assets/Link-DT2lH_uZ.js','/assets/Page-DALAsNxa.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-BMWIXkDj.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/returns.$id':{'id':'routes/returns.$id','parentId':'root','path':'returns/:id','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._id-fHZXP5B4.js','imports':['/assets/components-DncgAStS.js','/assets/Page-DALAsNxa.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/Tag-Co-U6GFW.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js'],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-Dq_38rkN.js','imports':['/assets/components-DncgAStS.js','/assets/Page-DALAsNxa.js','/assets/Banner-D6r87bZU.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/Tag-Co-U6GFW.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-D_7evObr.js','/assets/CSSTransition-CYBGIXjC.js','/assets/Checkbox-BMWIXkDj.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/settings':{'id':'routes/settings','parentId':'root','path':'settings','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/settings-B5dCOCw0.js','imports':['/assets/components-DncgAStS.js','/assets/Page-DALAsNxa.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/Banner-D6r87bZU.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/api.mcp':{'id':'routes/api.mcp','parentId':'root','path':'api/mcp','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.mcp-l0sNRNKZ.js','imports':[],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-BEReLHAI.js','imports':['/assets/components-DncgAStS.js','/assets/Link-DT2lH_uZ.js','/assets/Page-DALAsNxa.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/Banner-D6r87bZU.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-BMWIXkDj.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/return':{'id':'routes/return','parentId':'root','path':'return','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/return-Cny5URnc.js','imports':['/assets/components-DncgAStS.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/Banner-D6r87bZU.js','/assets/Checkbox-BMWIXkDj.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/banner-context-DEryxoPe.js'],'css':[]}},'url':'/assets/manifest-178b82ab.js','version':'178b82ab'};
 
 /**
        * `mode` is only relevant for the old Remix compiler but
@@ -1327,6 +1625,14 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           index: true,
           caseSensitive: undefined,
           module: route9
+        },
+  "routes/return": {
+          id: "routes/return",
+          parentId: "root",
+          path: "return",
+          index: undefined,
+          caseSensitive: undefined,
+          module: route10
         }
       };
 
