@@ -9,7 +9,8 @@ import {
   Link,
   useLoaderData,
 } from "@remix-run/react";
-import { AppProvider } from "@shopify/shopify-app-remix/react";
+import { AppProvider as PolarisAppProvider } from "@shopify/polaris";
+import { AppProvider as ShopifyAppProvider } from "@shopify/shopify-app-remix/react";
 import { NavMenu } from "@shopify/app-bridge-react";
 import polarisStyles from "@shopify/polaris/build/esm/styles.css?url";
 import { authenticate } from "./shopify.server";
@@ -18,12 +19,17 @@ import type { LoaderFunctionArgs } from "@remix-run/node";
 export const links = () => [{ rel: "stylesheet", href: polarisStyles }];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  await authenticate.admin(request);
-  return { apiKey: process.env.SHOPIFY_API_KEY || "" };
+  const url = new URL(request.url);
+  // Public routes (customer portal) — no Shopify admin auth
+  const isPublic = url.pathname.startsWith("/return");
+  if (!isPublic) {
+    await authenticate.admin(request);
+  }
+  return { apiKey: process.env.SHOPIFY_API_KEY || "", isPublic };
 };
 
 export default function App() {
-  const { apiKey } = useLoaderData<typeof loader>();
+  const { apiKey, isPublic } = useLoaderData<typeof loader>();
 
   return (
     <html>
@@ -39,15 +45,21 @@ export default function App() {
         <Links />
       </head>
       <body>
-        <AppProvider isEmbeddedApp apiKey={apiKey}>
-          <NavMenu>
-            <Link to="/">Dashboard</Link>
-            <Link to="/policies">Policies</Link>
-            <Link to="/returns">Returns</Link>
-            <Link to="/settings">Settings</Link>
-          </NavMenu>
-          <Outlet />
-        </AppProvider>
+        {isPublic ? (
+          <PolarisAppProvider i18n={{}}>
+            <Outlet />
+          </PolarisAppProvider>
+        ) : (
+          <ShopifyAppProvider isEmbeddedApp apiKey={apiKey}>
+            <NavMenu>
+              <Link to="/">Dashboard</Link>
+              <Link to="/policies">Policies</Link>
+              <Link to="/returns">Returns</Link>
+              <Link to="/settings">Settings</Link>
+            </NavMenu>
+            <Outlet />
+          </ShopifyAppProvider>
+          )}
         <ScrollRestoration />
         <Scripts />
       </body>
