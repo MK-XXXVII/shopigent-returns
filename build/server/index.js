@@ -849,11 +849,12 @@ async function executeRefund(shop, accessToken, orderId, amount, restock = true,
 
 const RESEND_API = "https://api.resend.com/emails";
 async function sendEmail(payload) {
-  const apiKey = process.env.RESEND_API_KEY;
+  const apiKey = process.env.RESEND_API_KEY || process.env.RESEND_API_KEY_SHOPIGENT;
   if (!apiKey) {
-    console.log("[email] No RESEND_API_KEY configured, skipping email");
+    console.log("[email] No RESEND_API_KEY configured, skipping");
     return false;
   }
+  const from = process.env.EMAIL_FROM || "Shopigent Returns <returns@shopigent.com>";
   try {
     const response = await fetch(RESEND_API, {
       method: "POST",
@@ -862,7 +863,7 @@ async function sendEmail(payload) {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        from: process.env.EMAIL_FROM || "Shopigent Returns <returns@shopigent.com>",
+        from,
         to: payload.to,
         subject: payload.subject,
         html: payload.html
@@ -885,50 +886,44 @@ function returnApprovedEmail(customerName, orderName, refundAmount) {
   return {
     to: "",
     subject: `Return Approved — ${orderName}`,
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #50b83c;">✅ Return Approved</h2>
-        <p>Hi ${customerName},</p>
-        <p>Your return for order <strong>${orderName}</strong> has been <strong>approved</strong>!</p>
-        ${refundLine}
-        <p>Your refund will be processed within 3-5 business days.</p>
-        <hr style="border: 1px solid #eee;" />
-        <p style="color: #666; font-size: 12px;">Shopigent Returns — AI-powered return management</p>
-      </div>
-    `
+    html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
+      <h2 style="color:#50b83c">✅ Return Approved</h2>
+      <p>Hi ${customerName},</p>
+      <p>Your return for order <strong>${orderName}</strong> has been approved!</p>
+      ${refundLine}
+      <p>Your refund will be processed within 3-5 business days.</p>
+      <hr style="border:1px solid #eee"/>
+      <p style="color:#666;font-size:12px">Shopigent Returns — AI-powered return management</p>
+    </div>`
   };
 }
 function returnDeniedEmail(customerName, orderName, reason) {
   return {
     to: "",
     subject: `Return Update — ${orderName}`,
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #de3617;">Return Update</h2>
-        <p>Hi ${customerName},</p>
-        <p>After reviewing your return request for order <strong>${orderName}</strong>, we're unable to approve it at this time.</p>
-        <p><strong>Reason:</strong> ${reason}</p>
-        <p>If you have any questions, please contact our support team.</p>
-        <hr style="border: 1px solid #eee;" />
-        <p style="color: #666; font-size: 12px;">Shopigent Returns — AI-powered return management</p>
-      </div>
-    `
+    html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
+      <h2 style="color:#de3617">Return Update</h2>
+      <p>Hi ${customerName},</p>
+      <p>After reviewing your return request for order <strong>${orderName}</strong>, we're unable to approve it at this time.</p>
+      <p><strong>Reason:</strong> ${reason}</p>
+      <p>If you have questions, please contact our support team.</p>
+      <hr style="border:1px solid #eee"/>
+      <p style="color:#666;font-size:12px">Shopigent Returns — AI-powered return management</p>
+    </div>`
   };
 }
 function refundProcessedEmail(customerName, orderName, amount) {
   return {
     to: "",
     subject: `Refund Processed — ${orderName}`,
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #47c1bf;">💰 Refund Processed</h2>
-        <p>Hi ${customerName},</p>
-        <p>Your refund of <strong>$${amount.toFixed(2)}</strong> for order <strong>${orderName}</strong> has been processed.</p>
-        <p>The refund will appear on your original payment method within 3-5 business days.</p>
-        <hr style="border: 1px solid #eee;" />
-        <p style="color: #666; font-size: 12px;">Shopigent Returns — AI-powered return management</p>
-      </div>
-    `
+    html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
+      <h2 style="color:#47c1bf">💰 Refund Processed</h2>
+      <p>Hi ${customerName},</p>
+      <p>Your refund of <strong>$${amount.toFixed(2)}</strong> for order <strong>${orderName}</strong> has been processed.</p>
+      <p>The refund will appear on your original payment method within 3-5 business days.</p>
+      <hr style="border:1px solid #eee"/>
+      <p style="color:#666;font-size:12px">Shopigent Returns — AI-powered return management</p>
+    </div>`
   };
 }
 
