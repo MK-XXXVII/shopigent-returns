@@ -134,6 +134,32 @@ export default function SettingsPage() {
               </Banner>
             </BlockStack>
           </Card>
+
+          <Card>
+            <BlockStack gap="400">
+              <Text variant="headingMd" as="h2" fontWeight="bold">
+                Label Generation
+              </Text>
+              <Text variant="bodyMd" as="p">
+                When the AI agent approves a return with <code>issueLabel: true</code>, a return label
+                is automatically generated. Choose your provider:
+              </Text>
+              <Banner tone="info">
+                <p>
+                  <strong>Supported providers:</strong>
+                </p>
+                <ul>
+                  <li><strong>SendCloud</strong> — PostNL, DHL, DPD, DHL (EU/NL focus)</li>
+                  <li><strong>Shippo</strong> — UPS, FedEx, USPS, DHL (US/global)</li>
+                  <li><strong>EasyPost</strong> — UPS, FedEx, USPS, DHL, DPD (global)</li>
+                </ul>
+                <p style="margin-top: 8px;">
+                  Configure via Railway variables: <code>LABEL_PROVIDER=sendcloud</code> +
+                  <code>SENDCLOUD_API_KEY</code> + <code>SENDCLOUD_API_SECRET</code>
+                </p>
+              </Banner>
+            </BlockStack>
+          </Card>
         </Layout.Section>
       </Layout>
     </Page>
