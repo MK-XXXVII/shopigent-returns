@@ -54,102 +54,47 @@ export default function SettingsPage() {
       <Layout>
         <Layout.Section>
           <Card>
-            <BlockStack gap="400">
-              <Text variant="headingMd" as="h2" fontWeight="bold">
-                MCP Server
-              </Text>
-              <Text variant="bodyMd" as="p">
-                The MCP (Model Context Protocol) server lets AI agents like Claude,
-                Codex, or Grok connect to your return management system. They can
-                analyze returns, approve/deny, check fraud, and apply policies.
-              </Text>
+            <Text variant="headingMd" as="h2" fontWeight="bold">MCP Server</Text>
+            <Text variant="bodyMd" as="p">
+              Endpoint: <code>https://returns-app-production-8384.up.railway.app/api/mcp</code>
+            </Text>
 
-              <Banner tone="info">
-                <p>
-                  <strong>Endpoint:</strong>{" "}
-                  <code>https://returns-app-production-8384.up.railway.app/api/mcp</code>
-                </p>
-              </Banner>
-
-              {newKey ? (
-                <Card>
-                  <BlockStack gap="200">
-                    <Text variant="headingSm" as="h3" tone="critical">
-                      ⚠️ Save this key now — it will not be shown again!
-                    </Text>
-                    <div style={{
-                      background: "#1a1a2e", color: "#fff", padding: 12,
-                      borderRadius: 6, fontFamily: "monospace", wordBreak: "break-all", fontSize: 14,
-                    }}>
-                      {newKey}
-                    </div>
-                    <Button onClick={() => {
-                      navigator.clipboard.writeText(newKey);
-                      setCopied(true);
-                    }}>
-                      {copied ? "Copied!" : "Copy to clipboard"}
-                    </Button>
-                  </BlockStack>
-                </Card>
-              ) : (
-                <>
-                  <Text variant="bodyMd" as="p">
-                    {hasMcpKey
-                      ? "An MCP API key has been generated. You can generate a new one (the old key will stop working)."
-                      : "No MCP API key has been generated yet. Generate one to enable AI agent access."}
-                  </Text>
-                  <div>
-                    <Button
-                      variant="primary"
-                      onClick={() => {
-                        fetcher.submit({ _action: "generate_key" }, { method: "post" });
-                      }}
-                    >
-                      {hasMcpKey ? "Regenerate Key" : "Generate MCP Key"}
-                    </Button>
-                  </div>
-                </>
-              )}
-            </BlockStack>
-          </Card>
-
-          <Card>
-            <BlockStack gap="400">
-              <Text variant="headingMd" as="h2" fontWeight="bold">
-                Email Notifications
-              </Text>
-              <Text variant="bodyMd" as="p">
-                When the AI agent approves or denies a return, the customer receives an automatic email.
-              </Text>
-              <Banner tone="success">
-                <p>
-                  ✅ Email notifications are <strong>active</strong>! Customers receive automatic emails when
-                  their return is approved, denied, or refunded.
-                </p>
-                <p style="margin-top: 8px;">
-                  Powered by the VPS mail relay (Gmail SMTP via <code>master@greeknous.com</code>).
-                  No additional setup needed.
-                </p>
-              </Banner>
-            </BlockStack>
-          </Card>
-
-          <Card>
-            <BlockStack gap="400">
-              <Text variant="headingMd" as="h2" fontWeight="bold">
-                Label Generation
-              </Text>
-              <Text variant="bodyMd" as="p">
-                When the AI agent approves a return with <code>issueLabel: true</code>, a return label
-                is automatically generated. Choose your provider:
-              </Text>
-              <Banner tone="info">
+            {newKey ? (
+              <BlockStack gap="200">
+                <Banner tone="critical">
+                  <Text variant="bodyMd" as="p">Save this key now — it will not be shown again!</Text>
+                </Banner>
+                <div style={{ background: "#1a1a2e", color: "#fff", padding: 12, borderRadius: 6, fontFamily: "monospace" }}>
+                  {newKey}
+                </div>
+                <Button onClick={() => { navigator.clipboard.writeText(newKey); setCopied(true); }}>
+                  {copied ? "Copied!" : "Copy to clipboard"}
+                </Button>
+              </BlockStack>
+            ) : (
+              <BlockStack gap="200">
                 <Text variant="bodyMd" as="p">
-                  <strong>Supported providers:</strong> SendCloud (EU/NL), Shippo (US/global), EasyPost (global).
-                  Configure via Railway variables: <code>LABEL_PROVIDER=sendcloud</code> + <code>SENDCLOUD_API_KEY</code> + <code>SENDCLOUD_API_SECRET</code>
+                  {hasMcpKey ? "Key exists. Generate a new one to replace it." : "No MCP key yet."}
                 </Text>
-              </Banner>
-            </BlockStack>
+                <Button variant="primary" onClick={() => fetcher.submit({ _action: "generate_key" }, { method: "post" })}>
+                  {hasMcpKey ? "Regenerate Key" : "Generate MCP Key"}
+                </Button>
+              </BlockStack>
+            )}
+          </Card>
+
+          <Card>
+            <Text variant="headingMd" as="h2" fontWeight="bold">Email</Text>
+            <Banner tone="success">
+              <Text variant="bodyMd" as="p">Active via VPS mail relay.</Text>
+            </Banner>
+          </Card>
+
+          <Card>
+            <Text variant="headingMd" as="h2" fontWeight="bold">Labels</Text>
+            <Banner tone="info">
+              <Text variant="bodyMd" as="p">Providers: SendCloud, Shippo, EasyPost.</Text>
+            </Banner>
           </Card>
         </Layout.Section>
       </Layout>

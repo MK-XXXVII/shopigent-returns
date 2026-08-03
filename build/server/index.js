@@ -912,76 +912,32 @@ function SettingsPage() {
   const [copied, setCopied] = useState(false);
   const newKey = fetcher.data?.newKey;
   return /* @__PURE__ */ jsx(Page, { title: "Settings", children: /* @__PURE__ */ jsx(Layout, { children: /* @__PURE__ */ jsxs(Layout.Section, { children: [
-    /* @__PURE__ */ jsx(Card, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "400", children: [
+    /* @__PURE__ */ jsxs(Card, { children: [
       /* @__PURE__ */ jsx(Text, { variant: "headingMd", as: "h2", fontWeight: "bold", children: "MCP Server" }),
-      /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", children: "The MCP (Model Context Protocol) server lets AI agents like Claude, Codex, or Grok connect to your return management system. They can analyze returns, approve/deny, check fraud, and apply policies." }),
-      /* @__PURE__ */ jsx(Banner, { tone: "info", children: /* @__PURE__ */ jsxs("p", { children: [
-        /* @__PURE__ */ jsx("strong", { children: "Endpoint:" }),
-        " ",
+      /* @__PURE__ */ jsxs(Text, { variant: "bodyMd", as: "p", children: [
+        "Endpoint: ",
         /* @__PURE__ */ jsx("code", { children: "https://returns-app-production-8384.up.railway.app/api/mcp" })
-      ] }) }),
-      newKey ? /* @__PURE__ */ jsx(Card, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "200", children: [
-        /* @__PURE__ */ jsx(Text, { variant: "headingSm", as: "h3", tone: "critical", children: "⚠️ Save this key now — it will not be shown again!" }),
-        /* @__PURE__ */ jsx("div", { style: {
-          background: "#1a1a2e",
-          color: "#fff",
-          padding: 12,
-          borderRadius: 6,
-          fontFamily: "monospace",
-          wordBreak: "break-all",
-          fontSize: 14
-        }, children: newKey }),
+      ] }),
+      newKey ? /* @__PURE__ */ jsxs(BlockStack, { gap: "200", children: [
+        /* @__PURE__ */ jsx(Banner, { tone: "critical", children: /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", children: "Save this key now — it will not be shown again!" }) }),
+        /* @__PURE__ */ jsx("div", { style: { background: "#1a1a2e", color: "#fff", padding: 12, borderRadius: 6, fontFamily: "monospace" }, children: newKey }),
         /* @__PURE__ */ jsx(Button, { onClick: () => {
           navigator.clipboard.writeText(newKey);
           setCopied(true);
         }, children: copied ? "Copied!" : "Copy to clipboard" })
-      ] }) }) : /* @__PURE__ */ jsxs(Fragment, { children: [
-        /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", children: hasMcpKey ? "An MCP API key has been generated. You can generate a new one (the old key will stop working)." : "No MCP API key has been generated yet. Generate one to enable AI agent access." }),
-        /* @__PURE__ */ jsx("div", { children: /* @__PURE__ */ jsx(
-          Button,
-          {
-            variant: "primary",
-            onClick: () => {
-              fetcher.submit({ _action: "generate_key" }, { method: "post" });
-            },
-            children: hasMcpKey ? "Regenerate Key" : "Generate MCP Key"
-          }
-        ) })
+      ] }) : /* @__PURE__ */ jsxs(BlockStack, { gap: "200", children: [
+        /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", children: hasMcpKey ? "Key exists. Generate a new one to replace it." : "No MCP key yet." }),
+        /* @__PURE__ */ jsx(Button, { variant: "primary", onClick: () => fetcher.submit({ _action: "generate_key" }, { method: "post" }), children: hasMcpKey ? "Regenerate Key" : "Generate MCP Key" })
       ] })
-    ] }) }),
-    /* @__PURE__ */ jsx(Card, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "400", children: [
-      /* @__PURE__ */ jsx(Text, { variant: "headingMd", as: "h2", fontWeight: "bold", children: "Email Notifications" }),
-      /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", children: "When the AI agent approves or denies a return, the customer receives an automatic email." }),
-      /* @__PURE__ */ jsxs(Banner, { tone: "success", children: [
-        /* @__PURE__ */ jsxs("p", { children: [
-          "✅ Email notifications are ",
-          /* @__PURE__ */ jsx("strong", { children: "active" }),
-          "! Customers receive automatic emails when their return is approved, denied, or refunded."
-        ] }),
-        /* @__PURE__ */ jsxs("p", { style: "margin-top: 8px;", children: [
-          "Powered by the VPS mail relay (Gmail SMTP via ",
-          /* @__PURE__ */ jsx("code", { children: "master@greeknous.com" }),
-          "). No additional setup needed."
-        ] })
-      ] })
-    ] }) }),
-    /* @__PURE__ */ jsx(Card, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "400", children: [
-      /* @__PURE__ */ jsx(Text, { variant: "headingMd", as: "h2", fontWeight: "bold", children: "Label Generation" }),
-      /* @__PURE__ */ jsxs(Text, { variant: "bodyMd", as: "p", children: [
-        "When the AI agent approves a return with ",
-        /* @__PURE__ */ jsx("code", { children: "issueLabel: true" }),
-        ", a return label is automatically generated. Choose your provider:"
-      ] }),
-      /* @__PURE__ */ jsx(Banner, { tone: "info", children: /* @__PURE__ */ jsxs(Text, { variant: "bodyMd", as: "p", children: [
-        /* @__PURE__ */ jsx("strong", { children: "Supported providers:" }),
-        " SendCloud (EU/NL), Shippo (US/global), EasyPost (global). Configure via Railway variables: ",
-        /* @__PURE__ */ jsx("code", { children: "LABEL_PROVIDER=sendcloud" }),
-        " + ",
-        /* @__PURE__ */ jsx("code", { children: "SENDCLOUD_API_KEY" }),
-        " + ",
-        /* @__PURE__ */ jsx("code", { children: "SENDCLOUD_API_SECRET" })
-      ] }) })
-    ] }) })
+    ] }),
+    /* @__PURE__ */ jsxs(Card, { children: [
+      /* @__PURE__ */ jsx(Text, { variant: "headingMd", as: "h2", fontWeight: "bold", children: "Email" }),
+      /* @__PURE__ */ jsx(Banner, { tone: "success", children: /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", children: "Active via VPS mail relay." }) })
+    ] }),
+    /* @__PURE__ */ jsxs(Card, { children: [
+      /* @__PURE__ */ jsx(Text, { variant: "headingMd", as: "h2", fontWeight: "bold", children: "Labels" }),
+      /* @__PURE__ */ jsx(Banner, { tone: "info", children: /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", children: "Providers: SendCloud, Shippo, EasyPost." }) })
+    ] })
   ] }) }) });
 }
 
@@ -2252,7 +2208,7 @@ const route11 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   loader
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','imports':['/assets/components-DncgAStS.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-DW2RugKk.js','imports':['/assets/components-DncgAStS.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/context-D_7evObr.js'],'css':[]},'routes/returns._index':{'id':'routes/returns._index','parentId':'root','path':'returns','index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._index-C3iLomyR.js','imports':['/assets/components-DncgAStS.js','/assets/Link-DT2lH_uZ.js','/assets/Page-DALAsNxa.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-BMWIXkDj.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/returns.$id':{'id':'routes/returns.$id','parentId':'root','path':'returns/:id','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._id-fHZXP5B4.js','imports':['/assets/components-DncgAStS.js','/assets/Page-DALAsNxa.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/Tag-Co-U6GFW.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js'],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/analytics':{'id':'routes/analytics','parentId':'root','path':'analytics','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/analytics-GVOz0trS.js','imports':['/assets/components-DncgAStS.js','/assets/Page-DALAsNxa.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js'],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-Dq_38rkN.js','imports':['/assets/components-DncgAStS.js','/assets/Page-DALAsNxa.js','/assets/Banner-D6r87bZU.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/Tag-Co-U6GFW.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-D_7evObr.js','/assets/CSSTransition-CYBGIXjC.js','/assets/Checkbox-BMWIXkDj.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/settings':{'id':'routes/settings','parentId':'root','path':'settings','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/settings-MeXCSBHQ.js','imports':['/assets/components-DncgAStS.js','/assets/Page-DALAsNxa.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/Banner-D6r87bZU.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/api.mcp':{'id':'routes/api.mcp','parentId':'root','path':'api/mcp','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.mcp-l0sNRNKZ.js','imports':[],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-BEReLHAI.js','imports':['/assets/components-DncgAStS.js','/assets/Link-DT2lH_uZ.js','/assets/Page-DALAsNxa.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/Banner-D6r87bZU.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-BMWIXkDj.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/return':{'id':'routes/return','parentId':'root','path':'return','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/return-Cny5URnc.js','imports':['/assets/components-DncgAStS.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/Banner-D6r87bZU.js','/assets/Checkbox-BMWIXkDj.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/banner-context-DEryxoPe.js'],'css':[]}},'url':'/assets/manifest-c2020e90.js','version':'c2020e90'};
+const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','imports':['/assets/components-DncgAStS.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-DW2RugKk.js','imports':['/assets/components-DncgAStS.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/context-D_7evObr.js'],'css':[]},'routes/returns._index':{'id':'routes/returns._index','parentId':'root','path':'returns','index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._index-C3iLomyR.js','imports':['/assets/components-DncgAStS.js','/assets/Link-DT2lH_uZ.js','/assets/Page-DALAsNxa.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-BMWIXkDj.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/returns.$id':{'id':'routes/returns.$id','parentId':'root','path':'returns/:id','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._id-fHZXP5B4.js','imports':['/assets/components-DncgAStS.js','/assets/Page-DALAsNxa.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/Tag-Co-U6GFW.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js'],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/analytics':{'id':'routes/analytics','parentId':'root','path':'analytics','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/analytics-GVOz0trS.js','imports':['/assets/components-DncgAStS.js','/assets/Page-DALAsNxa.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js'],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-Dq_38rkN.js','imports':['/assets/components-DncgAStS.js','/assets/Page-DALAsNxa.js','/assets/Banner-D6r87bZU.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/Tag-Co-U6GFW.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-D_7evObr.js','/assets/CSSTransition-CYBGIXjC.js','/assets/Checkbox-BMWIXkDj.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/settings':{'id':'routes/settings','parentId':'root','path':'settings','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/settings-DOy9MDuj.js','imports':['/assets/components-DncgAStS.js','/assets/Page-DALAsNxa.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/Banner-D6r87bZU.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/api.mcp':{'id':'routes/api.mcp','parentId':'root','path':'api/mcp','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.mcp-l0sNRNKZ.js','imports':[],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-BEReLHAI.js','imports':['/assets/components-DncgAStS.js','/assets/Link-DT2lH_uZ.js','/assets/Page-DALAsNxa.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/Banner-D6r87bZU.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-BMWIXkDj.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/return':{'id':'routes/return','parentId':'root','path':'return','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/return-Cny5URnc.js','imports':['/assets/components-DncgAStS.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/Banner-D6r87bZU.js','/assets/Checkbox-BMWIXkDj.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/banner-context-DEryxoPe.js'],'css':[]}},'url':'/assets/manifest-48a972ec.js','version':'48a972ec'};
 
 /**
        * `mode` is only relevant for the old Remix compiler but
