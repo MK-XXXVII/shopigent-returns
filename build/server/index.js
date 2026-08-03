@@ -61,7 +61,7 @@ const registerWebhooks = shopify.registerWebhooks;
 shopify.sessionStorage;
 
 const links = () => [{ rel: "stylesheet", href: polarisStyles }];
-const loader$9 = async ({ request }) => {
+const loader$a = async ({ request }) => {
   const url = new URL(request.url);
   const isPublic = url.pathname.startsWith("/return");
   if (!isPublic) {
@@ -92,6 +92,7 @@ function App() {
           /* @__PURE__ */ jsx(Link, { to: "/", children: "Dashboard" }),
           /* @__PURE__ */ jsx(Link, { to: "/policies", children: "Policies" }),
           /* @__PURE__ */ jsx(Link, { to: "/returns", children: "Returns" }),
+          /* @__PURE__ */ jsx(Link, { to: "/analytics", children: "Analytics" }),
           /* @__PURE__ */ jsx(Link, { to: "/settings", children: "Settings" })
         ] }),
         /* @__PURE__ */ jsx(Outlet, {})
@@ -124,7 +125,7 @@ const route0 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   ErrorBoundary,
   default: App,
   links,
-  loader: loader$9
+  loader: loader$a
 }, Symbol.toStringTag, { value: 'Module' }));
 
 const STATUS_COLORS$1 = {
@@ -136,7 +137,7 @@ const STATUS_COLORS$1 = {
   REFUNDED: "success",
   CLOSED: "new"
 };
-const loader$8 = async ({ request }) => {
+const loader$9 = async ({ request }) => {
   const { session } = await shopify.authenticate.admin(request);
   const url = new URL(request.url);
   const status = url.searchParams.get("status") || void 0;
@@ -246,7 +247,7 @@ function ReturnsPage() {
 const route1 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   default: ReturnsPage,
-  loader: loader$8
+  loader: loader$9
 }, Symbol.toStringTag, { value: 'Module' }));
 
 const action$5 = async ({ request }) => {
@@ -325,7 +326,7 @@ const STATUS_COLORS = {
   REFUNDED: "success",
   CLOSED: "new"
 };
-const loader$7 = async ({ request, params }) => {
+const loader$8 = async ({ request, params }) => {
   const { session } = await shopify.authenticate.admin(request);
   const returnReq = await prisma$1.returnRequest.findFirst({
     where: { id: params.id, shop: session.shop },
@@ -429,10 +430,10 @@ function ReturnDetailPage() {
 const route3 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   default: ReturnDetailPage,
-  loader: loader$7
+  loader: loader$8
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const loader$6 = async ({ request }) => {
+const loader$7 = async ({ request }) => {
   const { session } = await authenticate.admin(request);
   try {
     await registerWebhooks({ session });
@@ -444,6 +445,220 @@ const loader$6 = async ({ request }) => {
 
 const route4 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
+  loader: loader$7
+}, Symbol.toStringTag, { value: 'Module' }));
+
+const loader$6 = async ({ request }) => {
+  const { session } = await shopify.authenticate.admin(request);
+  const shop = session.shop;
+  const totalReturns = await prisma$1.returnRequest.count({ where: { shop } });
+  const statusCounts = await prisma$1.returnRequest.groupBy({
+    by: ["status"],
+    where: { shop },
+    _count: true
+  });
+  const statusMap = {};
+  statusCounts.forEach((s) => {
+    statusMap[s.status] = s._count;
+  });
+  const refundAgg = await prisma$1.returnRequest.aggregate({
+    where: { shop, status: "REFUNDED" },
+    _sum: { refundAmount: true }
+  });
+  const totalRefunded = refundAgg._sum.refundAmount || 0;
+  const autoApproved = await prisma$1.returnRequest.count({
+    where: { shop, decidedBy: "agent" }
+  });
+  const decidedReturns = await prisma$1.returnRequest.findMany({
+    where: { shop, decidedAt: { not: null }, createdAt: { not: null } },
+    select: { createdAt: true, decidedAt: true }
+  });
+  let avgResolutionHours = 0;
+  if (decidedReturns.length > 0) {
+    const totalHours = decidedReturns.reduce((sum, r) => {
+      const diff = (new Date(r.decidedAt).getTime() - new Date(r.createdAt).getTime()) / (1e3 * 60 * 60);
+      return sum + diff;
+    }, 0);
+    avgResolutionHours = Math.round(totalHours / decidedReturns.length);
+  }
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1e3);
+  const recentReturns = await prisma$1.returnRequest.findMany({
+    where: { shop, createdAt: { gte: thirtyDaysAgo } },
+    orderBy: { createdAt: "asc" },
+    select: { createdAt: true, status: true, refundAmount: true }
+  });
+  const dailyCounts = {};
+  recentReturns.forEach((r) => {
+    const day = new Date(r.createdAt).toISOString().slice(0, 10);
+    if (!dailyCounts[day]) dailyCounts[day] = { total: 0, approved: 0, refunded: 0, amount: 0 };
+    dailyCounts[day].total++;
+    if (r.status === "APPROVED" || r.status === "REFUNDED") dailyCounts[day].approved++;
+    if (r.status === "REFUNDED") {
+      dailyCounts[day].refunded++;
+      dailyCounts[day].amount += parseFloat(String(r.refundAmount || 0));
+    }
+  });
+  const dailyData = Object.entries(dailyCounts).sort(([a], [b]) => a.localeCompare(b)).slice(-14);
+  const fraudCount = await prisma$1.fraudSignal.count({
+    where: { return: { shop } }
+  });
+  const highRiskFraud = await prisma$1.fraudSignal.count({
+    where: { return: { shop }, score: { gte: 0.5 } }
+  });
+  const allReturns = await prisma$1.returnRequest.findMany({
+    where: { shop, reason: { not: null } },
+    select: { reason: true }
+  });
+  const reasonCounts = {};
+  allReturns.forEach((r) => {
+    const reason = r.reason?.toLowerCase().trim() || "other";
+    const key = reason.includes("fit") || reason.includes("size") ? "Sizing issue" : reason.includes("defect") || reason.includes("broken") || reason.includes("damage") ? "Defective" : reason.includes("color") || reason.includes("photo") || reason.includes("look") ? "Not as described" : reason.includes("change") || reason.includes("mind") ? "Changed mind" : reason.includes("quality") ? "Quality issue" : reason.includes("duplicate") ? "Duplicate order" : reason.includes("wrong") ? "Wrong item sent" : "Other";
+    reasonCounts[key] = (reasonCounts[key] || 0) + 1;
+  });
+  const topReasons = Object.entries(reasonCounts).sort(([, a], [, b]) => b - a).slice(0, 5);
+  const items = allReturns.length > 0 ? await prisma$1.returnRequest.findMany({
+    where: { shop },
+    select: { items: true }
+  }) : [];
+  const productCounts = {};
+  const productRevenue = {};
+  items.forEach((r) => {
+    const productItems = r.items;
+    productItems.forEach((item) => {
+      const title = item.title || "Unknown";
+      productCounts[title] = (productCounts[title] || 0) + (item.quantity || 1);
+      productRevenue[title] = (productRevenue[title] || 0) + parseFloat(item.price || "0") * (item.quantity || 1);
+    });
+  });
+  const topProducts = Object.entries(productCounts).sort(([, a], [, b]) => b - a).slice(0, 5).map(([name, count]) => ({ name, count, revenue: productRevenue[name] || 0 }));
+  return json({
+    stats: {
+      totalReturns,
+      pending: statusMap.PENDING || 0,
+      approved: statusMap.APPROVED || 0,
+      denied: statusMap.DENIED || 0,
+      refunded: statusMap.REFUNDED || 0,
+      exchange: statusMap.EXCHANGE || 0,
+      totalRefunded: Number(totalRefunded),
+      autoApproved,
+      autoRate: totalReturns > 0 ? Math.round(autoApproved / totalReturns * 100) : 0,
+      avgResolutionHours,
+      fraudCount,
+      highRiskFraud
+    },
+    dailyData,
+    topReasons: topReasons.map(([reason, count]) => ({ reason, count })),
+    topProducts
+  });
+};
+function StatCard({ label, value, tone, prefix, suffix }) {
+  return /* @__PURE__ */ jsx(Card, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "100", children: [
+    /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "span", tone: "subdued", children: label }),
+    /* @__PURE__ */ jsxs(Text, { variant: "headingXl", as: "p", fontWeight: "bold", tone, children: [
+      prefix,
+      typeof value === "number" ? value.toLocaleString() : value,
+      suffix
+    ] })
+  ] }) });
+}
+function MiniBar({ value, max, label, color }) {
+  const pct = max > 0 ? value / max * 100 : 0;
+  return /* @__PURE__ */ jsxs("div", { style: { marginBottom: 8 }, children: [
+    /* @__PURE__ */ jsxs(InlineStack, { align: "space-between", children: [
+      /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "span", children: label }),
+      /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "span", fontWeight: "bold", children: value })
+    ] }),
+    /* @__PURE__ */ jsx("div", { style: {
+      height: 8,
+      background: "#e0e0e0",
+      borderRadius: 4,
+      overflow: "hidden"
+    }, children: /* @__PURE__ */ jsx("div", { style: {
+      width: `${pct}%`,
+      height: "100%",
+      background: color || "#5c6ac4",
+      borderRadius: 4,
+      transition: "width 0.3s"
+    } }) })
+  ] });
+}
+function AnalyticsPage() {
+  const { stats, dailyData, topReasons, topProducts } = useLoaderData();
+  const maxDaily = Math.max(...dailyData.map((d) => d[1].total), 1);
+  return /* @__PURE__ */ jsx(Page, { title: "Analytics", subtitle: "Return performance overview", children: /* @__PURE__ */ jsx(Layout, { children: /* @__PURE__ */ jsx(Layout.Section, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "400", children: [
+    /* @__PURE__ */ jsxs("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12 }, children: [
+      /* @__PURE__ */ jsx(StatCard, { label: "Total Returns", value: stats.totalReturns }),
+      /* @__PURE__ */ jsx(StatCard, { label: "Pending", value: stats.pending, tone: "warning" }),
+      /* @__PURE__ */ jsx(StatCard, { label: "Approved", value: stats.approved, tone: "success" }),
+      /* @__PURE__ */ jsx(StatCard, { label: "Denied", value: stats.denied, tone: "critical" }),
+      /* @__PURE__ */ jsx(StatCard, { label: "Refunded", value: stats.refunded }),
+      /* @__PURE__ */ jsx(StatCard, { label: "Total Refunded", value: stats.totalRefunded, prefix: "$" })
+    ] }),
+    /* @__PURE__ */ jsxs("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12 }, children: [
+      /* @__PURE__ */ jsx(StatCard, { label: "Auto-Resolution Rate", value: stats.autoRate, suffix: "%", tone: stats.autoRate > 50 ? "success" : "warning" }),
+      /* @__PURE__ */ jsx(StatCard, { label: "Avg Resolution Time", value: stats.avgResolutionHours, suffix: "h" }),
+      /* @__PURE__ */ jsx(StatCard, { label: "Fraud Signals Detected", value: stats.fraudCount, tone: stats.fraudCount > 0 ? "warning" : void 0 }),
+      /* @__PURE__ */ jsx(StatCard, { label: "High Risk Alerts", value: stats.highRiskFraud, tone: stats.highRiskFraud > 0 ? "critical" : void 0 })
+    ] }),
+    /* @__PURE__ */ jsx(Card, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "300", children: [
+      /* @__PURE__ */ jsx(Text, { variant: "headingMd", as: "h2", fontWeight: "bold", children: "Returns Trend (Last 14 Days)" }),
+      dailyData.length === 0 ? /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", tone: "subdued", children: "No data for the last 14 days." }) : /* @__PURE__ */ jsx("div", { style: { display: "flex", gap: 4, alignItems: "flex-end", height: 120, padding: "8px 0" }, children: dailyData.map(([day, data]) => /* @__PURE__ */ jsxs("div", { style: { flex: 1, display: "flex", flexDirection: "column", alignItems: "center", height: "100%", justifyContent: "flex-end" }, children: [
+        /* @__PURE__ */ jsx("div", { style: {
+          width: "100%",
+          maxWidth: 40,
+          height: `${data.total / maxDaily * 100}%`,
+          background: "#5c6ac4",
+          borderRadius: "4px 4px 0 0",
+          minHeight: data.total > 0 ? 4 : 0,
+          position: "relative"
+        }, children: data.total > 0 && /* @__PURE__ */ jsx(Text, { variant: "bodyXs", as: "span", style: {
+          position: "absolute",
+          top: -16,
+          left: "50%",
+          transform: "translateX(-50%)",
+          fontSize: 10
+        }, children: data.total }) }),
+        /* @__PURE__ */ jsx(Text, { variant: "bodyXs", as: "span", tone: "subdued", style: { fontSize: 9, marginTop: 4 }, children: day.slice(5) })
+      ] }, day)) })
+    ] }) }),
+    /* @__PURE__ */ jsxs("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }, children: [
+      /* @__PURE__ */ jsx(Card, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "200", children: [
+        /* @__PURE__ */ jsx(Text, { variant: "headingMd", as: "h2", fontWeight: "bold", children: "Top Return Reasons" }),
+        topReasons.length === 0 ? /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", tone: "subdued", children: "No data yet." }) : topReasons.map(({ reason, count }) => /* @__PURE__ */ jsx(
+          MiniBar,
+          {
+            label: reason,
+            value: count,
+            max: topReasons[0]?.count || 1,
+            color: "#ecc134"
+          },
+          reason
+        ))
+      ] }) }),
+      /* @__PURE__ */ jsx(Card, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "200", children: [
+        /* @__PURE__ */ jsx(Text, { variant: "headingMd", as: "h2", fontWeight: "bold", children: "Most Returned Products" }),
+        topProducts.length === 0 ? /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", tone: "subdued", children: "No data yet." }) : topProducts.map(({ name, count, revenue }) => /* @__PURE__ */ jsxs("div", { children: [
+          /* @__PURE__ */ jsxs(InlineStack, { align: "space-between", children: [
+            /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "span", children: name }),
+            /* @__PURE__ */ jsxs(Text, { variant: "bodySm", as: "span", fontWeight: "bold", children: [
+              "x",
+              count
+            ] })
+          ] }),
+          /* @__PURE__ */ jsxs(Text, { variant: "bodyXs", as: "p", tone: "subdued", children: [
+            "$",
+            revenue.toFixed(2),
+            " returned value"
+          ] })
+        ] }, name))
+      ] }) })
+    ] })
+  ] }) }) }) });
+}
+
+const route5 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+  __proto__: null,
+  default: AnalyticsPage,
   loader: loader$6
 }, Symbol.toStringTag, { value: 'Module' }));
 
@@ -663,7 +878,7 @@ function PoliciesPage() {
   );
 }
 
-const route5 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route6 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action: action$4,
   default: PoliciesPage,
@@ -786,7 +1001,7 @@ function SettingsPage() {
   ] }) }) });
 }
 
-const route6 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route7 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action: action$3,
   default: SettingsPage,
@@ -1615,7 +1830,7 @@ const loader$3 = async () => {
   });
 };
 
-const route7 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route8 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action: action$2,
   loader: loader$3
@@ -1628,7 +1843,7 @@ const action$1 = () => {
   return json({ ok: true, service: "shopigent-returns", status: "healthy" });
 };
 
-const route8 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route9 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action: action$1,
   loader: loader$2
@@ -1749,7 +1964,7 @@ function Dashboard() {
   ] });
 }
 
-const route9 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route10 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   default: Dashboard,
   loader: loader$1
@@ -2046,14 +2261,14 @@ function ReturnPortal() {
   ] }) }) });
 }
 
-const route10 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route11 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action,
   default: ReturnPortal,
   loader
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','imports':['/assets/components-DncgAStS.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-DKs2nTP9.js','imports':['/assets/components-DncgAStS.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/context-D_7evObr.js'],'css':[]},'routes/returns._index':{'id':'routes/returns._index','parentId':'root','path':'returns','index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._index-C3iLomyR.js','imports':['/assets/components-DncgAStS.js','/assets/Link-DT2lH_uZ.js','/assets/Page-DALAsNxa.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-BMWIXkDj.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/returns.$id':{'id':'routes/returns.$id','parentId':'root','path':'returns/:id','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._id-fHZXP5B4.js','imports':['/assets/components-DncgAStS.js','/assets/Page-DALAsNxa.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/Tag-Co-U6GFW.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js'],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-Dq_38rkN.js','imports':['/assets/components-DncgAStS.js','/assets/Page-DALAsNxa.js','/assets/Banner-D6r87bZU.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/Tag-Co-U6GFW.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-D_7evObr.js','/assets/CSSTransition-CYBGIXjC.js','/assets/Checkbox-BMWIXkDj.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/settings':{'id':'routes/settings','parentId':'root','path':'settings','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/settings-CDT1E-0t.js','imports':['/assets/components-DncgAStS.js','/assets/Page-DALAsNxa.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/Banner-D6r87bZU.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/api.mcp':{'id':'routes/api.mcp','parentId':'root','path':'api/mcp','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.mcp-l0sNRNKZ.js','imports':[],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-BEReLHAI.js','imports':['/assets/components-DncgAStS.js','/assets/Link-DT2lH_uZ.js','/assets/Page-DALAsNxa.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/Banner-D6r87bZU.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-BMWIXkDj.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/return':{'id':'routes/return','parentId':'root','path':'return','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/return-Cny5URnc.js','imports':['/assets/components-DncgAStS.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/Banner-D6r87bZU.js','/assets/Checkbox-BMWIXkDj.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/banner-context-DEryxoPe.js'],'css':[]}},'url':'/assets/manifest-8739cf8b.js','version':'8739cf8b'};
+const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','imports':['/assets/components-DncgAStS.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-DW2RugKk.js','imports':['/assets/components-DncgAStS.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/context-D_7evObr.js'],'css':[]},'routes/returns._index':{'id':'routes/returns._index','parentId':'root','path':'returns','index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._index-C3iLomyR.js','imports':['/assets/components-DncgAStS.js','/assets/Link-DT2lH_uZ.js','/assets/Page-DALAsNxa.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-BMWIXkDj.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/returns.$id':{'id':'routes/returns.$id','parentId':'root','path':'returns/:id','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._id-fHZXP5B4.js','imports':['/assets/components-DncgAStS.js','/assets/Page-DALAsNxa.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/Tag-Co-U6GFW.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js'],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/analytics':{'id':'routes/analytics','parentId':'root','path':'analytics','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/analytics-GVOz0trS.js','imports':['/assets/components-DncgAStS.js','/assets/Page-DALAsNxa.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js'],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-Dq_38rkN.js','imports':['/assets/components-DncgAStS.js','/assets/Page-DALAsNxa.js','/assets/Banner-D6r87bZU.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/Tag-Co-U6GFW.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-D_7evObr.js','/assets/CSSTransition-CYBGIXjC.js','/assets/Checkbox-BMWIXkDj.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/settings':{'id':'routes/settings','parentId':'root','path':'settings','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/settings-CDT1E-0t.js','imports':['/assets/components-DncgAStS.js','/assets/Page-DALAsNxa.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/Banner-D6r87bZU.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/api.mcp':{'id':'routes/api.mcp','parentId':'root','path':'api/mcp','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.mcp-l0sNRNKZ.js','imports':[],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-BEReLHAI.js','imports':['/assets/components-DncgAStS.js','/assets/Link-DT2lH_uZ.js','/assets/Page-DALAsNxa.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/Banner-D6r87bZU.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-BMWIXkDj.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/return':{'id':'routes/return','parentId':'root','path':'return','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/return-Cny5URnc.js','imports':['/assets/components-DncgAStS.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/Banner-D6r87bZU.js','/assets/Checkbox-BMWIXkDj.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/banner-context-DEryxoPe.js'],'css':[]}},'url':'/assets/manifest-4058f5f5.js','version':'4058f5f5'};
 
 /**
        * `mode` is only relevant for the old Remix compiler but
@@ -2107,13 +2322,21 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           caseSensitive: undefined,
           module: route4
         },
+  "routes/analytics": {
+          id: "routes/analytics",
+          parentId: "root",
+          path: "analytics",
+          index: undefined,
+          caseSensitive: undefined,
+          module: route5
+        },
   "routes/policies": {
           id: "routes/policies",
           parentId: "root",
           path: "policies",
           index: undefined,
           caseSensitive: undefined,
-          module: route5
+          module: route6
         },
   "routes/settings": {
           id: "routes/settings",
@@ -2121,7 +2344,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           path: "settings",
           index: undefined,
           caseSensitive: undefined,
-          module: route6
+          module: route7
         },
   "routes/api.mcp": {
           id: "routes/api.mcp",
@@ -2129,7 +2352,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           path: "api/mcp",
           index: undefined,
           caseSensitive: undefined,
-          module: route7
+          module: route8
         },
   "routes/healthz": {
           id: "routes/healthz",
@@ -2137,7 +2360,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           path: "healthz",
           index: undefined,
           caseSensitive: undefined,
-          module: route8
+          module: route9
         },
   "routes/_index": {
           id: "routes/_index",
@@ -2145,7 +2368,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           path: undefined,
           index: true,
           caseSensitive: undefined,
-          module: route9
+          module: route10
         },
   "routes/return": {
           id: "routes/return",
@@ -2153,7 +2376,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           path: "return",
           index: undefined,
           caseSensitive: undefined,
-          module: route10
+          module: route11
         }
       };
 
