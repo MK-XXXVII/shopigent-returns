@@ -9,8 +9,8 @@ import {
   Text,
   Banner,
   Button,
-  CopyToClipboard,
   InlineStack,
+  List,
 } from "@shopify/polaris";
 import { useState } from "react";
 import shopify from "../shopify.server";
@@ -145,18 +145,20 @@ export default function SettingsPage() {
                 is automatically generated. Choose your provider:
               </Text>
               <Banner tone="info">
-                <p>
-                  <strong>Supported providers:</strong>
-                </p>
-                <ul>
-                  <li><strong>SendCloud</strong> — PostNL, DHL, DPD, DHL (EU/NL focus)</li>
-                  <li><strong>Shippo</strong> — UPS, FedEx, USPS, DHL (US/global)</li>
-                  <li><strong>EasyPost</strong> — UPS, FedEx, USPS, DHL, DPD (global)</li>
-                </ul>
-                <p style="margin-top: 8px;">
-                  Configure via Railway variables: <code>LABEL_PROVIDER=sendcloud</code> +
-                  <code>SENDCLOUD_API_KEY</code> + <code>SENDCLOUD_API_SECRET</code>
-                </p>
+                <BlockStack gap="200">
+                  <Text variant="bodyMd" as="p" fontWeight="bold">
+                    Supported providers:
+                  </Text>
+                  <List type="bullet">
+                    <List.Item><Text variant="bodyMd" as="span" fontWeight="bold">SendCloud</Text> — PostNL, DHL, DPD (EU/NL)</List.Item>
+                    <List.Item><Text variant="bodyMd" as="span" fontWeight="bold">Shippo</Text> — UPS, FedEx, USPS (US/global)</List.Item>
+                    <List.Item><Text variant="bodyMd" as="span" fontWeight="bold">EasyPost</Text> — UPS, FedEx, USPS, DHL, DPD (global)</List.Item>
+                  </List>
+                  <Text variant="bodyMd" as="p">
+                    Configure via Railway variables: <code>LABEL_PROVIDER=sendcloud</code> +
+                    <code>SENDCLOUD_API_KEY</code> + <code>SENDCLOUD_API_SECRET</code>
+                  </Text>
+                </BlockStack>
               </Banner>
             </BlockStack>
           </Card>
