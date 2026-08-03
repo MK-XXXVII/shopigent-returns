@@ -140,7 +140,7 @@ export async function handleMcpRequest(body: any) {
           // Generate return label if requested
           let labelResult = null;
           if (args.issueLabel) {
-            labelResult = await createReturnLabel({
+            labelResult = await createReturnLabel(returnReq.shop, {
               orderName: returnReq.orderName || returnReq.id,
               customerName: returnReq.customerName || "Customer",
               customerEmail: returnReq.customerEmail || "",

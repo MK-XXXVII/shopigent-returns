@@ -122,6 +122,7 @@ model Shop {
   installedAt   DateTime  @default(now())
   uninstalledAt DateTime?
   mcpApiKeyHash String?
+  config        Json      @default("{}")
 
   @@index([shop])
 }

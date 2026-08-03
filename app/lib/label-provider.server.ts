@@ -1,3 +1,5 @@
+import prisma from "./db.server";
+
 // Unified label generation interface
 // Multiple providers: SendCloud (EU/NL), Shippo (US), EasyPost (Global)
 
@@ -38,31 +40,45 @@ export interface LabelResult {
 
 export type LabelProvider = "sendcloud" | "shippo" | "easypost";
 
-export function getLabelProvider(): string {
-  return process.env.LABEL_PROVIDER || "sendcloud";
+// Get label config — DB first, fallback to env vars
+export async function getLabelConfig(shop: string) {
+  const shopRec = await prisma.shop.findUnique({ where: { shop } });
+  const dbConfig: any = shopRec?.config || {};
+
+  return {
+    provider: dbConfig.labelProvider || process.env.LABEL_PROVIDER || "sendcloud",
+    sendcloudKey: dbConfig.sendcloudKey || process.env.SENDCLOUD_API_KEY || "",
+    sendcloudSecret: dbConfig.sendcloudSecret || process.env.SENDCLOUD_API_SECRET || "",
+    shippoKey: dbConfig.shippoKey || process.env.SHIPPO_API_KEY || "",
+    easypostKey: dbConfig.easypostKey || process.env.EASYPOST_API_KEY || "",
+    shopAddress: dbConfig.shopAddress || {
+      line1: process.env.SHOP_ADDRESS_LINE1 || "",
+      city: process.env.SHOP_ADDRESS_CITY || "",
+      postalCode: process.env.SHOP_ADDRESS_ZIP || "",
+      country: process.env.SHOP_ADDRESS_COUNTRY || "NL",
+    },
+  };
 }
 
-// Main label creation dispatcher
-export async function createReturnLabel(request: LabelRequest): Promise<LabelResult> {
-  const provider = getLabelProvider();
+// Main label creation dispatcher — now takes shop domain
+export async function createReturnLabel(shop: string, request: LabelRequest): Promise<LabelResult> {
+  const config = await getLabelConfig(shop);
 
-  switch (provider) {
+  switch (config.provider) {
     case "sendcloud":
-      return createSendCloudLabel(request);
+      return createSendCloudLabel(request, config.sendcloudKey, config.sendcloudSecret);
     case "shippo":
-      return createShippoLabel(request);
+      return createShippoLabel(request, config.shippoKey);
     case "easypost":
-      return createEasyPostLabel(request);
+      return createEasyPostLabel(request, config.easypostKey);
     default:
-      return { success: false, error: `Unknown label provider: ${provider}` };
+      return { success: false, error: `Unknown label provider: ${config.provider}` };
   }
 }
 
 // === SendCloud (EU/NL — PostNL, DHL, DPD) ===
 // Docs: https://developers.sendcloud.sc/reference/post_v2-labels
-async function createSendCloudLabel(req: LabelRequest): Promise<LabelResult> {
-  const apiKey = process.env.SENDCLOUD_API_KEY;
-  const apiSecret = process.env.SENDCLOUD_API_SECRET;
+async function createSendCloudLabel(req: LabelRequest, apiKey: string, apiSecret: string): Promise<LabelResult> {
   if (!apiKey || !apiSecret) {
     return { success: false, error: "SendCloud not configured (SENDCLOUD_API_KEY + SENDCLOUD_API_SECRET)" };
   }
@@ -121,8 +137,7 @@ async function createSendCloudLabel(req: LabelRequest): Promise<LabelResult> {
 
 // === Shippo (US/Global — 85+ carriers) ===
 // Docs: https://docs.goshippo.com/docs/transactions/transactions/
-async function createShippoLabel(req: LabelRequest): Promise<LabelResult> {
-  const apiKey = process.env.SHIPPO_API_KEY;
+async function createShippoLabel(req: LabelRequest, apiKey: string): Promise<LabelResult> {
   if (!apiKey) {
     return { success: false, error: "Shippo not configured (SHIPPO_API_KEY)" };
   }
@@ -211,8 +226,7 @@ async function createShippoLabel(req: LabelRequest): Promise<LabelResult> {
 
 // === EasyPost (Global — UPS, FedEx, USPS, DHL) ===
 // Docs: https://www.easypost.com/docs/api
-async function createEasyPostLabel(req: LabelRequest): Promise<LabelResult> {
-  const apiKey = process.env.EASYPOST_API_KEY;
+async function createEasyPostLabel(req: LabelRequest, apiKey: string): Promise<LabelResult> {
   if (!apiKey) {
     return { success: false, error: "EasyPost not configured (EASYPOST_API_KEY)" };
   }
