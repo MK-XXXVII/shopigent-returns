@@ -847,31 +847,32 @@ async function executeRefund(shop, accessToken, orderId, amount, restock = true,
   return executeResult?.data?.refundCreate?.refund;
 }
 
-const RESEND_API = "https://api.resend.com/emails";
+const RELAY_URL = process.env.MAIL_RELAY_URL || "http://localhost:8787/send";
+const RELAY_KEY = process.env.MAIL_RELAY_KEY || "";
+process.env.EMAIL_FROM || "Shopigent Returns <returns@shopigent.com>";
 async function sendEmail(payload) {
-  const apiKey = process.env.RESEND_API_KEY || process.env.RESEND_API_KEY_SHOPIGENT;
-  if (!apiKey) {
-    console.log("[email] No RESEND_API_KEY configured, skipping");
+  if (!RELAY_KEY) {
+    console.log("[email] No MAIL_RELAY_KEY configured, skipping");
     return false;
   }
-  const from = process.env.EMAIL_FROM || "Shopigent Returns <returns@shopigent.com>";
   try {
-    const response = await fetch(RESEND_API, {
+    const response = await fetch(RELAY_URL, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "x-relay-key": RELAY_KEY
       },
       body: JSON.stringify({
-        from,
         to: payload.to,
         subject: payload.subject,
+        text: payload.html.replace(/<[^>]*>/g, ""),
+        // strip HTML for plain text fallback
         html: payload.html
-      })
+      }),
+      signal: AbortSignal.timeout(15e3)
     });
     if (!response.ok) {
-      const err = await response.text();
-      console.error(`[email] Failed: ${err}`);
+      console.error(`[email] Relay failed: ${response.status}`);
       return false;
     }
     console.log(`[email] Sent to ${payload.to}: ${payload.subject}`);
@@ -892,8 +893,7 @@ function returnApprovedEmail(customerName, orderName, refundAmount) {
       <p>Your return for order <strong>${orderName}</strong> has been approved!</p>
       ${refundLine}
       <p>Your refund will be processed within 3-5 business days.</p>
-      <hr style="border:1px solid #eee"/>
-      <p style="color:#666;font-size:12px">Shopigent Returns — AI-powered return management</p>
+      <hr><p style="color:#666;font-size:12px">Shopigent Returns — AI-powered return management</p>
     </div>`
   };
 }
@@ -904,11 +904,10 @@ function returnDeniedEmail(customerName, orderName, reason) {
     html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
       <h2 style="color:#de3617">Return Update</h2>
       <p>Hi ${customerName},</p>
-      <p>After reviewing your return request for order <strong>${orderName}</strong>, we're unable to approve it at this time.</p>
+      <p>After reviewing your return request for order <strong>${orderName}</strong>, we're unable to approve it.</p>
       <p><strong>Reason:</strong> ${reason}</p>
-      <p>If you have questions, please contact our support team.</p>
-      <hr style="border:1px solid #eee"/>
-      <p style="color:#666;font-size:12px">Shopigent Returns — AI-powered return management</p>
+      <p>If you have questions, please contact support.</p>
+      <hr><p style="color:#666;font-size:12px">Shopigent Returns — AI-powered return management</p>
     </div>`
   };
 }
@@ -920,9 +919,8 @@ function refundProcessedEmail(customerName, orderName, amount) {
       <h2 style="color:#47c1bf">💰 Refund Processed</h2>
       <p>Hi ${customerName},</p>
       <p>Your refund of <strong>$${amount.toFixed(2)}</strong> for order <strong>${orderName}</strong> has been processed.</p>
-      <p>The refund will appear on your original payment method within 3-5 business days.</p>
-      <hr style="border:1px solid #eee"/>
-      <p style="color:#666;font-size:12px">Shopigent Returns — AI-powered return management</p>
+      <p>The refund will appear on your payment method within 3-5 business days.</p>
+      <hr><p style="color:#666;font-size:12px">Shopigent Returns — AI-powered return management</p>
     </div>`
   };
 }
