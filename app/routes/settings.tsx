@@ -113,6 +113,29 @@ export default function SettingsPage() {
               )}
             </BlockStack>
           </Card>
+
+          <Card>
+            <BlockStack gap="400">
+              <Text variant="headingMd" as="h2" fontWeight="bold">
+                Email Notifications
+              </Text>
+              <Text variant="bodyMd" as="p">
+                When the AI agent approves or denies a return, the customer receives an automatic email.
+              </Text>
+              <Banner tone="info">
+                <p>
+                  To enable emails, sign up at <strong>resend.com</strong> (free tier: 100 emails/day),
+                  get an API key, and set it as a Railway variable:
+                </p>
+                <p>
+                  <code>RESEND_API_KEY=re_xxxxxxxxxxxx</code>
+                </p>
+                <p style="margin-top: 8px;">
+                  Optionally set your sender email: <code>EMAIL_FROM=returns@yourdomain.com</code>
+                </p>
+              </Banner>
+            </BlockStack>
+          </Card>
         </Layout.Section>
       </Layout>
     </Page>

@@ -696,43 +696,61 @@ function SettingsPage() {
   const fetcher = useFetcher();
   const [copied, setCopied] = useState(false);
   const newKey = fetcher.data?.newKey;
-  return /* @__PURE__ */ jsx(Page, { title: "Settings", children: /* @__PURE__ */ jsx(Layout, { children: /* @__PURE__ */ jsx(Layout.Section, { children: /* @__PURE__ */ jsx(Card, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "400", children: [
-    /* @__PURE__ */ jsx(Text, { variant: "headingMd", as: "h2", fontWeight: "bold", children: "MCP Server" }),
-    /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", children: "The MCP (Model Context Protocol) server lets AI agents like Claude, Codex, or Grok connect to your return management system. They can analyze returns, approve/deny, check fraud, and apply policies." }),
-    /* @__PURE__ */ jsx(Banner, { tone: "info", children: /* @__PURE__ */ jsxs("p", { children: [
-      /* @__PURE__ */ jsx("strong", { children: "Endpoint:" }),
-      " ",
-      /* @__PURE__ */ jsx("code", { children: "https://returns-app-production-8384.up.railway.app/api/mcp" })
+  return /* @__PURE__ */ jsx(Page, { title: "Settings", children: /* @__PURE__ */ jsx(Layout, { children: /* @__PURE__ */ jsxs(Layout.Section, { children: [
+    /* @__PURE__ */ jsx(Card, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "400", children: [
+      /* @__PURE__ */ jsx(Text, { variant: "headingMd", as: "h2", fontWeight: "bold", children: "MCP Server" }),
+      /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", children: "The MCP (Model Context Protocol) server lets AI agents like Claude, Codex, or Grok connect to your return management system. They can analyze returns, approve/deny, check fraud, and apply policies." }),
+      /* @__PURE__ */ jsx(Banner, { tone: "info", children: /* @__PURE__ */ jsxs("p", { children: [
+        /* @__PURE__ */ jsx("strong", { children: "Endpoint:" }),
+        " ",
+        /* @__PURE__ */ jsx("code", { children: "https://returns-app-production-8384.up.railway.app/api/mcp" })
+      ] }) }),
+      newKey ? /* @__PURE__ */ jsx(Card, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "200", children: [
+        /* @__PURE__ */ jsx(Text, { variant: "headingSm", as: "h3", tone: "critical", children: "⚠️ Save this key now — it will not be shown again!" }),
+        /* @__PURE__ */ jsx("div", { style: {
+          background: "#1a1a2e",
+          color: "#fff",
+          padding: 12,
+          borderRadius: 6,
+          fontFamily: "monospace",
+          wordBreak: "break-all",
+          fontSize: 14
+        }, children: newKey }),
+        /* @__PURE__ */ jsx(Button, { onClick: () => {
+          navigator.clipboard.writeText(newKey);
+          setCopied(true);
+        }, children: copied ? "Copied!" : "Copy to clipboard" })
+      ] }) }) : /* @__PURE__ */ jsxs(Fragment, { children: [
+        /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", children: hasMcpKey ? "An MCP API key has been generated. You can generate a new one (the old key will stop working)." : "No MCP API key has been generated yet. Generate one to enable AI agent access." }),
+        /* @__PURE__ */ jsx("div", { children: /* @__PURE__ */ jsx(
+          Button,
+          {
+            variant: "primary",
+            onClick: () => {
+              fetcher.submit({ _action: "generate_key" }, { method: "post" });
+            },
+            children: hasMcpKey ? "Regenerate Key" : "Generate MCP Key"
+          }
+        ) })
+      ] })
     ] }) }),
-    newKey ? /* @__PURE__ */ jsx(Card, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "200", children: [
-      /* @__PURE__ */ jsx(Text, { variant: "headingSm", as: "h3", tone: "critical", children: "⚠️ Save this key now — it will not be shown again!" }),
-      /* @__PURE__ */ jsx("div", { style: {
-        background: "#1a1a2e",
-        color: "#fff",
-        padding: 12,
-        borderRadius: 6,
-        fontFamily: "monospace",
-        wordBreak: "break-all",
-        fontSize: 14
-      }, children: newKey }),
-      /* @__PURE__ */ jsx(Button, { onClick: () => {
-        navigator.clipboard.writeText(newKey);
-        setCopied(true);
-      }, children: copied ? "Copied!" : "Copy to clipboard" })
-    ] }) }) : /* @__PURE__ */ jsxs(Fragment, { children: [
-      /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", children: hasMcpKey ? "An MCP API key has been generated. You can generate a new one (the old key will stop working)." : "No MCP API key has been generated yet. Generate one to enable AI agent access." }),
-      /* @__PURE__ */ jsx("div", { children: /* @__PURE__ */ jsx(
-        Button,
-        {
-          variant: "primary",
-          onClick: () => {
-            fetcher.submit({ _action: "generate_key" }, { method: "post" });
-          },
-          children: hasMcpKey ? "Regenerate Key" : "Generate MCP Key"
-        }
-      ) })
-    ] })
-  ] }) }) }) }) });
+    /* @__PURE__ */ jsx(Card, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "400", children: [
+      /* @__PURE__ */ jsx(Text, { variant: "headingMd", as: "h2", fontWeight: "bold", children: "Email Notifications" }),
+      /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", children: "When the AI agent approves or denies a return, the customer receives an automatic email." }),
+      /* @__PURE__ */ jsxs(Banner, { tone: "info", children: [
+        /* @__PURE__ */ jsxs("p", { children: [
+          "To enable emails, sign up at ",
+          /* @__PURE__ */ jsx("strong", { children: "resend.com" }),
+          " (free tier: 100 emails/day), get an API key, and set it as a Railway variable:"
+        ] }),
+        /* @__PURE__ */ jsx("p", { children: /* @__PURE__ */ jsx("code", { children: "RESEND_API_KEY=re_xxxxxxxxxxxx" }) }),
+        /* @__PURE__ */ jsxs("p", { style: "margin-top: 8px;", children: [
+          "Optionally set your sender email: ",
+          /* @__PURE__ */ jsx("code", { children: "EMAIL_FROM=returns@yourdomain.com" })
+        ] })
+      ] })
+    ] }) })
+  ] }) }) });
 }
 
 const route6 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
@@ -1773,7 +1791,7 @@ const route10 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   loader
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','imports':['/assets/components-DncgAStS.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-DKs2nTP9.js','imports':['/assets/components-DncgAStS.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/context-D_7evObr.js'],'css':[]},'routes/returns._index':{'id':'routes/returns._index','parentId':'root','path':'returns','index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._index-C3iLomyR.js','imports':['/assets/components-DncgAStS.js','/assets/Link-DT2lH_uZ.js','/assets/Page-DALAsNxa.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-BMWIXkDj.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/returns.$id':{'id':'routes/returns.$id','parentId':'root','path':'returns/:id','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._id-fHZXP5B4.js','imports':['/assets/components-DncgAStS.js','/assets/Page-DALAsNxa.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/Tag-Co-U6GFW.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js'],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-Dq_38rkN.js','imports':['/assets/components-DncgAStS.js','/assets/Page-DALAsNxa.js','/assets/Banner-D6r87bZU.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/Tag-Co-U6GFW.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-D_7evObr.js','/assets/CSSTransition-CYBGIXjC.js','/assets/Checkbox-BMWIXkDj.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/settings':{'id':'routes/settings','parentId':'root','path':'settings','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/settings-B5dCOCw0.js','imports':['/assets/components-DncgAStS.js','/assets/Page-DALAsNxa.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/Banner-D6r87bZU.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/api.mcp':{'id':'routes/api.mcp','parentId':'root','path':'api/mcp','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.mcp-l0sNRNKZ.js','imports':[],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-BEReLHAI.js','imports':['/assets/components-DncgAStS.js','/assets/Link-DT2lH_uZ.js','/assets/Page-DALAsNxa.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/Banner-D6r87bZU.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-BMWIXkDj.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/return':{'id':'routes/return','parentId':'root','path':'return','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/return-Cny5URnc.js','imports':['/assets/components-DncgAStS.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/Banner-D6r87bZU.js','/assets/Checkbox-BMWIXkDj.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/banner-context-DEryxoPe.js'],'css':[]}},'url':'/assets/manifest-e6df340f.js','version':'e6df340f'};
+const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','imports':['/assets/components-DncgAStS.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-DKs2nTP9.js','imports':['/assets/components-DncgAStS.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/context-D_7evObr.js'],'css':[]},'routes/returns._index':{'id':'routes/returns._index','parentId':'root','path':'returns','index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._index-C3iLomyR.js','imports':['/assets/components-DncgAStS.js','/assets/Link-DT2lH_uZ.js','/assets/Page-DALAsNxa.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-BMWIXkDj.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/returns.$id':{'id':'routes/returns.$id','parentId':'root','path':'returns/:id','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._id-fHZXP5B4.js','imports':['/assets/components-DncgAStS.js','/assets/Page-DALAsNxa.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/Tag-Co-U6GFW.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js'],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-Dq_38rkN.js','imports':['/assets/components-DncgAStS.js','/assets/Page-DALAsNxa.js','/assets/Banner-D6r87bZU.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/Tag-Co-U6GFW.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-D_7evObr.js','/assets/CSSTransition-CYBGIXjC.js','/assets/Checkbox-BMWIXkDj.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/settings':{'id':'routes/settings','parentId':'root','path':'settings','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/settings-t7JFbb4R.js','imports':['/assets/components-DncgAStS.js','/assets/Page-DALAsNxa.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/Banner-D6r87bZU.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/api.mcp':{'id':'routes/api.mcp','parentId':'root','path':'api/mcp','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.mcp-l0sNRNKZ.js','imports':[],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-BEReLHAI.js','imports':['/assets/components-DncgAStS.js','/assets/Link-DT2lH_uZ.js','/assets/Page-DALAsNxa.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/Banner-D6r87bZU.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-BMWIXkDj.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/return':{'id':'routes/return','parentId':'root','path':'return','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/return-Cny5URnc.js','imports':['/assets/components-DncgAStS.js','/assets/ButtonGroup-BMxgp9l6.js','/assets/Banner-D6r87bZU.js','/assets/Checkbox-BMWIXkDj.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/banner-context-DEryxoPe.js'],'css':[]}},'url':'/assets/manifest-e3cf3412.js','version':'e3cf3412'};
 
 /**
        * `mode` is only relevant for the old Remix compiler but
