@@ -1,7 +1,7 @@
 # Shopigent Returns — Shopify App Config
 name = "Shopigent Returns"
 client_id = "a45ad07cce34cbc2e422170fd2032a5a"
-application_url = "https://returns-app-production-8384.up.railway.app"
+application_url = "https://returns.greeknous.com"
 embedded = true
 
 [access_scopes]

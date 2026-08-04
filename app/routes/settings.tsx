@@ -93,7 +93,7 @@ export default function SettingsPage() {
             <BlockStack gap="400">
               <Text variant="headingMd" as="h2" fontWeight="bold">MCP Server</Text>
               <Banner tone="info">
-                <Text variant="bodyMd" as="p">Endpoint: <code>https://returns-app-production-8384.up.railway.app/api/mcp</code></Text>
+                <Text variant="bodyMd" as="p">Endpoint: <code>https://returns.greeknous.com/api/mcp</code></Text>
               </Banner>
 
               {newKey ? (
