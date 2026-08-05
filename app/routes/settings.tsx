@@ -13,6 +13,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const shop = await prisma.shop.findUnique({ where: { shop: session.shop } });
   const config: any = shop?.config || {};
   return json({
+    shopDomain: session.shop,
     hasMcpKey: !!shop?.mcpApiKeyHash,
     labelConfig: {
       provider: config.labelProvider || "",
@@ -71,9 +72,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function SettingsPage() {
-  const { hasMcpKey, labelConfig } = useLoaderData<typeof loader>();
+  const { shopDomain, hasMcpKey, labelConfig } = useLoaderData<typeof loader>();
   const fetcher = useFetcher();
-  const [copied, setCopied] = useState(false);
+  const [copiedMcp, setCopiedMcp] = useState(false);
+  const [copiedPortal, setCopiedPortal] = useState(false);
   const newKey = fetcher.data?.newKey;
   const saved = fetcher.data?.saved;
 
@@ -102,8 +104,8 @@ export default function SettingsPage() {
                   <div style={{ background: "#1a1a2e", color: "#fff", padding: 12, borderRadius: 6, fontFamily: "monospace", wordBreak: "break-all" }}>
                     {newKey}
                   </div>
-                  <Button onClick={() => { navigator.clipboard.writeText(newKey); setCopied(true); }}>
-                    {copied ? "Copied!" : "Copy to clipboard"}
+                  <Button onClick={() => { navigator.clipboard.writeText(newKey); setCopiedMcp(true); }}>
+                    {copiedMcp ? "Copied!" : "Copy to clipboard"}
                   </Button>
                 </BlockStack>
               ) : (
@@ -116,6 +118,41 @@ export default function SettingsPage() {
                   </Button>
                 </BlockStack>
               )}
+            </BlockStack>
+          </Card>
+
+          <Card>
+            <BlockStack gap="400">
+              <Text variant="headingMd" as="h2" fontWeight="bold">Return Portal</Text>
+              <Text variant="bodyMd" as="p">
+                Give your customers a self-service return page. Add the link below to your store's navigation menu.
+              </Text>
+
+              <Banner tone="info">
+                <Text variant="bodyMd" as="p">
+                  Portal URL: <code style={{ wordBreak: "break-all" }}>https://returns.greeknous.com/return?shop={shopDomain}</code>
+                </Text>
+              </Banner>
+
+              <Button onClick={() => { navigator.clipboard.writeText(`https://returns.greeknous.com/return?shop=${shopDomain}`); setCopiedPortal(true); }}>
+                {copiedPortal ? "Copied!" : "📋 Copy Portal Link"}
+              </Button>
+
+              <BlockStack gap="200">
+                <Text variant="headingSm" as="h3" fontWeight="semibold">How to add to navigation</Text>
+                <ol style={{ margin: 0, paddingLeft: 20, lineHeight: 1.8 }}>
+                  <li>Go to your Shopify Admin → <strong>Online Store → Navigation</strong></li>
+                  <li>Click <strong>Main menu</strong> (or the menu of your choice)</li>
+                  <li>Click <strong>Add menu item</strong></li>
+                  <li>Name: <code>Start a Return</code></li>
+                  <li>Link: paste the portal URL above</li>
+                  <li>Click <strong>Save menu</strong></li>
+                </ol>
+              </BlockStack>
+
+              <Text variant="bodySm" as="p" tone="subdued">
+                Customers will verify their email with a one-time code before seeing their orders. Full guide: <a href="https://returns-docs-production.up.railway.app/guides/return-portal" target="_blank" rel="noreferrer">docs</a>
+              </Text>
             </BlockStack>
           </Card>
 

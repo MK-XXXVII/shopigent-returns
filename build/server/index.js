@@ -890,6 +890,7 @@ const loader$4 = async ({ request }) => {
   const shop = await prisma$1.shop.findUnique({ where: { shop: session.shop } });
   const config = shop?.config || {};
   return json({
+    shopDomain: session.shop,
     hasMcpKey: !!shop?.mcpApiKeyHash,
     labelConfig: {
       provider: config.labelProvider || "",
@@ -941,9 +942,10 @@ const action$3 = async ({ request }) => {
   return json({ ok: true });
 };
 function SettingsPage() {
-  const { hasMcpKey, labelConfig } = useLoaderData();
+  const { shopDomain, hasMcpKey, labelConfig } = useLoaderData();
   const fetcher = useFetcher();
-  const [copied, setCopied] = useState(false);
+  const [copiedMcp, setCopiedMcp] = useState(false);
+  const [copiedPortal, setCopiedPortal] = useState(false);
   const newKey = fetcher.data?.newKey;
   const saved = fetcher.data?.saved;
   const [provider, setProvider] = useState(labelConfig.provider || "sendcloud");
@@ -964,11 +966,57 @@ function SettingsPage() {
         /* @__PURE__ */ jsx("div", { style: { background: "#1a1a2e", color: "#fff", padding: 12, borderRadius: 6, fontFamily: "monospace", wordBreak: "break-all" }, children: newKey }),
         /* @__PURE__ */ jsx(Button, { onClick: () => {
           navigator.clipboard.writeText(newKey);
-          setCopied(true);
-        }, children: copied ? "Copied!" : "Copy to clipboard" })
+          setCopiedMcp(true);
+        }, children: copiedMcp ? "Copied!" : "Copy to clipboard" })
       ] }) : /* @__PURE__ */ jsxs(BlockStack, { gap: "200", children: [
         /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", children: hasMcpKey ? "An MCP key exists. Generate a new one to replace it." : "No MCP key yet. Generate one for AI agent access." }),
         /* @__PURE__ */ jsx(Button, { variant: "primary", onClick: () => fetcher.submit({ _action: "generate_key" }, { method: "post" }), children: hasMcpKey ? "Regenerate Key" : "Generate MCP Key" })
+      ] })
+    ] }) }),
+    /* @__PURE__ */ jsx(Card, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "400", children: [
+      /* @__PURE__ */ jsx(Text, { variant: "headingMd", as: "h2", fontWeight: "bold", children: "Return Portal" }),
+      /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", children: "Give your customers a self-service return page. Add the link below to your store's navigation menu." }),
+      /* @__PURE__ */ jsx(Banner, { tone: "info", children: /* @__PURE__ */ jsxs(Text, { variant: "bodyMd", as: "p", children: [
+        "Portal URL: ",
+        /* @__PURE__ */ jsxs("code", { style: { wordBreak: "break-all" }, children: [
+          "https://returns.greeknous.com/return?shop=",
+          shopDomain
+        ] })
+      ] }) }),
+      /* @__PURE__ */ jsx(Button, { onClick: () => {
+        navigator.clipboard.writeText(`https://returns.greeknous.com/return?shop=${shopDomain}`);
+        setCopiedPortal(true);
+      }, children: copiedPortal ? "Copied!" : "📋 Copy Portal Link" }),
+      /* @__PURE__ */ jsxs(BlockStack, { gap: "200", children: [
+        /* @__PURE__ */ jsx(Text, { variant: "headingSm", as: "h3", fontWeight: "semibold", children: "How to add to navigation" }),
+        /* @__PURE__ */ jsxs("ol", { style: { margin: 0, paddingLeft: 20, lineHeight: 1.8 }, children: [
+          /* @__PURE__ */ jsxs("li", { children: [
+            "Go to your Shopify Admin → ",
+            /* @__PURE__ */ jsx("strong", { children: "Online Store → Navigation" })
+          ] }),
+          /* @__PURE__ */ jsxs("li", { children: [
+            "Click ",
+            /* @__PURE__ */ jsx("strong", { children: "Main menu" }),
+            " (or the menu of your choice)"
+          ] }),
+          /* @__PURE__ */ jsxs("li", { children: [
+            "Click ",
+            /* @__PURE__ */ jsx("strong", { children: "Add menu item" })
+          ] }),
+          /* @__PURE__ */ jsxs("li", { children: [
+            "Name: ",
+            /* @__PURE__ */ jsx("code", { children: "Start a Return" })
+          ] }),
+          /* @__PURE__ */ jsx("li", { children: "Link: paste the portal URL above" }),
+          /* @__PURE__ */ jsxs("li", { children: [
+            "Click ",
+            /* @__PURE__ */ jsx("strong", { children: "Save menu" })
+          ] })
+        ] })
+      ] }),
+      /* @__PURE__ */ jsxs(Text, { variant: "bodySm", as: "p", tone: "subdued", children: [
+        "Customers will verify their email with a one-time code before seeing their orders. Full guide: ",
+        /* @__PURE__ */ jsx("a", { href: "https://returns-docs-production.up.railway.app/guides/return-portal", target: "_blank", rel: "noreferrer", children: "docs" })
       ] })
     ] }) }),
     /* @__PURE__ */ jsx(Card, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "400", children: [
@@ -1989,45 +2037,107 @@ const route10 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
 
 const loader = async ({ request }) => {
   const url = new URL(request.url);
-  const shop = url.searchParams.get("shop") || "bundlebuzz-store.myshopify.com";
+  const shop = url.searchParams.get("shop") || "";
   return json({ shop });
 };
+function generateOtpCode() {
+  return Math.floor(1e5 + Math.random() * 9e5).toString();
+}
 const action = async ({ request }) => {
   const formData = await request.formData();
   const _action = formData.get("_action");
-  const shop = formData.get("shop") || "bundlebuzz-store.myshopify.com";
-  const email = formData.get("email");
-  formData.get("orderName");
+  const shop = formData.get("shop") || "";
+  const email = (formData.get("email") || "").trim().toLowerCase();
+  if (!shop) {
+    return json({ error: "Missing store information. Please use the link provided by the store." });
+  }
+  if (!email) {
+    return json({ error: "Email is required." });
+  }
   const session = await prisma$1.session.findFirst({
     where: { shop, isOnline: false }
   });
   if (!session?.accessToken) {
-    return json({ error: "Store not connected. Please try again later." }, { status: 400 });
+    return json({ error: "Store is not connected. Please try again later." }, { status: 400 });
   }
-  if (_action === "lookup") {
+  if (_action === "request_otp") {
+    const customerQuery = `{
+      customers(first: 1, query: "${email}") {
+        edges { node { id firstName lastName } }
+      }
+    }`;
+    try {
+      const response = await fetch(`https://${shop}/admin/api/2024-10/graphql.json`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Shopify-Access-Token": session.accessToken
+        },
+        body: JSON.stringify({ query: customerQuery })
+      });
+      const data = await response.json();
+      const customer = data?.data?.customers?.edges?.[0]?.node;
+      if (!customer) {
+        return json({ error: "No customer found with this email in this store." });
+      }
+    } catch (err) {
+      return json({ error: `Failed to verify email: ${err.message}` });
+    }
+    const code = generateOtpCode();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1e3);
+    await prisma$1.otpCode.updateMany({
+      where: { shop, email, used: false },
+      data: { used: true }
+    });
+    await prisma$1.otpCode.create({
+      data: { shop, email, code, expiresAt }
+    });
+    const sent = await sendEmail({
+      to: email,
+      subject: `Your verification code — Shopigent Returns`,
+      html: `<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:20px">
+        <h2 style="color:#7C3AED">Shopigent Returns</h2>
+        <p>Your verification code is:</p>
+        <div style="font-size:32px;font-weight:bold;letter-spacing:6px;text-align:center;padding:16px;background:#f3f0ff;border-radius:8px;margin:16px 0;color:#7C3AED">${code}</div>
+        <p>This code expires in <strong>10 minutes</strong>.</p>
+        <hr><p style="color:#666;font-size:12px">Shopigent Returns — AI-powered return management</p>
+      </div>`
+    });
+    if (!sent) {
+      return json({ error: "Failed to send verification email. Please try again." });
+    }
+    return json({ otpSent: true, email });
+  }
+  if (_action === "verify_otp") {
+    const code = (formData.get("code") || "").trim();
+    if (!code || code.length !== 6) {
+      return json({ error: "Please enter the 6-digit code sent to your email." });
+    }
+    const otp = await prisma$1.otpCode.findFirst({
+      where: { shop, email, code, used: false, expiresAt: { gte: /* @__PURE__ */ new Date() } }
+    });
+    if (!otp) {
+      return json({ error: "Invalid or expired code. Please request a new one." });
+    }
+    await prisma$1.otpCode.update({
+      where: { id: otp.id },
+      data: { used: true }
+    });
     const query = `{
       customers(first: 1, query: "${email}") {
         edges {
           node {
-            id
-            firstName
-            lastName
+            id firstName lastName
             orders(first: 20, sortKey: CREATED_AT, reverse: true) {
               edges {
                 node {
-                  id
-                  name
-                  createdAt
-                  totalPriceSet {
-                    shopMoney { amount currencyCode }
-                  }
+                  id name createdAt
+                  totalPriceSet { shopMoney { amount currencyCode } }
                   fulfillments(first: 5) { edges { node { status } } }
                   lineItems(first: 20) {
                     edges {
                       node {
-                        id
-                        title
-                        quantity
+                        id title quantity
                         variant { id sku }
                         originalUnitPriceSet { shopMoney { amount } }
                       }
@@ -2041,17 +2151,14 @@ const action = async ({ request }) => {
       }
     }`;
     try {
-      const response = await fetch(
-        `https://${shop}/admin/api/2024-10/graphql.json`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Shopify-Access-Token": session.accessToken
-          },
-          body: JSON.stringify({ query })
-        }
-      );
+      const response = await fetch(`https://${shop}/admin/api/2024-10/graphql.json`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Shopify-Access-Token": session.accessToken
+        },
+        body: JSON.stringify({ query })
+      });
       const data = await response.json();
       const customer = data?.data?.customers?.edges?.[0]?.node;
       if (!customer) {
@@ -2077,7 +2184,12 @@ const action = async ({ request }) => {
           fulfilled: node.fulfillments?.edges?.length > 0
         };
       });
-      return json({ customer: { name: `${customer.firstName || ""} ${customer.lastName || ""}`.trim() }, orders });
+      return json({
+        verified: true,
+        customer: { name: `${customer.firstName || ""} ${customer.lastName || ""}`.trim() },
+        orders,
+        email
+      });
     } catch (err) {
       return json({ error: `Failed to look up orders: ${err.message}` });
     }
@@ -2112,24 +2224,22 @@ function ReturnPortal() {
   const { shop } = useLoaderData();
   const fetcher = useFetcher();
   const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [selectedItems, setSelectedItems] = useState([]);
   const [reason, setReason] = useState("");
   const data = fetcher.data;
-  const isLookup = fetcher.state === "submitting" && fetcher.formData?.get("_action") === "lookup";
+  const isSubmitting = fetcher.state === "submitting";
+  const otpSent = data?.otpSent === true;
+  const verified = data?.verified === true;
+  const success = data?.success === true;
+  const error = data?.error;
   const orders = data?.orders || [];
   const customer = data?.customer;
-  const error = data?.error;
-  const success = data?.success;
   const toggleItem = (itemId) => {
     setSelectedItems(
       (prev) => prev.includes(itemId) ? prev.filter((id) => id !== itemId) : [...prev, itemId]
     );
-  };
-  const handleLookup = () => {
-    setSelectedOrder(null);
-    setSelectedItems([]);
-    setReason("");
   };
   if (success) {
     return /* @__PURE__ */ jsx("div", { style: { maxWidth: 600, margin: "40px auto", padding: 20 }, children: /* @__PURE__ */ jsx(Card, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "400", align: "center", children: [
@@ -2140,9 +2250,14 @@ function ReturnPortal() {
   }
   return /* @__PURE__ */ jsx("div", { style: { maxWidth: 800, margin: "40px auto", padding: 20 }, children: /* @__PURE__ */ jsx(Card, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "400", children: [
     /* @__PURE__ */ jsx(Text, { variant: "headingXl", as: "h1", fontWeight: "bold", children: "Start a Return" }),
-    /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", tone: "subdued", children: "Enter your email and find your order to start a return or exchange." }),
-    /* @__PURE__ */ jsxs(fetcher.Form, { method: "post", onSubmit: handleLookup, children: [
-      /* @__PURE__ */ jsx("input", { type: "hidden", name: "_action", value: "lookup" }),
+    /* @__PURE__ */ jsxs(Text, { variant: "bodyMd", as: "p", tone: "subdued", children: [
+      !otpSent && !verified && "Enter your email to receive a verification code.",
+      otpSent && !verified && "Enter the 6-digit code sent to your email.",
+      verified && `Welcome, ${customer?.name || ""}! Select an order to return items from.`
+    ] }),
+    error && /* @__PURE__ */ jsx(Banner, { tone: "critical", children: error }),
+    !otpSent && !verified && /* @__PURE__ */ jsxs(fetcher.Form, { method: "post", children: [
+      /* @__PURE__ */ jsx("input", { type: "hidden", name: "_action", value: "request_otp" }),
       /* @__PURE__ */ jsx("input", { type: "hidden", name: "shop", value: shop }),
       /* @__PURE__ */ jsxs(BlockStack, { gap: "300", children: [
         /* @__PURE__ */ jsx(
@@ -2158,123 +2273,94 @@ function ReturnPortal() {
             required: true
           }
         ),
-        /* @__PURE__ */ jsx(Button, { submit: true, variant: "primary", loading: isLookup, disabled: !email, children: "Look Up My Orders" })
+        /* @__PURE__ */ jsx(Button, { submit: true, variant: "primary", loading: isSubmitting && fetcher.formData?.get("_action") === "request_otp", disabled: !email, children: "Send Verification Code" })
       ] })
     ] }),
-    error && /* @__PURE__ */ jsx(Banner, { tone: "critical", children: error }),
-    orders.length > 0 && customer && /* @__PURE__ */ jsxs(BlockStack, { gap: "300", children: [
-      /* @__PURE__ */ jsxs(Text, { variant: "headingMd", as: "h2", fontWeight: "bold", children: [
-        "Welcome, ",
-        customer.name,
-        "!"
-      ] }),
-      /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", children: "Select an order to return items from:" }),
-      orders.map((order) => {
-        const orderTotal = parseFloat(order.total);
-        const isSelected = selectedOrder === order.id;
-        return /* @__PURE__ */ jsxs(
-          Card,
+    otpSent && !verified && /* @__PURE__ */ jsxs(fetcher.Form, { method: "post", children: [
+      /* @__PURE__ */ jsx("input", { type: "hidden", name: "_action", value: "verify_otp" }),
+      /* @__PURE__ */ jsx("input", { type: "hidden", name: "shop", value: shop }),
+      /* @__PURE__ */ jsx("input", { type: "hidden", name: "email", value: data.email || email }),
+      /* @__PURE__ */ jsxs(BlockStack, { gap: "300", children: [
+        /* @__PURE__ */ jsx(
+          TextField,
           {
-            background: isSelected ? "bg-surface-experimental" : void 0,
-            children: [
-              /* @__PURE__ */ jsx(
-                "div",
-                {
-                  style: { cursor: "pointer" },
-                  onClick: () => {
-                    setSelectedOrder(isSelected ? null : order.id);
-                    setSelectedItems([]);
-                  },
-                  children: /* @__PURE__ */ jsxs(InlineStack, { align: "space-between", children: [
-                    /* @__PURE__ */ jsxs(BlockStack, { gap: "100", children: [
-                      /* @__PURE__ */ jsx(Text, { variant: "headingSm", as: "h3", fontWeight: "bold", children: order.name }),
-                      /* @__PURE__ */ jsxs(Text, { variant: "bodySm", as: "p", tone: "subdued", children: [
-                        new Date(order.createdAt).toLocaleDateString(),
-                        " · ",
-                        order.currency,
-                        " $",
-                        orderTotal.toFixed(2)
-                      ] })
-                    ] }),
-                    order.fulfilled && /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "span", tone: "success", children: "Delivered" })
-                  ] })
-                }
-              ),
-              isSelected && /* @__PURE__ */ jsx("div", { style: { marginTop: 16 }, children: /* @__PURE__ */ jsxs(fetcher.Form, { method: "post", children: [
-                /* @__PURE__ */ jsx("input", { type: "hidden", name: "_action", value: "submit_return" }),
-                /* @__PURE__ */ jsx("input", { type: "hidden", name: "shop", value: shop }),
-                /* @__PURE__ */ jsx("input", { type: "hidden", name: "orderId", value: order.id }),
-                /* @__PURE__ */ jsx("input", { type: "hidden", name: "orderName2", value: order.name }),
-                /* @__PURE__ */ jsx("input", { type: "hidden", name: "customerName", value: customer.name }),
-                /* @__PURE__ */ jsx("input", { type: "hidden", name: "customerEmail", value: email }),
-                /* @__PURE__ */ jsx("input", { type: "hidden", name: "selectedItems", value: JSON.stringify(
-                  order.items.filter((i) => selectedItems.includes(i.id))
-                ) }),
-                /* @__PURE__ */ jsx("input", { type: "hidden", name: "reason", value: reason }),
-                /* @__PURE__ */ jsxs(BlockStack, { gap: "300", children: [
-                  /* @__PURE__ */ jsx(Text, { variant: "headingSm", as: "h4", fontWeight: "bold", children: "Select items to return:" }),
-                  order.items.map((item) => /* @__PURE__ */ jsxs(
-                    "div",
-                    {
-                      style: {
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 12,
-                        padding: "8px 0",
-                        borderBottom: "1px solid #e0e0e0"
-                      },
-                      children: [
-                        /* @__PURE__ */ jsx(
-                          Checkbox,
-                          {
-                            label: "",
-                            checked: selectedItems.includes(item.id),
-                            onChange: () => toggleItem(item.id)
-                          }
-                        ),
-                        /* @__PURE__ */ jsxs("div", { style: { flex: 1 }, children: [
-                          /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "span", fontWeight: "bold", children: item.title }),
-                          /* @__PURE__ */ jsxs(Text, { variant: "bodySm", as: "p", tone: "subdued", children: [
-                            "x",
-                            item.quantity,
-                            " · $",
-                            item.price,
-                            item.sku && ` · SKU: ${item.sku}`
-                          ] })
-                        ] })
-                      ]
-                    },
-                    item.id
-                  )),
-                  /* @__PURE__ */ jsx(
-                    TextField,
-                    {
-                      label: "Reason for return",
-                      name: "reason",
-                      value: reason,
-                      onChange: setReason,
-                      placeholder: "e.g. Wrong size, defective, changed mind...",
-                      multiline: 2
-                    }
-                  ),
-                  /* @__PURE__ */ jsx(
-                    Button,
-                    {
-                      submit: true,
-                      variant: "primary",
-                      disabled: selectedItems.length === 0,
-                      children: "Submit Return Request"
-                    }
-                  )
-                ] })
-              ] }) })
-            ]
-          },
-          order.id
-        );
-      })
+            label: "Verification Code",
+            type: "text",
+            name: "code",
+            value: code,
+            onChange: setCode,
+            placeholder: "000000",
+            maxLength: 6,
+            autoComplete: "one-time-code",
+            required: true
+          }
+        ),
+        /* @__PURE__ */ jsx(Button, { submit: true, variant: "primary", loading: isSubmitting && fetcher.formData?.get("_action") === "verify_otp", disabled: code.length !== 6, children: "Verify & Look Up Orders" })
+      ] })
     ] }),
-    !isLookup && orders.length === 0 && !error && /* @__PURE__ */ jsx(Banner, { tone: "info", children: /* @__PURE__ */ jsx("p", { children: "Enter your email above to find your orders and start a return." }) })
+    verified && orders.length > 0 && /* @__PURE__ */ jsx(BlockStack, { gap: "300", children: orders.map((order) => {
+      const orderTotal = parseFloat(order.total);
+      const isSelected = selectedOrder === order.id;
+      return /* @__PURE__ */ jsxs(Card, { background: isSelected ? "bg-surface-experimental" : void 0, children: [
+        /* @__PURE__ */ jsx("div", { style: { cursor: "pointer" }, onClick: () => {
+          setSelectedOrder(isSelected ? null : order.id);
+          setSelectedItems([]);
+        }, children: /* @__PURE__ */ jsxs(InlineStack, { align: "space-between", children: [
+          /* @__PURE__ */ jsxs(BlockStack, { gap: "100", children: [
+            /* @__PURE__ */ jsx(Text, { variant: "headingSm", as: "h3", fontWeight: "bold", children: order.name }),
+            /* @__PURE__ */ jsxs(Text, { variant: "bodySm", as: "p", tone: "subdued", children: [
+              new Date(order.createdAt).toLocaleDateString(),
+              " · ",
+              order.currency,
+              " $",
+              orderTotal.toFixed(2)
+            ] })
+          ] }),
+          order.fulfilled && /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "span", tone: "success", children: "Delivered" })
+        ] }) }),
+        isSelected && /* @__PURE__ */ jsx("div", { style: { marginTop: 16 }, children: /* @__PURE__ */ jsxs(fetcher.Form, { method: "post", children: [
+          /* @__PURE__ */ jsx("input", { type: "hidden", name: "_action", value: "submit_return" }),
+          /* @__PURE__ */ jsx("input", { type: "hidden", name: "shop", value: shop }),
+          /* @__PURE__ */ jsx("input", { type: "hidden", name: "orderId", value: order.id }),
+          /* @__PURE__ */ jsx("input", { type: "hidden", name: "orderName2", value: order.name }),
+          /* @__PURE__ */ jsx("input", { type: "hidden", name: "customerName", value: customer?.name || "" }),
+          /* @__PURE__ */ jsx("input", { type: "hidden", name: "customerEmail", value: data.email || "" }),
+          /* @__PURE__ */ jsx("input", { type: "hidden", name: "selectedItems", value: JSON.stringify(
+            order.items.filter((i) => selectedItems.includes(i.id))
+          ) }),
+          /* @__PURE__ */ jsx("input", { type: "hidden", name: "reason", value: reason }),
+          /* @__PURE__ */ jsxs(BlockStack, { gap: "300", children: [
+            /* @__PURE__ */ jsx(Text, { variant: "headingSm", as: "h4", fontWeight: "bold", children: "Select items to return:" }),
+            order.items.map((item) => /* @__PURE__ */ jsxs("div", { style: { display: "flex", alignItems: "center", gap: 12, padding: "8px 0", borderBottom: "1px solid #e0e0e0" }, children: [
+              /* @__PURE__ */ jsx(Checkbox, { label: "", checked: selectedItems.includes(item.id), onChange: () => toggleItem(item.id) }),
+              /* @__PURE__ */ jsxs("div", { style: { flex: 1 }, children: [
+                /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "span", fontWeight: "bold", children: item.title }),
+                /* @__PURE__ */ jsxs(Text, { variant: "bodySm", as: "p", tone: "subdued", children: [
+                  "x",
+                  item.quantity,
+                  " · $",
+                  item.price,
+                  item.sku && ` · SKU: ${item.sku}`
+                ] })
+              ] })
+            ] }, item.id)),
+            /* @__PURE__ */ jsx(
+              TextField,
+              {
+                label: "Reason for return",
+                name: "reason",
+                value: reason,
+                onChange: setReason,
+                placeholder: "e.g. Wrong size, defective, changed mind...",
+                multiline: 2
+              }
+            ),
+            /* @__PURE__ */ jsx(Button, { submit: true, variant: "primary", disabled: selectedItems.length === 0, children: "Submit Return Request" })
+          ] })
+        ] }) })
+      ] }, order.id);
+    }) }),
+    verified && orders.length === 0 && !error && /* @__PURE__ */ jsx(Banner, { tone: "info", children: /* @__PURE__ */ jsx("p", { children: "No orders found for this email." }) })
   ] }) }) });
 }
 
@@ -2285,7 +2371,7 @@ const route11 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   loader
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','imports':['/assets/components-DncgAStS.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-DW2RugKk.js','imports':['/assets/components-DncgAStS.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/context-D_7evObr.js'],'css':[]},'routes/returns._index':{'id':'routes/returns._index','parentId':'root','path':'returns','index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._index-BNn-okAg.js','imports':['/assets/components-DncgAStS.js','/assets/Link-D87bG4BI.js','/assets/Page-BRr42oR8.js','/assets/ButtonGroup-DjCCD5EX.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-a6VN9RyV.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/returns.$id':{'id':'routes/returns.$id','parentId':'root','path':'returns/:id','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._id-Dexd_3jt.js','imports':['/assets/components-DncgAStS.js','/assets/Page-BRr42oR8.js','/assets/ButtonGroup-DjCCD5EX.js','/assets/Tag-BBpjTkTH.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js'],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/analytics':{'id':'routes/analytics','parentId':'root','path':'analytics','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/analytics-C061lObq.js','imports':['/assets/components-DncgAStS.js','/assets/Page-BRr42oR8.js','/assets/ButtonGroup-DjCCD5EX.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js'],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-DRs8w0RL.js','imports':['/assets/components-DncgAStS.js','/assets/Page-BRr42oR8.js','/assets/Banner-HF13MGyT.js','/assets/ButtonGroup-DjCCD5EX.js','/assets/Tag-BBpjTkTH.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-D_7evObr.js','/assets/CSSTransition-CYBGIXjC.js','/assets/Checkbox-a6VN9RyV.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/settings':{'id':'routes/settings','parentId':'root','path':'settings','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/settings-CCk4TOYm.js','imports':['/assets/components-DncgAStS.js','/assets/Page-BRr42oR8.js','/assets/Banner-HF13MGyT.js','/assets/ButtonGroup-DjCCD5EX.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/api.mcp':{'id':'routes/api.mcp','parentId':'root','path':'api/mcp','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.mcp-l0sNRNKZ.js','imports':[],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-CSS7T_OY.js','imports':['/assets/components-DncgAStS.js','/assets/Link-D87bG4BI.js','/assets/Page-BRr42oR8.js','/assets/ButtonGroup-DjCCD5EX.js','/assets/Banner-HF13MGyT.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-a6VN9RyV.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/return':{'id':'routes/return','parentId':'root','path':'return','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/return-Bt11Nt_z.js','imports':['/assets/components-DncgAStS.js','/assets/ButtonGroup-DjCCD5EX.js','/assets/Banner-HF13MGyT.js','/assets/Checkbox-a6VN9RyV.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/banner-context-DEryxoPe.js'],'css':[]}},'url':'/assets/manifest-d9903abb.js','version':'d9903abb'};
+const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','imports':['/assets/components-DncgAStS.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-DW2RugKk.js','imports':['/assets/components-DncgAStS.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/context-D_7evObr.js'],'css':[]},'routes/returns._index':{'id':'routes/returns._index','parentId':'root','path':'returns','index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._index-BNn-okAg.js','imports':['/assets/components-DncgAStS.js','/assets/Link-D87bG4BI.js','/assets/Page-BRr42oR8.js','/assets/ButtonGroup-DjCCD5EX.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-a6VN9RyV.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/returns.$id':{'id':'routes/returns.$id','parentId':'root','path':'returns/:id','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._id-Dexd_3jt.js','imports':['/assets/components-DncgAStS.js','/assets/Page-BRr42oR8.js','/assets/ButtonGroup-DjCCD5EX.js','/assets/Tag-BBpjTkTH.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js'],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/analytics':{'id':'routes/analytics','parentId':'root','path':'analytics','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/analytics-C061lObq.js','imports':['/assets/components-DncgAStS.js','/assets/Page-BRr42oR8.js','/assets/ButtonGroup-DjCCD5EX.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js'],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-DRs8w0RL.js','imports':['/assets/components-DncgAStS.js','/assets/Page-BRr42oR8.js','/assets/Banner-HF13MGyT.js','/assets/ButtonGroup-DjCCD5EX.js','/assets/Tag-BBpjTkTH.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-D_7evObr.js','/assets/CSSTransition-CYBGIXjC.js','/assets/Checkbox-a6VN9RyV.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/settings':{'id':'routes/settings','parentId':'root','path':'settings','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/settings-C4LAlPVc.js','imports':['/assets/components-DncgAStS.js','/assets/Page-BRr42oR8.js','/assets/Banner-HF13MGyT.js','/assets/ButtonGroup-DjCCD5EX.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/api.mcp':{'id':'routes/api.mcp','parentId':'root','path':'api/mcp','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.mcp-l0sNRNKZ.js','imports':[],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-CSS7T_OY.js','imports':['/assets/components-DncgAStS.js','/assets/Link-D87bG4BI.js','/assets/Page-BRr42oR8.js','/assets/ButtonGroup-DjCCD5EX.js','/assets/Banner-HF13MGyT.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-a6VN9RyV.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/return':{'id':'routes/return','parentId':'root','path':'return','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/return-CEsaTq4U.js','imports':['/assets/components-DncgAStS.js','/assets/ButtonGroup-DjCCD5EX.js','/assets/Banner-HF13MGyT.js','/assets/Checkbox-a6VN9RyV.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/banner-context-DEryxoPe.js'],'css':[]}},'url':'/assets/manifest-7d162507.js','version':'7d162507'};
 
 /**
        * `mode` is only relevant for the old Remix compiler but

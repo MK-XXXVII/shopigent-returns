@@ -85,6 +85,19 @@ model Policy {
   @@index([shop, isActive])
 }
 
+model OtpCode {
+  id        String   @id @default(uuid())
+  shop      String
+  email     String
+  code      String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([shop, email])
+  @@index([shop, email, code])
+}
+
 model FraudSignal {
   id        String   @id @default(uuid())
   returnId  String
