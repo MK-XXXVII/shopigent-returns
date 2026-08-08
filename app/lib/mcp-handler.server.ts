@@ -3,6 +3,7 @@ import { executeRefund } from "./shopify-admin.server";
 import { sendEmail, returnApprovedEmail, returnDeniedEmail, refundProcessedEmail } from "./email.server";
 import { createReturnLabel } from "./label-provider.server";
 import { issueConfirmationToken, verifyConfirmationToken } from "./confirmation.server";
+import { getPlanTier, isToolAllowed, checkPlanLimit } from "./plans.server";
 import { RETURNS_TOOLS } from "./mcp-types";
 
 function jsonRpcError(id: string | number, code: number, message: string) {
@@ -33,6 +34,16 @@ export async function handleMcpRequest(body: any, shop?: string) {
     case "tools/call": {
       const toolName = params?.name;
       const args = params?.arguments || {};
+
+      // Plan-based access control
+      if (shop) {
+        const shopRec = await prisma.shop.findUnique({ where: { shop } });
+        const planTier = getPlanTier(shopRec?.planName);
+        const { allowed, requiredPlan } = isToolAllowed(toolName, planTier);
+        if (!allowed) {
+          return jsonRpcError(id, -32001, `Upgrade to ${requiredPlan?.toUpperCase()} plan to use this tool.`);
+        }
+      }
 
       switch (toolName) {
         case "analyze_return": {
