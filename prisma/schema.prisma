@@ -132,6 +132,7 @@ model Shop {
   email         String?
   domain        String?
   planName      String?
+  planStatus    String?
   installedAt   DateTime  @default(now())
   uninstalledAt DateTime?
   mcpApiKeyHash String? @unique

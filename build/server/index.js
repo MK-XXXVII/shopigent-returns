@@ -1,12 +1,13 @@
 import { jsx, jsxs, Fragment } from 'react/jsx-runtime';
 import { RemixServer, useLoaderData, Meta, Links, Outlet, Link, ScrollRestoration, Scripts, useRouteError, isRouteErrorResponse, useFetcher } from '@remix-run/react';
 import { renderToString } from 'react-dom/server';
-import { AppProvider, useIndexResourceState, IndexTable, Link as Link$1, Badge, Page, Layout, BlockStack, Card, Text, EmptyState, InlineStack, Button, Tag, Banner, Modal, Checkbox, TextField, Select } from '@shopify/polaris';
+import { AppProvider, useIndexResourceState, IndexTable, Link as Link$1, Badge, Page, Layout, BlockStack, Card, Text, EmptyState, Banner, InlineGrid, InlineStack, Box, Button, Tag, Modal, Checkbox, TextField, Select } from '@shopify/polaris';
 import { AppProvider as AppProvider$1 } from '@shopify/shopify-app-remix/react';
 import { NavMenu, TitleBar } from '@shopify/app-bridge-react';
 import '@shopify/shopify-app-remix/server/adapters/node';
 import { shopifyApp, AppDistribution, ApiVersion } from '@shopify/shopify-app-remix/server';
 import { PrismaSessionStorage } from '@shopify/shopify-app-session-storage-prisma';
+import { BillingInterval } from '@shopify/shopify-api';
 import { PrismaClient } from '@prisma/client';
 import { json } from '@remix-run/node';
 import { useState, useEffect } from 'react';
@@ -50,6 +51,23 @@ const shopify = shopifyApp({
   authPathPrefix: "/api/auth",
   sessionStorage: new PrismaSessionStorage(prisma$1),
   distribution: AppDistribution.AppStore,
+  billing: {
+    free: {
+      lineItems: [
+        { amount: 0, currencyCode: "USD", interval: BillingInterval.Every30Days }
+      ]
+    },
+    growth: {
+      lineItems: [
+        { amount: 9.99, currencyCode: "USD", interval: BillingInterval.Every30Days }
+      ]
+    },
+    pro: {
+      lineItems: [
+        { amount: 29, currencyCode: "USD", interval: BillingInterval.Every30Days }
+      ]
+    }
+  },
   future: {
     unstable_newEmbeddedAuthStrategy: true,
     expiringOfflineAccessTokens: true
@@ -61,7 +79,7 @@ const registerWebhooks = shopify.registerWebhooks;
 shopify.sessionStorage;
 
 const links = () => [{ rel: "stylesheet", href: polarisStyles }];
-const loader$a = async ({ request }) => {
+const loader$b = async ({ request }) => {
   const url = new URL(request.url);
   const isPublic = url.pathname.startsWith("/return");
   if (!isPublic) {
@@ -125,7 +143,7 @@ const route0 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   ErrorBoundary,
   default: App,
   links,
-  loader: loader$a
+  loader: loader$b
 }, Symbol.toStringTag, { value: 'Module' }));
 
 const STATUS_COLORS$1 = {
@@ -137,7 +155,7 @@ const STATUS_COLORS$1 = {
   REFUNDED: "success",
   CLOSED: "new"
 };
-const loader$9 = async ({ request }) => {
+const loader$a = async ({ request }) => {
   const { session } = await shopify.authenticate.admin(request);
   const url = new URL(request.url);
   const status = url.searchParams.get("status") || void 0;
@@ -247,10 +265,10 @@ function ReturnsPage() {
 const route1 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   default: ReturnsPage,
-  loader: loader$9
+  loader: loader$a
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const action$5 = async ({ request }) => {
+const action$6 = async ({ request }) => {
   try {
     const { topic, shop, session, admin } = await shopify.authenticate.webhook(request);
     const payload = await request.json();
@@ -314,7 +332,145 @@ const action$5 = async ({ request }) => {
 
 const route2 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
-  action: action$5
+  action: action$6
+}, Symbol.toStringTag, { value: 'Module' }));
+
+const PLANS = [
+  {
+    key: "free",
+    name: "Free",
+    price: 0,
+    tagline: "AI-powered return management essentials.",
+    features: [
+      "10 returns/month",
+      "Basic policy engine",
+      "Customer return portal",
+      "MCP read-only access",
+      "Email support"
+    ]
+  },
+  {
+    key: "growth",
+    name: "Growth",
+    price: 9.99,
+    highlight: true,
+    badge: "Most popular",
+    tagline: "Automate returns with AI agents.",
+    features: [
+      "Unlimited returns",
+      "Auto-approve policies",
+      "Fraud detection",
+      "Full MCP access (read + write)",
+      "Refund execution",
+      "Email notifications",
+      "Analytics dashboard",
+      "7-day free trial"
+    ]
+  },
+  {
+    key: "pro",
+    name: "Pro",
+    price: 29,
+    badge: "Best value",
+    tagline: "Everything automated — labels, exchanges, SMS.",
+    features: [
+      "Everything in Growth",
+      "Label generation (SendCloud/Shippo/EasyPost)",
+      "Exchange workflow",
+      "SMS alerts",
+      "Advanced fraud detection",
+      "Full analytics + export",
+      "Priority support",
+      "7-day free trial"
+    ]
+  }
+];
+const loader$9 = async ({ request }) => {
+  const { session } = await authenticate.admin(request);
+  const shop = await prisma$1.shop.upsert({
+    where: { shop: session.shop },
+    update: {},
+    create: { shop: session.shop, id: session.shop }
+  });
+  return { currentPlan: shop.planName, planStatus: shop.planStatus };
+};
+const action$5 = async ({ request }) => {
+  const { admin, billing, session } = await authenticate.admin(request);
+  const formData = await request.formData();
+  const planKey = String(formData.get("planKey"));
+  const plan = PLANS.find((p) => p.key === planKey);
+  if (!plan) return Response.json({ ok: false, error: "Unknown plan" });
+  const appHandle = process.env.SHOPIFY_APP_HANDLE || "shopigent-returns";
+  const shopName = session.shop.replace(/\.myshopify\.com$/, "");
+  const pricingUrl = `https://admin.shopify.com/store/${shopName}/charges/${appHandle}/pricing_plans`;
+  await prisma$1.shop.upsert({
+    where: { shop: session.shop },
+    update: { planName: planKey, planStatus: "active" },
+    create: { shop: session.shop, id: session.shop, planName: planKey, planStatus: "active" }
+  }).catch(() => {
+  });
+  return Response.json({ ok: true, redirectUrl: pricingUrl });
+};
+function BillingPage() {
+  const { currentPlan } = useLoaderData();
+  const fetcher = useFetcher();
+  const choosePlan = (planKey) => fetcher.submit({ planKey }, { method: "POST" });
+  if (fetcher.data?.ok === true && fetcher.data.redirectUrl) {
+    window.top.location.href = fetcher.data.redirectUrl;
+  }
+  return /* @__PURE__ */ jsxs(Page, { children: [
+    /* @__PURE__ */ jsx(TitleBar, { title: "Billing" }),
+    fetcher.data?.ok === false && /* @__PURE__ */ jsx(Banner, { tone: "critical", children: /* @__PURE__ */ jsxs(Text, { as: "p", variant: "bodyMd", children: [
+      "Billing error: ",
+      fetcher.data.error
+    ] }) }),
+    /* @__PURE__ */ jsxs(BlockStack, { gap: "500", children: [
+      /* @__PURE__ */ jsx(InlineGrid, { columns: { xs: 1, sm: 2, md: 3 }, gap: "400", children: PLANS.map((plan) => {
+        const isCurrent = currentPlan === plan.key;
+        const isPopular = plan.highlight;
+        return /* @__PURE__ */ jsx(Card, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "400", align: "space-between", children: [
+          /* @__PURE__ */ jsxs(BlockStack, { gap: "300", children: [
+            /* @__PURE__ */ jsxs(InlineStack, { align: "space-between", blockAlign: "center", children: [
+              /* @__PURE__ */ jsxs(InlineStack, { gap: "200", blockAlign: "center", children: [
+                /* @__PURE__ */ jsx(Text, { as: "h2", variant: "headingLg", children: plan.name }),
+                plan.badge && /* @__PURE__ */ jsx(Badge, { tone: isPopular ? "success" : "info", children: plan.badge })
+              ] }),
+              isCurrent && /* @__PURE__ */ jsx(Badge, { tone: "success", children: "Current" })
+            ] }),
+            /* @__PURE__ */ jsx(Text, { as: "p", variant: "bodySm", tone: "subdued", children: plan.tagline }),
+            /* @__PURE__ */ jsx(Box, { minHeight: "56", children: /* @__PURE__ */ jsxs(InlineStack, { gap: "100", blockAlign: "baseline", children: [
+              /* @__PURE__ */ jsx(Text, { as: "p", variant: "heading2xl", children: plan.price === 0 ? "Free" : `$${plan.price}` }),
+              plan.price > 0 && /* @__PURE__ */ jsx(Text, { as: "span", variant: "bodyMd", tone: "subdued", children: "/month" })
+            ] }) }),
+            /* @__PURE__ */ jsx(Box, { children: /* @__PURE__ */ jsx(BlockStack, { gap: "150", children: plan.features.map((f) => /* @__PURE__ */ jsx(Box, { background: "bg-surface-secondary", padding: "200", borderRadius: "200", children: /* @__PURE__ */ jsxs(InlineStack, { gap: "150", align: "start", children: [
+              /* @__PURE__ */ jsx("span", { style: { color: "var(--p-color-text-success)", fontWeight: 700 }, children: "✓" }),
+              /* @__PURE__ */ jsx(Text, { as: "p", variant: "bodySm", children: f })
+            ] }) }, f)) }) })
+          ] }),
+          /* @__PURE__ */ jsx(
+            Button,
+            {
+              variant: "secondary",
+              disabled: isCurrent,
+              loading: fetcher.state !== "idle",
+              onClick: () => choosePlan(plan.key),
+              fullWidth: true,
+              size: "large",
+              children: isCurrent ? "Current plan" : plan.price === 0 ? "Get started" : "Choose plan"
+            }
+          )
+        ] }) }, plan.key);
+      }) }),
+      /* @__PURE__ */ jsx(Banner, { tone: "info", children: /* @__PURE__ */ jsx(Text, { as: "p", variant: "bodyMd", children: "Paid plans include a 7-day free trial. You can upgrade, downgrade, or cancel anytime." }) })
+    ] })
+  ] });
+}
+
+const route3 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+  __proto__: null,
+  action: action$5,
+  default: BillingPage,
+  loader: loader$9
 }, Symbol.toStringTag, { value: 'Module' }));
 
 const STATUS_COLORS = {
@@ -427,7 +583,7 @@ function ReturnDetailPage() {
   );
 }
 
-const route3 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route4 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   default: ReturnDetailPage,
   loader: loader$8
@@ -443,7 +599,7 @@ const loader$7 = async ({ request }) => {
   return null;
 };
 
-const route4 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route5 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   loader: loader$7
 }, Symbol.toStringTag, { value: 'Module' }));
@@ -656,7 +812,7 @@ function AnalyticsPage() {
   ] }) }) }) });
 }
 
-const route5 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route6 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   default: AnalyticsPage,
   loader: loader$6
@@ -878,7 +1034,7 @@ function PoliciesPage() {
   );
 }
 
-const route6 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route7 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action: action$4,
   default: PoliciesPage,
@@ -1056,7 +1212,7 @@ function SettingsPage() {
   ] }) }) });
 }
 
-const route7 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route8 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action: action$3,
   default: SettingsPage,
@@ -2129,7 +2285,7 @@ const loader$3 = async () => {
   });
 };
 
-const route8 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route9 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action: action$2,
   loader: loader$3
@@ -2142,7 +2298,7 @@ const action$1 = () => {
   return json({ ok: true, service: "shopigent-returns", status: "healthy" });
 };
 
-const route9 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route10 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action: action$1,
   loader: loader$2
@@ -2263,7 +2419,7 @@ function Dashboard() {
   ] });
 }
 
-const route10 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route11 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   default: Dashboard,
   loader: loader$1
@@ -2598,14 +2754,14 @@ function ReturnPortal() {
   ] }) }) });
 }
 
-const route11 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route12 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action,
   default: ReturnPortal,
   loader
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','imports':['/assets/components-DncgAStS.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-DW2RugKk.js','imports':['/assets/components-DncgAStS.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/context-D_7evObr.js'],'css':[]},'routes/returns._index':{'id':'routes/returns._index','parentId':'root','path':'returns','index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._index-BNn-okAg.js','imports':['/assets/components-DncgAStS.js','/assets/Link-D87bG4BI.js','/assets/Page-BRr42oR8.js','/assets/ButtonGroup-DjCCD5EX.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-a6VN9RyV.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/returns.$id':{'id':'routes/returns.$id','parentId':'root','path':'returns/:id','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._id-Dexd_3jt.js','imports':['/assets/components-DncgAStS.js','/assets/Page-BRr42oR8.js','/assets/ButtonGroup-DjCCD5EX.js','/assets/Tag-BBpjTkTH.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js'],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/analytics':{'id':'routes/analytics','parentId':'root','path':'analytics','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/analytics-C061lObq.js','imports':['/assets/components-DncgAStS.js','/assets/Page-BRr42oR8.js','/assets/ButtonGroup-DjCCD5EX.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js'],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-DRs8w0RL.js','imports':['/assets/components-DncgAStS.js','/assets/Page-BRr42oR8.js','/assets/Banner-HF13MGyT.js','/assets/ButtonGroup-DjCCD5EX.js','/assets/Tag-BBpjTkTH.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-D_7evObr.js','/assets/CSSTransition-CYBGIXjC.js','/assets/Checkbox-a6VN9RyV.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/settings':{'id':'routes/settings','parentId':'root','path':'settings','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/settings-C4LAlPVc.js','imports':['/assets/components-DncgAStS.js','/assets/Page-BRr42oR8.js','/assets/Banner-HF13MGyT.js','/assets/ButtonGroup-DjCCD5EX.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/api.mcp':{'id':'routes/api.mcp','parentId':'root','path':'api/mcp','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.mcp-l0sNRNKZ.js','imports':[],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-CSS7T_OY.js','imports':['/assets/components-DncgAStS.js','/assets/Link-D87bG4BI.js','/assets/Page-BRr42oR8.js','/assets/ButtonGroup-DjCCD5EX.js','/assets/Banner-HF13MGyT.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-a6VN9RyV.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/return':{'id':'routes/return','parentId':'root','path':'return','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/return-CEsaTq4U.js','imports':['/assets/components-DncgAStS.js','/assets/ButtonGroup-DjCCD5EX.js','/assets/Banner-HF13MGyT.js','/assets/Checkbox-a6VN9RyV.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/banner-context-DEryxoPe.js'],'css':[]}},'url':'/assets/manifest-7d162507.js','version':'7d162507'};
+const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','imports':['/assets/components-DncgAStS.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-DW2RugKk.js','imports':['/assets/components-DncgAStS.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/context-D_7evObr.js'],'css':[]},'routes/returns._index':{'id':'routes/returns._index','parentId':'root','path':'returns','index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._index-rt4k2P_9.js','imports':['/assets/components-DncgAStS.js','/assets/Link-BBt1zwDf.js','/assets/Page-5js4YzMG.js','/assets/Layout-B3Y1nKjP.js','/assets/ButtonGroup-BsIQ5m9s.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-IJgJvmok.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/app.billing':{'id':'routes/app.billing','parentId':'root','path':'app/billing','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.billing-T-zYSjgi.js','imports':['/assets/components-DncgAStS.js','/assets/Page-5js4YzMG.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Banner-B4ksSTSv.js','/assets/ButtonGroup-BsIQ5m9s.js','/assets/InlineGrid-CI5duNHk.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/returns.$id':{'id':'routes/returns.$id','parentId':'root','path':'returns/:id','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._id-BQoHc_dn.js','imports':['/assets/components-DncgAStS.js','/assets/Page-5js4YzMG.js','/assets/Layout-B3Y1nKjP.js','/assets/ButtonGroup-BsIQ5m9s.js','/assets/Tag-0jZY3pfk.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js'],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/analytics':{'id':'routes/analytics','parentId':'root','path':'analytics','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/analytics-_sdfxYC2.js','imports':['/assets/components-DncgAStS.js','/assets/Page-5js4YzMG.js','/assets/Layout-B3Y1nKjP.js','/assets/ButtonGroup-BsIQ5m9s.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js'],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-Z-PIVh1u.js','imports':['/assets/components-DncgAStS.js','/assets/Page-5js4YzMG.js','/assets/Layout-B3Y1nKjP.js','/assets/Banner-B4ksSTSv.js','/assets/ButtonGroup-BsIQ5m9s.js','/assets/Tag-0jZY3pfk.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-D_7evObr.js','/assets/CSSTransition-CYBGIXjC.js','/assets/InlineGrid-CI5duNHk.js','/assets/Checkbox-IJgJvmok.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/settings':{'id':'routes/settings','parentId':'root','path':'settings','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/settings-16GMGQat.js','imports':['/assets/components-DncgAStS.js','/assets/Page-5js4YzMG.js','/assets/Layout-B3Y1nKjP.js','/assets/Banner-B4ksSTSv.js','/assets/ButtonGroup-BsIQ5m9s.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/api.mcp':{'id':'routes/api.mcp','parentId':'root','path':'api/mcp','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.mcp-l0sNRNKZ.js','imports':[],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-5A58lyik.js','imports':['/assets/components-DncgAStS.js','/assets/Link-BBt1zwDf.js','/assets/Page-5js4YzMG.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Layout-B3Y1nKjP.js','/assets/ButtonGroup-BsIQ5m9s.js','/assets/Banner-B4ksSTSv.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-IJgJvmok.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/return':{'id':'routes/return','parentId':'root','path':'return','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/return-BAe8blb8.js','imports':['/assets/components-DncgAStS.js','/assets/ButtonGroup-BsIQ5m9s.js','/assets/Banner-B4ksSTSv.js','/assets/Checkbox-IJgJvmok.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/banner-context-DEryxoPe.js'],'css':[]}},'url':'/assets/manifest-5cfe11c8.js','version':'5cfe11c8'};
 
 /**
        * `mode` is only relevant for the old Remix compiler but
@@ -2643,13 +2799,21 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           caseSensitive: undefined,
           module: route2
         },
+  "routes/app.billing": {
+          id: "routes/app.billing",
+          parentId: "root",
+          path: "app/billing",
+          index: undefined,
+          caseSensitive: undefined,
+          module: route3
+        },
   "routes/returns.$id": {
           id: "routes/returns.$id",
           parentId: "root",
           path: "returns/:id",
           index: undefined,
           caseSensitive: undefined,
-          module: route3
+          module: route4
         },
   "routes/api.auth.$": {
           id: "routes/api.auth.$",
@@ -2657,7 +2821,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           path: "api/auth/*",
           index: undefined,
           caseSensitive: undefined,
-          module: route4
+          module: route5
         },
   "routes/analytics": {
           id: "routes/analytics",
@@ -2665,7 +2829,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           path: "analytics",
           index: undefined,
           caseSensitive: undefined,
-          module: route5
+          module: route6
         },
   "routes/policies": {
           id: "routes/policies",
@@ -2673,7 +2837,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           path: "policies",
           index: undefined,
           caseSensitive: undefined,
-          module: route6
+          module: route7
         },
   "routes/settings": {
           id: "routes/settings",
@@ -2681,7 +2845,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           path: "settings",
           index: undefined,
           caseSensitive: undefined,
-          module: route7
+          module: route8
         },
   "routes/api.mcp": {
           id: "routes/api.mcp",
@@ -2689,7 +2853,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           path: "api/mcp",
           index: undefined,
           caseSensitive: undefined,
-          module: route8
+          module: route9
         },
   "routes/healthz": {
           id: "routes/healthz",
@@ -2697,7 +2861,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           path: "healthz",
           index: undefined,
           caseSensitive: undefined,
-          module: route9
+          module: route10
         },
   "routes/_index": {
           id: "routes/_index",
@@ -2705,7 +2869,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           path: undefined,
           index: true,
           caseSensitive: undefined,
-          module: route10
+          module: route11
         },
   "routes/return": {
           id: "routes/return",
@@ -2713,7 +2877,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           path: "return",
           index: undefined,
           caseSensitive: undefined,
-          module: route11
+          module: route12
         }
       };
 
