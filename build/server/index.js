@@ -1457,7 +1457,76 @@ async function createEasyPostLabel(req, apiKey) {
   }
 }
 
+const TTL_MS = 5 * 60 * 1e3;
+function issueConfirmationToken(secret, shop, action, returnId, args) {
+  const argsHash = crypto.createHash("sha256").update(JSON.stringify(args)).digest("hex").slice(0, 16);
+  const payload = {
+    shop,
+    action,
+    returnId,
+    argsHash,
+    issuedAt: Date.now()
+  };
+  const data = JSON.stringify(payload);
+  const signature = crypto.createHmac("sha256", secret).update(data).digest("hex");
+  return Buffer.from(JSON.stringify({ data, signature })).toString("base64");
+}
+function verifyConfirmationToken(token, secret, expectedShop, expectedAction, expectedReturnId, expectedArgs) {
+  try {
+    const decoded = JSON.parse(Buffer.from(token, "base64").toString("utf-8"));
+    const { data, signature } = decoded;
+    const expectedSig = crypto.createHmac("sha256", secret).update(data).digest("hex");
+    if (signature !== expectedSig) {
+      return { valid: false, reason: "Invalid signature" };
+    }
+    const payload = JSON.parse(data);
+    if (Date.now() - payload.issuedAt > TTL_MS) {
+      return { valid: false, reason: "Token expired" };
+    }
+    if (payload.shop !== expectedShop) {
+      return { valid: false, reason: "Shop mismatch" };
+    }
+    if (payload.action !== expectedAction) {
+      return { valid: false, reason: "Action mismatch" };
+    }
+    if (payload.returnId !== expectedReturnId) {
+      return { valid: false, reason: "Return ID mismatch" };
+    }
+    const argsHash = crypto.createHash("sha256").update(JSON.stringify(expectedArgs)).digest("hex").slice(0, 16);
+    if (payload.argsHash !== argsHash) {
+      return { valid: false, reason: "Arguments mismatch" };
+    }
+    return { valid: true };
+  } catch {
+    return { valid: false, reason: "Invalid token format" };
+  }
+}
+const CONFIRMATION_TOOL = {
+  name: "issue_confirmation_token",
+  description: "Issue a confirmation token for a destructive operation (approve/deny return). The agent must first call this tool, then include the returned token in the actual approve_return or deny_return call. Token expires in 5 minutes.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      action: {
+        type: "string",
+        enum: ["approve_return", "deny_return"],
+        description: "The action to confirm"
+      },
+      returnId: {
+        type: "string",
+        description: "The return request UUID"
+      },
+      args: {
+        type: "object",
+        description: "The arguments that will be passed to the action"
+      }
+    },
+    required: ["action", "returnId", "args"]
+  }
+};
+
 const RETURNS_TOOLS = [
+  CONFIRMATION_TOOL,
   {
     name: "analyze_return",
     description: "Analyze a return request against store policies and fraud signals. Returns a recommendation (approve/deny/exchange) with confidence score.",
@@ -1618,11 +1687,41 @@ async function handleMcpRequest(body) {
             reasoning: bestPolicy ? `Order matches "${bestPolicy.name}": ${daysSinceOrder} days (≤${maxDays}), $${totalAmount} (≤$${maxAmount})${autoApprove ? ", auto-approve enabled" : ""}` : "No matching policy found. Manual review required."
           });
         }
+        case "issue_confirmation_token": {
+          const secret = process.env.CONFIRMATION_TOKEN_SECRET;
+          if (!secret) return jsonRpcError(id, -32602, "Confirmation token secret not configured");
+          const token = issueConfirmationToken(
+            secret,
+            args.shop || "shop",
+            args.action,
+            args.returnId,
+            args.args || {}
+          );
+          return jsonRpcResult(id, {
+            confirmationToken: token,
+            expiresInMs: 5 * 60 * 1e3,
+            message: "Include this token as `confirmationToken` in your approve_return or deny_return call."
+          });
+        }
         case "approve_return": {
           const returnReq = await prisma$1.returnRequest.findUnique({
             where: { id: args.returnId }
           });
           if (!returnReq) return jsonRpcError(id, -32602, "Return not found");
+          const secret = process.env.CONFIRMATION_TOKEN_SECRET;
+          if (secret) {
+            const check = verifyConfirmationToken(
+              args.confirmationToken || "",
+              secret,
+              returnReq.shop,
+              "approve_return",
+              args.returnId,
+              args
+            );
+            if (!check.valid) {
+              return jsonRpcError(id, -32e3, `Confirmation required: ${check.reason}. Call issue_confirmation_token first.`);
+            }
+          }
           const items = returnReq.items;
           const totalAmount = args.refundAmount || items.reduce(
             (sum, i) => sum + parseFloat(i.price || "0") * (i.quantity || 0),
@@ -1708,6 +1807,20 @@ async function handleMcpRequest(body) {
             where: { id: args.returnId }
           });
           if (!returnReq) return jsonRpcError(id, -32602, "Return not found");
+          const secret = process.env.CONFIRMATION_TOKEN_SECRET;
+          if (secret) {
+            const check = verifyConfirmationToken(
+              args.confirmationToken || "",
+              secret,
+              returnReq.shop,
+              "deny_return",
+              args.returnId,
+              args
+            );
+            if (!check.valid) {
+              return jsonRpcError(id, -32e3, `Confirmation required: ${check.reason}. Call issue_confirmation_token first.`);
+            }
+          }
           const updated = await prisma$1.returnRequest.update({
             where: { id: args.returnId },
             data: {

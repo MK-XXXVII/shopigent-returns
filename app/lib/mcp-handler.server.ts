@@ -2,6 +2,7 @@ import prisma from "./db.server";
 import { executeRefund } from "./shopify-admin.server";
 import { sendEmail, returnApprovedEmail, returnDeniedEmail, refundProcessedEmail } from "./email.server";
 import { createReturnLabel } from "./label-provider.server";
+import { issueConfirmationToken, verifyConfirmationToken } from "./confirmation.server";
 import { RETURNS_TOOLS } from "./mcp-types";
 
 function jsonRpcError(id: string | number, code: number, message: string) {
@@ -103,11 +104,46 @@ export async function handleMcpRequest(body: any) {
           });
         }
 
+        case "issue_confirmation_token": {
+          const secret = process.env.CONFIRMATION_TOKEN_SECRET;
+          if (!secret) return jsonRpcError(id, -32602, "Confirmation token secret not configured");
+
+          const token = issueConfirmationToken(
+            secret,
+            args.shop || "shop",
+            args.action,
+            args.returnId,
+            args.args || {}
+          );
+
+          return jsonRpcResult(id, {
+            confirmationToken: token,
+            expiresInMs: 5 * 60 * 1000,
+            message: "Include this token as `confirmationToken` in your approve_return or deny_return call.",
+          });
+        }
+
         case "approve_return": {
           const returnReq = await prisma.returnRequest.findUnique({
             where: { id: args.returnId },
           });
           if (!returnReq) return jsonRpcError(id, -32602, "Return not found");
+
+          // Verify confirmation token
+          const secret = process.env.CONFIRMATION_TOKEN_SECRET;
+          if (secret) {
+            const check = verifyConfirmationToken(
+              args.confirmationToken || "",
+              secret,
+              returnReq.shop,
+              "approve_return",
+              args.returnId,
+              args
+            );
+            if (!check.valid) {
+              return jsonRpcError(id, -32000, `Confirmation required: ${check.reason}. Call issue_confirmation_token first.`);
+            }
+          }
 
           // Calculate refund amount
           const items = returnReq.items as any[];
@@ -211,6 +247,22 @@ export async function handleMcpRequest(body: any) {
             where: { id: args.returnId },
           });
           if (!returnReq) return jsonRpcError(id, -32602, "Return not found");
+
+          // Verify confirmation token
+          const secret = process.env.CONFIRMATION_TOKEN_SECRET;
+          if (secret) {
+            const check = verifyConfirmationToken(
+              args.confirmationToken || "",
+              secret,
+              returnReq.shop,
+              "deny_return",
+              args.returnId,
+              args
+            );
+            if (!check.valid) {
+              return jsonRpcError(id, -32000, `Confirmation required: ${check.reason}. Call issue_confirmation_token first.`);
+            }
+          }
 
           const updated = await prisma.returnRequest.update({
             where: { id: args.returnId },

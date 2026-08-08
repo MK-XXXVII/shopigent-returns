@@ -30,7 +30,10 @@ export interface McpResource {
   mimeType?: string;
 }
 
+import { CONFIRMATION_TOOL } from "./confirmation.server";
+
 export const RETURNS_TOOLS: McpTool[] = [
+  CONFIRMATION_TOOL,
   {
     name: "analyze_return",
     description: "Analyze a return request against store policies and fraud signals. Returns a recommendation (approve/deny/exchange) with confidence score.",
