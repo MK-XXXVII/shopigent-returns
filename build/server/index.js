@@ -1063,42 +1063,96 @@ const route7 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   loader: loader$4
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const SHOPIFY_API_VERSION = "2024-10";
+const API_VERSION = process.env.SHOPIFY_API_VERSION || "2024-10";
 async function shopifyAdminQuery(shop, accessToken, query, variables) {
-  const response = await fetch(
-    `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Shopify-Access-Token": accessToken
-      },
-      body: JSON.stringify({ query, variables })
+  const url = `https://${shop}/admin/api/${API_VERSION}/graphql.json`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Shopify-Access-Token": accessToken
+    },
+    body: JSON.stringify({ query, variables })
+  });
+  if (response.status === 401) {
+    const refreshed = await tryRefreshToken(shop);
+    if (refreshed) {
+      const retryResp = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Shopify-Access-Token": refreshed
+        },
+        body: JSON.stringify({ query, variables })
+      });
+      return retryResp.json();
     }
-  );
+    throw new Error(`Shopify API token expired and refresh failed for ${shop}`);
+  }
   return response.json();
+}
+async function tryRefreshToken(shop) {
+  const session = await prisma$1.session.findFirst({
+    where: { shop, isOnline: false }
+  });
+  if (!session?.refreshToken || !session?.accessToken) {
+    console.log(`[shopify] No refresh token available for ${shop}`);
+    return null;
+  }
+  const apiKey = process.env.SHOPIFY_API_KEY;
+  const apiSecret = process.env.SHOPIFY_API_SECRET;
+  if (!apiKey || !apiSecret) {
+    console.log(`[shopify] Missing SHOPIFY_API_KEY or SHOPIFY_API_SECRET`);
+    return null;
+  }
+  try {
+    const response = await fetch(
+      `https://${shop}/admin/oauth/access_token`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json"
+        },
+        body: JSON.stringify({
+          client_id: apiKey,
+          client_secret: apiSecret,
+          refresh_token: session.refreshToken,
+          access_token: session.accessToken,
+          grant_type: "refresh_token"
+        })
+      }
+    );
+    if (!response.ok) {
+      const text = await response.text();
+      console.log(`[shopify] Token refresh failed for ${shop}: ${text}`);
+      return null;
+    }
+    const data = await response.json();
+    await prisma$1.session.update({
+      where: { id: session.id },
+      data: {
+        accessToken: data.access_token,
+        refreshToken: data.refresh_token || session.refreshToken,
+        expires: data.expires_in ? new Date(Date.now() + data.expires_in * 1e3) : void 0
+      }
+    });
+    console.log(`[shopify] Token refreshed successfully for ${shop}`);
+    return data.access_token;
+  } catch (err) {
+    console.log(`[shopify] Token refresh error for ${shop}: ${err.message}`);
+    return null;
+  }
 }
 async function executeRefund(shop, accessToken, orderId, amount, restock = true, reason = "Customer return") {
   const orderGid = orderId.startsWith("gid://") ? orderId : `gid://shopify/Order/${orderId}`;
-  const calculateMutation = `mutation calculate($input: CalculateRefundInput!) {
+  const calcQuery = `mutation calculate($input: CalculateRefundInput!) {
     calculateRefund(input: $input) {
-      refund {
-        id
-        transactions {
-          id
-          amountSet { shopMoney { amount } }
-          kind
-        }
-        orderAdjustments {
-          id
-          amountSet { shopMoney { amount } }
-          reason
-        }
-      }
+      refund { transactions { id amountSet { shopMoney { amount } } kind } }
       userErrors { field message }
     }
   }`;
-  const calculateResult = await shopifyAdminQuery(shop, accessToken, calculateMutation, {
+  const calcResult = await shopifyAdminQuery(shop, accessToken, calcQuery, {
     input: {
       orderId: orderGid,
       amount: { amount, currencyCode: "USD" },
@@ -1106,29 +1160,19 @@ async function executeRefund(shop, accessToken, orderId, amount, restock = true,
       restock
     }
   });
-  const errors = calculateResult?.data?.calculateRefund?.userErrors;
-  if (errors?.length > 0) {
-    throw new Error(`Refund calculation failed: ${errors.map((e) => e.message).join(", ")}`);
+  const calcErrors = calcResult?.data?.calculateRefund?.userErrors;
+  if (calcErrors?.length > 0) {
+    throw new Error(`Refund calculation failed: ${calcErrors.map((e) => e.message).join(", ")}`);
   }
-  const calculatedRefund = calculateResult?.data?.calculateRefund?.refund;
-  if (!calculatedRefund) {
-    throw new Error("Failed to calculate refund");
-  }
-  const executeMutation = `mutation execute($input: RefundInput!) {
+  const calculatedRefund = calcResult?.data?.calculateRefund?.refund;
+  if (!calculatedRefund) throw new Error("Failed to calculate refund");
+  const execQuery = `mutation execute($input: RefundInput!) {
     refundCreate(input: $input) {
-      refund {
-        id
-        transactions {
-          id
-          status
-          processedAt
-          amountSet { shopMoney { amount } }
-        }
-      }
+      refund { id transactions { id status processedAt amountSet { shopMoney { amount } } } }
       userErrors { field message }
     }
   }`;
-  const executeResult = await shopifyAdminQuery(shop, accessToken, executeMutation, {
+  const execResult = await shopifyAdminQuery(shop, accessToken, execQuery, {
     input: {
       orderId: orderGid,
       amount: { amount, currencyCode: "USD" },
@@ -1136,18 +1180,18 @@ async function executeRefund(shop, accessToken, orderId, amount, restock = true,
       note: reason,
       transactions: calculatedRefund.transactions?.map((t) => ({
         id: t.id,
-        amount: { amount, currencyCode: "USD" },
+        amount: { amount: amount.toString(), currencyCode: "USD" },
         kind: "refund",
         gateway: t.id
       })),
       refundLineItems: []
     }
   });
-  const execErrors = executeResult?.data?.refundCreate?.userErrors;
+  const execErrors = execResult?.data?.refundCreate?.userErrors;
   if (execErrors?.length > 0) {
     throw new Error(`Refund execution failed: ${execErrors.map((e) => e.message).join(", ")}`);
   }
-  return executeResult?.data?.refundCreate?.refund;
+  return execResult?.data?.refundCreate?.refund;
 }
 
 const RELAY_URL = process.env.MAIL_RELAY_URL || "http://localhost:8787/send";

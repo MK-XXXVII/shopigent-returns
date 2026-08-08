@@ -1,67 +1,139 @@
-// Shopify Admin API helper — executes refunds, looks up orders, etc.
-// Uses the stored offline access token for the shop.
+// Shopify Admin API helper with automatic token refresh
+// Handles expiring offline access tokens by refreshing via OAuth
 
-const SHOPIFY_API_VERSION = "2024-10";
+import prisma from "./db.server";
+
+const API_VERSION = process.env.SHOPIFY_API_VERSION || "2024-10";
+
+interface ShopifyResponse {
+  data?: any;
+  errors?: any;
+}
 
 export async function shopifyAdminQuery(
   shop: string,
   accessToken: string,
   query: string,
   variables?: Record<string, any>
-) {
-  const response = await fetch(
-    `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Shopify-Access-Token": accessToken,
-      },
-      body: JSON.stringify({ query, variables }),
+): Promise<ShopifyResponse> {
+  const url = `https://${shop}/admin/api/${API_VERSION}/graphql.json`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Shopify-Access-Token": accessToken,
+    },
+    body: JSON.stringify({ query, variables }),
+  });
+
+  if (response.status === 401) {
+    // Token expired — attempt refresh
+    const refreshed = await tryRefreshToken(shop);
+    if (refreshed) {
+      // Retry with new token
+      const retryResp = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Shopify-Access-Token": refreshed,
+        },
+        body: JSON.stringify({ query, variables }),
+      });
+      return retryResp.json();
     }
-  );
+    // If refresh also failed, throw
+    throw new Error(`Shopify API token expired and refresh failed for ${shop}`);
+  }
+
   return response.json();
 }
 
-// Look up a customer's orders by email
-export async function getOrdersByEmail(shop: string, accessToken: string, email: string) {
-  const query = `{
-    customers(first: 1, query: "${email}") {
-      edges {
-        node {
-          id
-          firstName
-          lastName
-          orders(first: 20, sortKey: CREATED_AT, reverse: true) {
-            edges {
-              node {
-                id
-                name
-                createdAt
-                totalPriceSet { shopMoney { amount currencyCode } }
-                fulfillments(first: 5) { edges { node { status } } }
-                lineItems(first: 20) {
-                  edges {
-                    node {
-                      id
-                      title
-                      quantity
-                      variant { id sku }
-                      originalUnitPriceSet { shopMoney { amount } }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
+// Refresh an expired offline access token using the stored refresh token
+async function tryRefreshToken(shop: string): Promise<string | null> {
+  const session = await prisma.session.findFirst({
+    where: { shop, isOnline: false },
+  });
+
+  if (!session?.refreshToken || !session?.accessToken) {
+    console.log(`[shopify] No refresh token available for ${shop}`);
+    return null;
+  }
+
+  const apiKey = process.env.SHOPIFY_API_KEY;
+  const apiSecret = process.env.SHOPIFY_API_SECRET;
+
+  if (!apiKey || !apiSecret) {
+    console.log(`[shopify] Missing SHOPIFY_API_KEY or SHOPIFY_API_SECRET`);
+    return null;
+  }
+
+  try {
+    const response = await fetch(
+      `https://${shop}/admin/oauth/access_token`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          client_id: apiKey,
+          client_secret: apiSecret,
+          refresh_token: session.refreshToken,
+          access_token: session.accessToken,
+          grant_type: "refresh_token",
+        }),
       }
+    );
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.log(`[shopify] Token refresh failed for ${shop}: ${text}`);
+      return null;
     }
-  }`;
-  return shopifyAdminQuery(shop, accessToken, query);
+
+    const data = await response.json();
+
+    // Update session with new tokens
+    await prisma.session.update({
+      where: { id: session.id },
+      data: {
+        accessToken: data.access_token,
+        refreshToken: data.refresh_token || session.refreshToken,
+        expires: data.expires_in
+          ? new Date(Date.now() + data.expires_in * 1000)
+          : undefined,
+      },
+    });
+
+    console.log(`[shopify] Token refreshed successfully for ${shop}`);
+    return data.access_token;
+  } catch (err: any) {
+    console.log(`[shopify] Token refresh error for ${shop}: ${err.message}`);
+    return null;
+  }
 }
 
-// Execute a refund for a specific order
+// Look up a customer's orders by email using REST
+export async function getOrdersByEmail(shop: string, accessToken: string, email: string) {
+  const url = `https://${shop}/admin/api/${API_VERSION}/customers/search.json?query=email:${encodeURIComponent(email)}`;
+  const response = await fetch(url, {
+    headers: { "X-Shopify-Access-Token": accessToken },
+  });
+  if (response.status === 401) {
+    const refreshed = await tryRefreshToken(shop);
+    if (refreshed) {
+      const retryResp = await fetch(url, {
+        headers: { "X-Shopify-Access-Token": refreshed },
+      });
+      return retryResp.json();
+    }
+  }
+  return response.json();
+}
+
+// Execute a refund via GraphQL mutation
 export async function executeRefund(
   shop: string,
   accessToken: string,
@@ -70,75 +142,52 @@ export async function executeRefund(
   restock: boolean = true,
   reason: string = "Customer return"
 ) {
-  // Get order GID (if passed as just a number, convert to GID)
   const orderGid = orderId.startsWith("gid://")
     ? orderId
     : `gid://shopify/Order/${orderId}`;
 
-  // First, calculate the refund based on the order
-  const calculateMutation = `mutation calculate($input: CalculateRefundInput!) {
+  // Step 1: Calculate refund
+  const calcQuery = `mutation calculate($input: CalculateRefundInput!) {
     calculateRefund(input: $input) {
-      refund {
-        id
-        transactions {
-          id
-          amountSet { shopMoney { amount } }
-          kind
-        }
-        orderAdjustments {
-          id
-          amountSet { shopMoney { amount } }
-          reason
-        }
-      }
+      refund { transactions { id amountSet { shopMoney { amount } } kind } }
       userErrors { field message }
     }
   }`;
 
-  const calculateResult = await shopifyAdminQuery(shop, accessToken, calculateMutation, {
+  const calcResult = await shopifyAdminQuery(shop, accessToken, calcQuery, {
     input: {
       orderId: orderGid,
       amount: { amount, currencyCode: "USD" },
       refundLineItems: [],
-      restock: restock,
+      restock,
     },
   });
 
-  const errors = calculateResult?.data?.calculateRefund?.userErrors;
-  if (errors?.length > 0) {
-    throw new Error(`Refund calculation failed: ${errors.map((e: any) => e.message).join(", ")}`);
+  const calcErrors = calcResult?.data?.calculateRefund?.userErrors;
+  if (calcErrors?.length > 0) {
+    throw new Error(`Refund calculation failed: ${calcErrors.map((e: any) => e.message).join(", ")}`);
   }
 
-  const calculatedRefund = calculateResult?.data?.calculateRefund?.refund;
-  if (!calculatedRefund) {
-    throw new Error("Failed to calculate refund");
-  }
+  const calculatedRefund = calcResult?.data?.calculateRefund?.refund;
+  if (!calculatedRefund) throw new Error("Failed to calculate refund");
 
-  // Now execute the refund
-  const executeMutation = `mutation execute($input: RefundInput!) {
+  // Step 2: Execute refund
+  const execQuery = `mutation execute($input: RefundInput!) {
     refundCreate(input: $input) {
-      refund {
-        id
-        transactions {
-          id
-          status
-          processedAt
-          amountSet { shopMoney { amount } }
-        }
-      }
+      refund { id transactions { id status processedAt amountSet { shopMoney { amount } } } }
       userErrors { field message }
     }
   }`;
 
-  const executeResult = await shopifyAdminQuery(shop, accessToken, executeMutation, {
+  const execResult = await shopifyAdminQuery(shop, accessToken, execQuery, {
     input: {
       orderId: orderGid,
       amount: { amount, currencyCode: "USD" },
-      restock: restock,
+      restock,
       note: reason,
       transactions: calculatedRefund.transactions?.map((t: any) => ({
         id: t.id,
-        amount: { amount, currencyCode: "USD" },
+        amount: { amount: amount.toString(), currencyCode: "USD" },
         kind: "refund",
         gateway: t.id,
       })),
@@ -146,10 +195,10 @@ export async function executeRefund(
     },
   });
 
-  const execErrors = executeResult?.data?.refundCreate?.userErrors;
+  const execErrors = execResult?.data?.refundCreate?.userErrors;
   if (execErrors?.length > 0) {
     throw new Error(`Refund execution failed: ${execErrors.map((e: any) => e.message).join(", ")}`);
   }
 
-  return executeResult?.data?.refundCreate?.refund;
+  return execResult?.data?.refundCreate?.refund;
 }
