@@ -134,7 +134,7 @@ model Shop {
   planName      String?
   installedAt   DateTime  @default(now())
   uninstalledAt DateTime?
-  mcpApiKeyHash String?
+  mcpApiKeyHash String? @unique
   config        Json      @default("{}")
 
   @@index([shop])

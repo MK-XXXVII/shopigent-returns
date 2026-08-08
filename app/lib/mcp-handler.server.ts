@@ -13,7 +13,7 @@ function jsonRpcResult(id: string | number, result: any) {
   return { jsonrpc: "2.0", id, result };
 }
 
-export async function handleMcpRequest(body: any) {
+export async function handleMcpRequest(body: any, shop?: string) {
   const { method, id, params } = body;
 
   switch (method) {

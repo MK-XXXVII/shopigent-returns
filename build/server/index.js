@@ -1657,7 +1657,7 @@ function jsonRpcError(id, code, message) {
 function jsonRpcResult(id, result) {
   return { jsonrpc: "2.0", id, result };
 }
-async function handleMcpRequest(body) {
+async function handleMcpRequest(body, shop) {
   const { method, id, params } = body;
   switch (method) {
     case "initialize":
@@ -2005,6 +2005,59 @@ async function handleMcpRequest(body) {
   }
 }
 
+const WINDOW_MS = 60 * 1e3;
+const MAX_CALLS_PER_MINUTE = 60;
+const MAX_CALLS_PER_DAY = 1e3;
+async function checkRateLimit(shop) {
+  const now = Date.now();
+  const minuteWindow = Math.floor(now / WINDOW_MS) * WINDOW_MS;
+  const dayStart = /* @__PURE__ */ new Date();
+  dayStart.setHours(0, 0, 0, 0);
+  const shopRec = await prisma$1.shop.findUnique({ where: { shop } });
+  const config = shopRec?.config || {};
+  const maxPerMinute = config.rateLimitPerMinute || MAX_CALLS_PER_MINUTE;
+  const maxPerDay = config.rateLimitPerDay || MAX_CALLS_PER_DAY;
+  const minuteCalls = await prisma$1.decisionLog.count({
+    where: {
+      actor: "agent",
+      createdAt: { gte: new Date(minuteWindow) },
+      return: { shop }
+    }
+  });
+  if (minuteCalls >= maxPerMinute) {
+    const retryAfter = Math.ceil((minuteWindow + WINDOW_MS - now) / 1e3);
+    return {
+      allowed: false,
+      retryAfterSeconds: retryAfter,
+      remaining: 0
+    };
+  }
+  const todayCalls = await prisma$1.decisionLog.count({
+    where: {
+      actor: "agent",
+      createdAt: { gte: dayStart },
+      return: { shop }
+    }
+  });
+  if (todayCalls >= maxPerDay) {
+    const tomorrow = new Date(dayStart);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const retryAfter = Math.ceil((tomorrow.getTime() - now) / 1e3);
+    return {
+      allowed: false,
+      retryAfterSeconds: retryAfter,
+      remaining: 0
+    };
+  }
+  return {
+    allowed: true,
+    remaining: Math.min(
+      maxPerMinute - minuteCalls,
+      maxPerDay - todayCalls
+    )
+  };
+}
+
 const action$2 = async ({ request }) => {
   const authHeader = request.headers.get("authorization");
   if (!authHeader?.startsWith("Bearer ")) {
@@ -2015,13 +2068,19 @@ const action$2 = async ({ request }) => {
   }
   const key = authHeader.slice(7);
   const hash = crypto.createHash("sha256").update(key).digest("hex");
-  const shop = await prisma$1.shop.findFirst({
+  const shop = await prisma$1.shop.findUnique({
     where: { mcpApiKeyHash: hash }
   });
   if (!shop) {
     return json(
       { jsonrpc: "2.0", id: null, error: { code: -32001, message: "Invalid API key" } },
       { status: 401 }
+    );
+  }
+  if (shop.uninstalledAt) {
+    return json(
+      { jsonrpc: "2.0", id: null, error: { code: -32001, message: "Shop has uninstalled the app" } },
+      { status: 403 }
     );
   }
   const body = await request.json();
@@ -2031,7 +2090,24 @@ const action$2 = async ({ request }) => {
       { status: 400 }
     );
   }
-  const response = await handleMcpRequest(body);
+  const method = body.method;
+  if (method !== "initialize" && !method.startsWith("notifications/")) {
+    const rateCheck = await checkRateLimit(shop.shop);
+    if (!rateCheck.allowed) {
+      return json(
+        {
+          jsonrpc: "2.0",
+          id: body.id || null,
+          error: {
+            code: -32029,
+            message: `Rate limit exceeded. Retry after ${rateCheck.retryAfterSeconds}s`
+          }
+        },
+        { status: 429, headers: { "Retry-After": String(rateCheck.retryAfterSeconds) } }
+      );
+    }
+  }
+  const response = await handleMcpRequest(body, shop.shop);
   return json(response);
 };
 const loader$3 = async () => {
@@ -2045,6 +2121,7 @@ const loader$3 = async () => {
       "approve_return",
       "deny_return",
       "check_fraud",
+      "issue_confirmation_token",
       "list_policies",
       "get_policy_recommendation",
       "list_returns"
