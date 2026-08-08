@@ -58,6 +58,7 @@ export default function App() {
               <Link to="/analytics">Analytics</Link>
               <Link to="/app/billing">Billing</Link>
               <Link to="/settings">Settings</Link>
+              <Link to="/app/fraud-rules">Fraud Rules</Link>
             </NavMenu>
             <Outlet />
           </ShopifyAppProvider>

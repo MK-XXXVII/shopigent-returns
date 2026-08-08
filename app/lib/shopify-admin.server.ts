@@ -202,3 +202,50 @@ export async function executeRefund(
 
   return execResult?.data?.refundCreate?.refund;
 }
+
+// Create a draft order for a replacement item (exchange)
+export async function createDraftOrder(
+  shop: string,
+  accessToken: string,
+  lineItems: { variantId: string; quantity: number; title?: string }[],
+  customerEmail?: string,
+  note?: string
+): Promise<{ draftOrderId: string | null; error?: string }> {
+  const mutation = `mutation draftOrderCreate($input: DraftOrderInput!) {
+    draftOrderCreate(input: $input) {
+      draftOrder { id name invoiceUrl }
+      userErrors { field message }
+    }
+  }`;
+
+  const variables: any = {
+    input: {
+      lineItems: lineItems.map((li) => ({
+        variantId: li.variantId,
+        quantity: li.quantity,
+        appliedDiscount: { value: 100, valueType: "percentage", title: "Exchange - no charge" },
+      })),
+      note: note || "Exchange replacement order",
+      useCustomerDefaultAddress: true,
+    },
+  };
+
+  if (customerEmail) {
+    variables.input.email = customerEmail;
+    variables.input.sendInvoice = true;
+  }
+
+  const result = await shopifyAdminQuery(shop, accessToken, mutation, variables);
+
+  const errors = result?.data?.draftOrderCreate?.userErrors;
+  if (errors?.length > 0) {
+    return { draftOrderId: null, error: errors.map((e: any) => e.message).join(", ") };
+  }
+
+  const draftOrder = result?.data?.draftOrderCreate?.draftOrder;
+  if (!draftOrder?.id) {
+    return { draftOrderId: null, error: "Failed to create draft order" };
+  }
+
+  return { draftOrderId: draftOrder.id };
+}

@@ -1,3 +1,5 @@
+import prisma from "./db.server";
+
 // Plan-based access control for MCP tools
 // Free: read-only (analyze, list, check)
 // Growth+: full access (approve, deny, refund)
@@ -22,7 +24,7 @@ const GROWTH_TOOLS = new Set([
 
 // Tools that require Pro plan
 const PRO_TOOLS = new Set([
-  // Reserved for future Pro-only tools
+  "exchange_return",
 ]);
 
 export function isToolAllowed(toolName: string, planTier: PlanTier): { allowed: boolean; requiredPlan?: string } {

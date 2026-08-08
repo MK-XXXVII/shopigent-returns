@@ -73,11 +73,12 @@ export const RETURNS_TOOLS: McpTool[] = [
   },
   {
     name: "check_fraud",
-    description: "Run fraud detection signals on a return request. Checks IP velocity, history patterns, amount anomalies.",
+    description: "Run fraud detection signals on a return request. Checks IP velocity, history patterns, amount anomalies, and custom merchant-configured fraud rules (blocked countries, max value, max returns, suspicious email domains).",
     inputSchema: {
       type: "object",
       properties: {
         returnId: { type: "string", description: "The return request UUID" },
+        customerCountry: { type: "string", description: "Optional ISO 3166-1 alpha-2 country code of the customer (e.g. 'US', 'RU'). Used for blocked-country rule evaluation." },
       },
       required: ["returnId"],
     },
@@ -110,6 +111,20 @@ export const RETURNS_TOOLS: McpTool[] = [
         status: { type: "string", description: "Filter by status: PENDING, APPROVED, DENIED, EXCHANGE, SHIPPED, REFUNDED, CLOSED" },
         limit: { type: "number", description: "Max results (default 10)" },
       },
+    },
+  },
+  {
+    name: "exchange_return",
+    description: "Create an exchange order for a pending/exchange return. Marks the return as EXCHANGE and creates a draft order with a replacement item at no charge. Requires Pro plan.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        returnId: { type: "string", description: "The return request UUID" },
+        replacementVariantId: { type: "string", description: "Shopify variant GID of the replacement item (e.g. gid://shopify/ProductVariant/123)" },
+        replacementQuantity: { type: "number", description: "Quantity of the replacement item (default 1)" },
+        notes: { type: "string", description: "Internal notes about the exchange" },
+      },
+      required: ["returnId", "replacementVariantId"],
     },
   },
 ];

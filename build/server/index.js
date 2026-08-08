@@ -1,7 +1,7 @@
 import { jsx, jsxs, Fragment } from 'react/jsx-runtime';
 import { RemixServer, useLoaderData, Meta, Links, Outlet, Link, ScrollRestoration, Scripts, useRouteError, isRouteErrorResponse, useFetcher } from '@remix-run/react';
 import { renderToString } from 'react-dom/server';
-import { AppProvider, useIndexResourceState, IndexTable, Link as Link$1, Badge, Page, Layout, BlockStack, Card, Text, EmptyState, Banner, InlineGrid, InlineStack, Box, Button, Tag, Modal, Checkbox, TextField, Select } from '@shopify/polaris';
+import { AppProvider, Page, Layout, Banner, Text, Card, BlockStack, Checkbox, InlineStack, TextField, Button, Tag, useIndexResourceState, IndexTable, Link as Link$1, Badge, EmptyState, Modal, Select, InlineGrid, Box } from '@shopify/polaris';
 import { AppProvider as AppProvider$1 } from '@shopify/shopify-app-remix/react';
 import { NavMenu, TitleBar } from '@shopify/app-bridge-react';
 import '@shopify/shopify-app-remix/server/adapters/node';
@@ -10,7 +10,7 @@ import { PrismaSessionStorage } from '@shopify/shopify-app-session-storage-prism
 import { BillingInterval } from '@shopify/shopify-api';
 import { PrismaClient } from '@prisma/client';
 import { json } from '@remix-run/node';
-import { useState, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import * as crypto from 'node:crypto';
 
 function handleRequest(request, responseStatusCode, responseHeaders, remixContext) {
@@ -79,7 +79,7 @@ const registerWebhooks = shopify.registerWebhooks;
 shopify.sessionStorage;
 
 const links = () => [{ rel: "stylesheet", href: polarisStyles }];
-const loader$b = async ({ request }) => {
+const loader$d = async ({ request }) => {
   const url = new URL(request.url);
   const isPublic = url.pathname.startsWith("/return");
   if (!isPublic) {
@@ -112,7 +112,8 @@ function App() {
           /* @__PURE__ */ jsx(Link, { to: "/returns", children: "Returns" }),
           /* @__PURE__ */ jsx(Link, { to: "/analytics", children: "Analytics" }),
           /* @__PURE__ */ jsx(Link, { to: "/app/billing", children: "Billing" }),
-          /* @__PURE__ */ jsx(Link, { to: "/settings", children: "Settings" })
+          /* @__PURE__ */ jsx(Link, { to: "/settings", children: "Settings" }),
+          /* @__PURE__ */ jsx(Link, { to: "/app/fraud-rules", children: "Fraud Rules" })
         ] }),
         /* @__PURE__ */ jsx(Outlet, {})
       ] }),
@@ -144,10 +145,415 @@ const route0 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   ErrorBoundary,
   default: App,
   links,
-  loader: loader$b
+  loader: loader$d
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const STATUS_COLORS$1 = {
+const DEFAULT_FRAUD_RULES = {
+  maxReturnsPerCustomer: 3,
+  maxReturnsWindowDays: 30,
+  maxValuePerReturn: 5e3,
+  blockedCountries: [],
+  suspiciousEmailDomains: [
+    "mailinator.com",
+    "guerrillamail.com",
+    "10minutemail.com",
+    "tempmail.com",
+    "throwaway.email",
+    "sharklasers.com",
+    "yopmail.com",
+    "trashmail.com"
+  ],
+  enabled: true
+};
+const COMMON_COUNTRY_NAMES = {
+  "US": "US",
+  "USA": "US",
+  "UNITED STATES": "US",
+  "AMERICA": "US",
+  "GB": "GB",
+  "UK": "GB",
+  "UNITED KINGDOM": "GB",
+  "CA": "CA",
+  "CANADA": "CA",
+  "AU": "AU",
+  "AUSTRALIA": "AU",
+  "DE": "DE",
+  "GERMANY": "DE",
+  "FR": "FR",
+  "FRANCE": "FR",
+  "NL": "NL",
+  "NETHERLANDS": "NL",
+  "RU": "RU",
+  "RUSSIA": "RU",
+  "RUSSIAN FEDERATION": "RU",
+  "CN": "CN",
+  "CHINA": "CN",
+  "IN": "IN",
+  "INDIA": "IN"
+};
+function normalizeCountry(country) {
+  const upper = country.trim().toUpperCase();
+  return COMMON_COUNTRY_NAMES[upper] || upper;
+}
+function extractEmailDomain(email) {
+  const atIndex = email.indexOf("@");
+  if (atIndex === -1) return null;
+  return email.slice(atIndex + 1).toLowerCase().trim();
+}
+function loadFraudRules(shopConfig) {
+  const raw = shopConfig?.fraudRules;
+  if (!raw || typeof raw !== "object") {
+    return { ...DEFAULT_FRAUD_RULES };
+  }
+  return {
+    maxReturnsPerCustomer: typeof raw.maxReturnsPerCustomer === "number" && raw.maxReturnsPerCustomer > 0 ? raw.maxReturnsPerCustomer : DEFAULT_FRAUD_RULES.maxReturnsPerCustomer,
+    maxReturnsWindowDays: typeof raw.maxReturnsWindowDays === "number" && raw.maxReturnsWindowDays > 0 ? raw.maxReturnsWindowDays : DEFAULT_FRAUD_RULES.maxReturnsWindowDays,
+    maxValuePerReturn: typeof raw.maxValuePerReturn === "number" && raw.maxValuePerReturn > 0 ? raw.maxValuePerReturn : DEFAULT_FRAUD_RULES.maxValuePerReturn,
+    blockedCountries: Array.isArray(raw.blockedCountries) ? raw.blockedCountries : DEFAULT_FRAUD_RULES.blockedCountries,
+    suspiciousEmailDomains: Array.isArray(raw.suspiciousEmailDomains) ? raw.suspiciousEmailDomains : DEFAULT_FRAUD_RULES.suspiciousEmailDomains,
+    enabled: raw.enabled !== false
+  };
+}
+function validateFraudRules(raw) {
+  const errors = [];
+  if (raw.maxReturnsPerCustomer !== void 0 && (typeof raw.maxReturnsPerCustomer !== "number" || raw.maxReturnsPerCustomer < 1)) {
+    errors.push("Max returns per customer must be a positive number");
+  }
+  if (raw.maxReturnsWindowDays !== void 0 && (typeof raw.maxReturnsWindowDays !== "number" || raw.maxReturnsWindowDays < 1)) {
+    errors.push("Returns window must be a positive number of days");
+  }
+  if (raw.maxValuePerReturn !== void 0 && (typeof raw.maxValuePerReturn !== "number" || raw.maxValuePerReturn < 0)) {
+    errors.push("Max value per return must be a non-negative number");
+  }
+  if (raw.blockedCountries !== void 0 && !Array.isArray(raw.blockedCountries)) {
+    errors.push("Blocked countries must be a list");
+  }
+  if (raw.suspiciousEmailDomains !== void 0 && !Array.isArray(raw.suspiciousEmailDomains)) {
+    errors.push("Suspicious email domains must be a list");
+  }
+  return errors;
+}
+function evaluateFraudRules(params, rules, recentReturnCount) {
+  if (!rules.enabled) {
+    return { passed: true, triggeredRules: [], maxScore: 0 };
+  }
+  const triggered = [];
+  if (params.totalAmount > rules.maxValuePerReturn) {
+    triggered.push({
+      triggered: true,
+      rule: "max_value_per_return",
+      details: `Return value $${params.totalAmount.toFixed(2)} exceeds max $${rules.maxValuePerReturn.toFixed(2)}`,
+      score: 0.6
+    });
+  }
+  if (recentReturnCount !== null && recentReturnCount >= rules.maxReturnsPerCustomer) {
+    triggered.push({
+      triggered: true,
+      rule: "max_returns_per_customer",
+      details: `Customer has ${recentReturnCount} returns in last ${rules.maxReturnsWindowDays} days (max ${rules.maxReturnsPerCustomer})`,
+      score: 0.7
+    });
+  }
+  if (params.customerEmail && rules.suspiciousEmailDomains.length > 0) {
+    const domain = extractEmailDomain(params.customerEmail);
+    if (domain && rules.suspiciousEmailDomains.includes(domain)) {
+      triggered.push({
+        triggered: true,
+        rule: "suspicious_email_domain",
+        details: `Email domain "${domain}" is flagged as suspicious`,
+        score: 0.8
+      });
+    }
+  }
+  if (params.customerCountry && rules.blockedCountries.length > 0) {
+    const normalized = normalizeCountry(params.customerCountry);
+    if (rules.blockedCountries.includes(normalized)) {
+      triggered.push({
+        triggered: true,
+        rule: "blocked_country",
+        details: `Country "${params.customerCountry}" is blocked`,
+        score: 1
+      });
+    }
+  }
+  const maxScore = triggered.length > 0 ? Math.max(...triggered.map((t) => t.score)) : 0;
+  return {
+    passed: triggered.length === 0,
+    triggeredRules: triggered,
+    maxScore
+  };
+}
+
+const loader$c = async ({ request }) => {
+  const { session } = await shopify.authenticate.admin(request);
+  const shop = await prisma$1.shop.findUnique({ where: { shop: session.shop } });
+  const config = shop?.config || {};
+  const rules = {
+    maxReturnsPerCustomer: config.fraudRules?.maxReturnsPerCustomer ?? DEFAULT_FRAUD_RULES.maxReturnsPerCustomer,
+    maxReturnsWindowDays: config.fraudRules?.maxReturnsWindowDays ?? DEFAULT_FRAUD_RULES.maxReturnsWindowDays,
+    maxValuePerReturn: config.fraudRules?.maxValuePerReturn ?? DEFAULT_FRAUD_RULES.maxValuePerReturn,
+    blockedCountries: config.fraudRules?.blockedCountries ?? DEFAULT_FRAUD_RULES.blockedCountries,
+    suspiciousEmailDomains: config.fraudRules?.suspiciousEmailDomains ?? DEFAULT_FRAUD_RULES.suspiciousEmailDomains,
+    enabled: config.fraudRules?.enabled !== false
+  };
+  return json({ rules });
+};
+const action$8 = async ({ request }) => {
+  const { session } = await shopify.authenticate.admin(request);
+  const formData = await request.formData();
+  const _action = formData.get("_action");
+  if (_action === "save_rules") {
+    const raw = {};
+    const maxReturns = parseInt(formData.get("maxReturnsPerCustomer"), 10);
+    const windowDays = parseInt(formData.get("maxReturnsWindowDays"), 10);
+    const maxValue = parseFloat(formData.get("maxValuePerReturn"));
+    raw.maxReturnsPerCustomer = isNaN(maxReturns) ? DEFAULT_FRAUD_RULES.maxReturnsPerCustomer : maxReturns;
+    raw.maxReturnsWindowDays = isNaN(windowDays) ? DEFAULT_FRAUD_RULES.maxReturnsWindowDays : windowDays;
+    raw.maxValuePerReturn = isNaN(maxValue) ? DEFAULT_FRAUD_RULES.maxValuePerReturn : maxValue;
+    const countriesRaw = (formData.get("blockedCountries") || "").trim();
+    raw.blockedCountries = countriesRaw ? countriesRaw.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean) : [];
+    const domainsRaw = (formData.get("suspiciousEmailDomains") || "").trim();
+    raw.suspiciousEmailDomains = domainsRaw ? domainsRaw.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean) : [];
+    raw.enabled = formData.get("enabled") === "true";
+    const errors = validateFraudRules(raw);
+    if (errors.length > 0) {
+      return json({ error: errors.join("; ") }, { status: 400 });
+    }
+    const shopRec = await prisma$1.shop.findUnique({ where: { shop: session.shop } });
+    const currentConfig = shopRec?.config || {};
+    await prisma$1.shop.update({
+      where: { shop: session.shop },
+      data: {
+        config: {
+          ...currentConfig,
+          fraudRules: raw
+        }
+      }
+    });
+    return json({ saved: true });
+  }
+  if (_action === "reset_defaults") {
+    const shopRec = await prisma$1.shop.findUnique({ where: { shop: session.shop } });
+    const currentConfig = shopRec?.config || {};
+    const { fraudRules: _, ...rest } = currentConfig;
+    await prisma$1.shop.update({
+      where: { shop: session.shop },
+      data: { config: rest }
+    });
+    return json({ reset: true });
+  }
+  return json({ ok: true });
+};
+function countriesList(rules) {
+  return (rules.blockedCountries || []).join(", ");
+}
+function domainsList(rules) {
+  return (rules.suspiciousEmailDomains || []).join(", ");
+}
+function FraudRulesPage() {
+  const { rules: initialRules } = useLoaderData();
+  const fetcher = useFetcher();
+  const [maxReturns, setMaxReturns] = useState(String(initialRules.maxReturnsPerCustomer));
+  const [windowDays, setWindowDays] = useState(String(initialRules.maxReturnsWindowDays));
+  const [maxValue, setMaxValue] = useState(String(initialRules.maxValuePerReturn));
+  const [countries, setCountries] = useState(countriesList(initialRules));
+  const [domains, setDomains] = useState(domainsList(initialRules));
+  const [enabled, setEnabled] = useState(initialRules.enabled);
+  const [countryInput, setCountryInput] = useState("");
+  const [domainInput, setDomainInput] = useState("");
+  const saved = fetcher.data?.saved === true;
+  const reset = fetcher.data?.reset === true;
+  const error = fetcher.data?.error;
+  const isSaving = fetcher.state === "submitting";
+  const countryTags = countries ? countries.split(",").map((s) => s.trim()).filter(Boolean) : [];
+  const domainTags = domains ? domains.split(",").map((s) => s.trim()).filter(Boolean) : [];
+  const addCountryTag = useCallback(() => {
+    const val = countryInput.trim().toUpperCase();
+    if (!val) return;
+    const existing = countries ? countries.split(",").map((s) => s.trim().toUpperCase()) : [];
+    if (existing.includes(val)) return;
+    const next = [...existing, val].join(", ");
+    setCountries(next);
+    setCountryInput("");
+  }, [countryInput, countries]);
+  const removeCountryTag = useCallback((tag) => {
+    const existing = countries ? countries.split(",").map((s) => s.trim()).filter(Boolean) : [];
+    const next = existing.filter((t) => t.toUpperCase() !== tag.toUpperCase()).join(", ");
+    setCountries(next);
+  }, [countries]);
+  const addDomainTag = useCallback(() => {
+    const val = domainInput.trim().toLowerCase();
+    if (!val) return;
+    const existing = domains ? domains.split(",").map((s) => s.trim().toLowerCase()) : [];
+    if (existing.includes(val)) return;
+    const next = [...existing, val].join(", ");
+    setDomains(next);
+    setDomainInput("");
+  }, [domainInput, domains]);
+  const removeDomainTag = useCallback((tag) => {
+    const existing = domains ? domains.split(",").map((s) => s.trim()).filter(Boolean) : [];
+    const next = existing.filter((t) => t.toLowerCase() !== tag.toLowerCase()).join(", ");
+    setDomains(next);
+  }, [domains]);
+  return /* @__PURE__ */ jsx(Page, { title: "Fraud Rules", children: /* @__PURE__ */ jsx(Layout, { children: /* @__PURE__ */ jsxs(Layout.Section, { children: [
+    saved && /* @__PURE__ */ jsx(Banner, { tone: "success", children: /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", children: "Fraud rules saved successfully!" }) }),
+    reset && /* @__PURE__ */ jsx(Banner, { tone: "success", children: /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", children: "Fraud rules reset to defaults." }) }),
+    error && /* @__PURE__ */ jsx(Banner, { tone: "critical", children: /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", children: error }) }),
+    /* @__PURE__ */ jsx(Card, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "400", children: [
+      /* @__PURE__ */ jsx(Text, { variant: "headingMd", as: "h2", fontWeight: "bold", children: "Custom Fraud Rules" }),
+      /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", tone: "subdued", children: "Configure advanced fraud detection rules for the AI agent. These rules are evaluated alongside built-in checks when the agent analyzes a return request. Rules that trigger will increase the risk score and may flag the return for manual review." }),
+      /* @__PURE__ */ jsxs(fetcher.Form, { method: "post", children: [
+        /* @__PURE__ */ jsx("input", { type: "hidden", name: "_action", value: "save_rules" }),
+        /* @__PURE__ */ jsx("input", { type: "hidden", name: "enabled", value: String(enabled) }),
+        /* @__PURE__ */ jsx("input", { type: "hidden", name: "blockedCountries", value: countries }),
+        /* @__PURE__ */ jsx("input", { type: "hidden", name: "suspiciousEmailDomains", value: domains }),
+        /* @__PURE__ */ jsxs(BlockStack, { gap: "400", children: [
+          /* @__PURE__ */ jsx(
+            Checkbox,
+            {
+              label: "Enable custom fraud rules",
+              checked: enabled,
+              onChange: (v) => setEnabled(v)
+            }
+          ),
+          /* @__PURE__ */ jsxs(BlockStack, { gap: "200", children: [
+            /* @__PURE__ */ jsx(Text, { variant: "headingSm", as: "h3", fontWeight: "semibold", children: "Max Returns Per Customer" }),
+            /* @__PURE__ */ jsxs(InlineStack, { gap: "200", wrap: false, children: [
+              /* @__PURE__ */ jsx("div", { style: { flex: 1 }, children: /* @__PURE__ */ jsx(
+                TextField,
+                {
+                  label: "Max returns",
+                  type: "number",
+                  name: "maxReturnsPerCustomer",
+                  value: maxReturns,
+                  onChange: setMaxReturns,
+                  autoComplete: "off",
+                  placeholder: "3"
+                }
+              ) }),
+              /* @__PURE__ */ jsx("div", { style: { flex: 1 }, children: /* @__PURE__ */ jsx(
+                TextField,
+                {
+                  label: "Within (days)",
+                  type: "number",
+                  name: "maxReturnsWindowDays",
+                  value: windowDays,
+                  onChange: setWindowDays,
+                  autoComplete: "off",
+                  placeholder: "30"
+                }
+              ) })
+            ] }),
+            /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "p", tone: "subdued", children: "Flags a customer who exceeds this many return requests within the given window." })
+          ] }),
+          /* @__PURE__ */ jsxs(BlockStack, { gap: "200", children: [
+            /* @__PURE__ */ jsx(Text, { variant: "headingSm", as: "h3", fontWeight: "semibold", children: "Max Value Per Return" }),
+            /* @__PURE__ */ jsx(
+              TextField,
+              {
+                label: "Maximum return value ($)",
+                type: "number",
+                name: "maxValuePerReturn",
+                value: maxValue,
+                onChange: setMaxValue,
+                autoComplete: "off",
+                prefix: "$",
+                placeholder: "5000"
+              }
+            ),
+            /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "p", tone: "subdued", children: "Flags a return whose total item value exceeds this amount." })
+          ] }),
+          /* @__PURE__ */ jsxs(BlockStack, { gap: "200", children: [
+            /* @__PURE__ */ jsx(Text, { variant: "headingSm", as: "h3", fontWeight: "semibold", children: "Blocked Countries" }),
+            /* @__PURE__ */ jsx(InlineStack, { gap: "200", wrap: false, children: /* @__PURE__ */ jsx("div", { style: { flex: 1 }, children: /* @__PURE__ */ jsx(
+              TextField,
+              {
+                label: "Add country code",
+                value: countryInput,
+                onChange: setCountryInput,
+                placeholder: "e.g. RU",
+                autoComplete: "off",
+                connectedRight: /* @__PURE__ */ jsx(Button, { onClick: addCountryTag, children: "Add" })
+              }
+            ) }) }),
+            /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "p", tone: "subdued", children: "Use ISO 3166-1 alpha-2 country codes (e.g. RU, KP, IR). Returns from blocked countries receive the highest risk score." }),
+            countryTags.length > 0 && /* @__PURE__ */ jsxs(BlockStack, { gap: "100", children: [
+              /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "p", tone: "subdued", children: "Blocked countries:" }),
+              /* @__PURE__ */ jsx("div", { style: { display: "flex", flexWrap: "wrap", gap: 4 }, children: countryTags.map((tag) => /* @__PURE__ */ jsx(Tag, { onRemove: () => removeCountryTag(tag), children: tag }, tag)) })
+            ] })
+          ] }),
+          /* @__PURE__ */ jsxs(BlockStack, { gap: "200", children: [
+            /* @__PURE__ */ jsx(Text, { variant: "headingSm", as: "h3", fontWeight: "semibold", children: "Suspicious Email Domains" }),
+            /* @__PURE__ */ jsx(InlineStack, { gap: "200", wrap: false, children: /* @__PURE__ */ jsx("div", { style: { flex: 1 }, children: /* @__PURE__ */ jsx(
+              TextField,
+              {
+                label: "Add domain",
+                value: domainInput,
+                onChange: setDomainInput,
+                placeholder: "e.g. tempmail.com",
+                autoComplete: "off",
+                connectedRight: /* @__PURE__ */ jsx(Button, { onClick: addDomainTag, children: "Add" })
+              }
+            ) }) }),
+            /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "p", tone: "subdued", children: "Disposable or temporary email domains. Returns using these domains get a high risk score." }),
+            domainTags.length > 0 && /* @__PURE__ */ jsxs(BlockStack, { gap: "100", children: [
+              /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "p", tone: "subdued", children: "Flagged domains:" }),
+              /* @__PURE__ */ jsx("div", { style: { display: "flex", flexWrap: "wrap", gap: 4 }, children: domainTags.map((tag) => /* @__PURE__ */ jsx(Tag, { onRemove: () => removeDomainTag(tag), children: tag }, tag)) })
+            ] })
+          ] }),
+          /* @__PURE__ */ jsxs(InlineStack, { gap: "200", children: [
+            /* @__PURE__ */ jsx(Button, { submit: true, variant: "primary", loading: isSaving, disabled: isSaving, children: "Save Rules" }),
+            /* @__PURE__ */ jsx(
+              Button,
+              {
+                variant: "secondary",
+                onClick: () => {
+                  if (window.confirm("Reset all fraud rules to defaults? This cannot be undone.")) {
+                    fetcher.submit({ _action: "reset_defaults" }, { method: "post" });
+                  }
+                },
+                children: "Reset to Defaults"
+              }
+            )
+          ] })
+        ] })
+      ] })
+    ] }) }),
+    /* @__PURE__ */ jsx(Card, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "200", children: [
+      /* @__PURE__ */ jsx(Text, { variant: "headingMd", as: "h2", fontWeight: "bold", children: "How Fraud Rules Work" }),
+      /* @__PURE__ */ jsxs(Text, { variant: "bodyMd", as: "p", children: [
+        "When the AI agent runs ",
+        /* @__PURE__ */ jsx("code", { children: "check_fraud" }),
+        " on a return request, these custom rules are evaluated alongside the built-in checks (high-value anomaly, frequent returner pattern)."
+      ] }),
+      /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", children: "Each rule contributes a risk score (0–1). The highest score among all triggered rules determines the overall risk level:" }),
+      /* @__PURE__ */ jsxs(BlockStack, { gap: "100", children: [
+        /* @__PURE__ */ jsxs(Text, { variant: "bodySm", as: "p", children: [
+          /* @__PURE__ */ jsx("strong", { children: "≤ 0.2" }),
+          " → Low risk (auto-approved by default)"
+        ] }),
+        /* @__PURE__ */ jsxs(Text, { variant: "bodySm", as: "p", children: [
+          /* @__PURE__ */ jsx("strong", { children: "0.2 – 0.5" }),
+          " → Medium risk (flagged for review)"
+        ] }),
+        /* @__PURE__ */ jsxs(Text, { variant: "bodySm", as: "p", children: [
+          /* @__PURE__ */ jsx("strong", { children: "> 0.5" }),
+          " → High risk (flagged for review)"
+        ] })
+      ] }),
+      /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "p", tone: "subdued", children: "Default blocked countries and suspicious domains are pre-populated when no custom configuration exists. Customizing overrides the defaults." })
+    ] }) })
+  ] }) }) });
+}
+
+const route1 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+  __proto__: null,
+  action: action$8,
+  default: FraudRulesPage,
+  loader: loader$c
+}, Symbol.toStringTag, { value: 'Module' }));
+
+const STATUS_COLORS$2 = {
   PENDING: "warning",
   APPROVED: "success",
   DENIED: "critical",
@@ -156,7 +562,7 @@ const STATUS_COLORS$1 = {
   REFUNDED: "success",
   CLOSED: "new"
 };
-const loader$a = async ({ request }) => {
+const loader$b = async ({ request }) => {
   const { session } = await shopify.authenticate.admin(request);
   const url = new URL(request.url);
   const status = url.searchParams.get("status") || void 0;
@@ -178,10 +584,10 @@ const loader$a = async ({ request }) => {
   });
   return json({ returns, counts: countMap, currentStatus: status || "all" });
 };
-function statusBadge$1(status) {
+function statusBadge$2(status) {
   return {
     children: status.charAt(0) + status.slice(1).toLowerCase(),
-    tone: STATUS_COLORS$1[status] || "info"
+    tone: STATUS_COLORS$2[status] || "info"
   };
 }
 function ReturnsPage() {
@@ -191,7 +597,7 @@ function ReturnsPage() {
   const totalCount = Object.values(counts).reduce((a, b) => a + b, 0);
   const rowMarkup = returns.map(
     ({ id, orderName, customerName, status, createdAt }, index) => {
-      const badge = statusBadge$1(status);
+      const badge = statusBadge$2(status);
       return /* @__PURE__ */ jsxs(
         IndexTable.Row,
         {
@@ -263,9 +669,424 @@ function ReturnsPage() {
   ] }) }) }) });
 }
 
-const route1 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route2 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   default: ReturnsPage,
+  loader: loader$b
+}, Symbol.toStringTag, { value: 'Module' }));
+
+const API_VERSION = process.env.SHOPIFY_API_VERSION || "2024-10";
+async function shopifyAdminQuery(shop, accessToken, query, variables) {
+  const url = `https://${shop}/admin/api/${API_VERSION}/graphql.json`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Shopify-Access-Token": accessToken
+    },
+    body: JSON.stringify({ query, variables })
+  });
+  if (response.status === 401) {
+    const refreshed = await tryRefreshToken(shop);
+    if (refreshed) {
+      const retryResp = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Shopify-Access-Token": refreshed
+        },
+        body: JSON.stringify({ query, variables })
+      });
+      return retryResp.json();
+    }
+    throw new Error(`Shopify API token expired and refresh failed for ${shop}`);
+  }
+  return response.json();
+}
+async function tryRefreshToken(shop) {
+  const session = await prisma$1.session.findFirst({
+    where: { shop, isOnline: false }
+  });
+  if (!session?.refreshToken || !session?.accessToken) {
+    console.log(`[shopify] No refresh token available for ${shop}`);
+    return null;
+  }
+  const apiKey = process.env.SHOPIFY_API_KEY;
+  const apiSecret = process.env.SHOPIFY_API_SECRET;
+  if (!apiKey || !apiSecret) {
+    console.log(`[shopify] Missing SHOPIFY_API_KEY or SHOPIFY_API_SECRET`);
+    return null;
+  }
+  try {
+    const response = await fetch(
+      `https://${shop}/admin/oauth/access_token`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json"
+        },
+        body: JSON.stringify({
+          client_id: apiKey,
+          client_secret: apiSecret,
+          refresh_token: session.refreshToken,
+          access_token: session.accessToken,
+          grant_type: "refresh_token"
+        })
+      }
+    );
+    if (!response.ok) {
+      const text = await response.text();
+      console.log(`[shopify] Token refresh failed for ${shop}: ${text}`);
+      return null;
+    }
+    const data = await response.json();
+    await prisma$1.session.update({
+      where: { id: session.id },
+      data: {
+        accessToken: data.access_token,
+        refreshToken: data.refresh_token || session.refreshToken,
+        expires: data.expires_in ? new Date(Date.now() + data.expires_in * 1e3) : void 0
+      }
+    });
+    console.log(`[shopify] Token refreshed successfully for ${shop}`);
+    return data.access_token;
+  } catch (err) {
+    console.log(`[shopify] Token refresh error for ${shop}: ${err.message}`);
+    return null;
+  }
+}
+async function executeRefund(shop, accessToken, orderId, amount, restock = true, reason = "Customer return") {
+  const orderGid = orderId.startsWith("gid://") ? orderId : `gid://shopify/Order/${orderId}`;
+  const calcQuery = `mutation calculate($input: CalculateRefundInput!) {
+    calculateRefund(input: $input) {
+      refund { transactions { id amountSet { shopMoney { amount } } kind } }
+      userErrors { field message }
+    }
+  }`;
+  const calcResult = await shopifyAdminQuery(shop, accessToken, calcQuery, {
+    input: {
+      orderId: orderGid,
+      amount: { amount, currencyCode: "USD" },
+      refundLineItems: [],
+      restock
+    }
+  });
+  const calcErrors = calcResult?.data?.calculateRefund?.userErrors;
+  if (calcErrors?.length > 0) {
+    throw new Error(`Refund calculation failed: ${calcErrors.map((e) => e.message).join(", ")}`);
+  }
+  const calculatedRefund = calcResult?.data?.calculateRefund?.refund;
+  if (!calculatedRefund) throw new Error("Failed to calculate refund");
+  const execQuery = `mutation execute($input: RefundInput!) {
+    refundCreate(input: $input) {
+      refund { id transactions { id status processedAt amountSet { shopMoney { amount } } } }
+      userErrors { field message }
+    }
+  }`;
+  const execResult = await shopifyAdminQuery(shop, accessToken, execQuery, {
+    input: {
+      orderId: orderGid,
+      amount: { amount, currencyCode: "USD" },
+      restock,
+      note: reason,
+      transactions: calculatedRefund.transactions?.map((t) => ({
+        id: t.id,
+        amount: { amount: amount.toString(), currencyCode: "USD" },
+        kind: "refund",
+        gateway: t.id
+      })),
+      refundLineItems: []
+    }
+  });
+  const execErrors = execResult?.data?.refundCreate?.userErrors;
+  if (execErrors?.length > 0) {
+    throw new Error(`Refund execution failed: ${execErrors.map((e) => e.message).join(", ")}`);
+  }
+  return execResult?.data?.refundCreate?.refund;
+}
+async function createDraftOrder$1(shop, accessToken, lineItems, customerEmail, note) {
+  const mutation = `mutation draftOrderCreate($input: DraftOrderInput!) {
+    draftOrderCreate(input: $input) {
+      draftOrder { id name invoiceUrl }
+      userErrors { field message }
+    }
+  }`;
+  const variables = {
+    input: {
+      lineItems: lineItems.map((li) => ({
+        variantId: li.variantId,
+        quantity: li.quantity,
+        appliedDiscount: { value: 100, valueType: "percentage", title: "Exchange - no charge" }
+      })),
+      note: note || "Exchange replacement order",
+      useCustomerDefaultAddress: true
+    }
+  };
+  if (customerEmail) {
+    variables.input.email = customerEmail;
+    variables.input.sendInvoice = true;
+  }
+  const result = await shopifyAdminQuery(shop, accessToken, mutation, variables);
+  const errors = result?.data?.draftOrderCreate?.userErrors;
+  if (errors?.length > 0) {
+    return { draftOrderId: null, error: errors.map((e) => e.message).join(", ") };
+  }
+  const draftOrder = result?.data?.draftOrderCreate?.draftOrder;
+  if (!draftOrder?.id) {
+    return { draftOrderId: null, error: "Failed to create draft order" };
+  }
+  return { draftOrderId: draftOrder.id };
+}
+
+const STATUS_COLORS$1 = {
+  PENDING: "warning",
+  APPROVED: "success",
+  DENIED: "critical",
+  EXCHANGE: "info",
+  SHIPPED: "info",
+  REFUNDED: "success",
+  CLOSED: "new"
+};
+const loader$a = async ({ request }) => {
+  const { session } = await authenticate.admin(request);
+  const exchanges = await prisma$1.returnRequest.findMany({
+    where: {
+      shop: session.shop,
+      status: { in: ["PENDING", "EXCHANGE"] }
+    },
+    orderBy: { createdAt: "desc" },
+    take: 50
+  });
+  const counts = await prisma$1.returnRequest.groupBy({
+    by: ["status"],
+    where: { shop: session.shop, status: { in: ["PENDING", "EXCHANGE"] } },
+    _count: true
+  });
+  const countMap = {};
+  counts.forEach((c) => {
+    countMap[c.status] = c._count;
+  });
+  return json({ exchanges, counts: countMap });
+};
+const action$7 = async ({ request }) => {
+  const { session } = await authenticate.admin(request);
+  const formData = await request.formData();
+  const intent = String(formData.get("intent") || "");
+  if (intent === "exchange") {
+    const returnId = String(formData.get("returnId") || "");
+    const variantId = String(formData.get("variantId") || "");
+    const quantity = parseInt(String(formData.get("quantity") || "1"), 10);
+    const returnReq = await prisma$1.returnRequest.findFirst({
+      where: { id: returnId, shop: session.shop }
+    });
+    if (!returnReq) {
+      return json({ ok: false, error: "Return not found" });
+    }
+    if (returnReq.status !== "PENDING" && returnReq.status !== "EXCHANGE") {
+      return json({ ok: false, error: `Cannot exchange return in status ${returnReq.status}` });
+    }
+    const shopSession = await prisma$1.session.findFirst({
+      where: { shop: session.shop, isOnline: false }
+    });
+    if (!shopSession?.accessToken) {
+      return json({ ok: false, error: "No access token available" });
+    }
+    const draftResult = await createDraftOrder$1(
+      session.shop,
+      shopSession.accessToken,
+      [{ variantId, quantity }],
+      returnReq.customerEmail || void 0,
+      `Exchange for return ${returnReq.id}`
+    );
+    if (draftResult.error || !draftResult.draftOrderId) {
+      return json({ ok: false, error: draftResult.error || "Failed to create draft order" });
+    }
+    await prisma$1.returnRequest.update({
+      where: { id: returnId },
+      data: {
+        status: "EXCHANGE",
+        decidedBy: "staff",
+        decidedAt: /* @__PURE__ */ new Date(),
+        labels: [{
+          type: "exchange_order",
+          status: "created",
+          draftOrderId: draftResult.draftOrderId,
+          replacementVariantId: variantId,
+          replacementQuantity: quantity,
+          createdAt: (/* @__PURE__ */ new Date()).toISOString()
+        }]
+      }
+    });
+    await prisma$1.decisionLog.create({
+      data: {
+        returnId,
+        actor: "staff",
+        action: "exchange",
+        details: { draftOrderId: draftResult.draftOrderId, variantId, quantity }
+      }
+    });
+    return json({ ok: true, draftOrderId: draftResult.draftOrderId });
+  }
+  return json({ ok: false, error: "Unknown intent" });
+};
+function statusBadge$1(status) {
+  return {
+    children: status.charAt(0) + status.slice(1).toLowerCase(),
+    tone: STATUS_COLORS$1[status] || "info"
+  };
+}
+function ExchangesPage() {
+  const { exchanges, counts } = useLoaderData();
+  const fetcher = useFetcher();
+  const resourceName = { singular: "exchange", plural: "exchanges" };
+  const { selectedResources, allResourcesSelected, handleSelectionChange } = useIndexResourceState(exchanges);
+  const [activeModal, setActiveModal] = useState(null);
+  const [variantId, setVariantId] = useState("");
+  const [quantity, setQuantity] = useState("1");
+  const pendingCount = counts.PENDING || 0;
+  const exchangeCount = counts.EXCHANGE || 0;
+  const handleExchangeSubmit = (returnId) => {
+    if (!variantId.trim()) return;
+    const formData = new FormData();
+    formData.set("intent", "exchange");
+    formData.set("returnId", returnId);
+    formData.set("variantId", variantId.trim());
+    formData.set("quantity", quantity);
+    fetcher.submit(formData, { method: "POST" });
+    setActiveModal(null);
+    setVariantId("");
+    setQuantity("1");
+  };
+  const rowMarkup = exchanges.map(
+    ({ id, orderName, customerName, status, createdAt, items }, index) => {
+      const badge = statusBadge$1(status);
+      return /* @__PURE__ */ jsxs(
+        IndexTable.Row,
+        {
+          id,
+          selected: selectedResources.includes(id),
+          position: index,
+          children: [
+            /* @__PURE__ */ jsx(IndexTable.Cell, { children: /* @__PURE__ */ jsx(Link$1, { url: `/returns/${id}`, children: orderName || "—" }) }),
+            /* @__PURE__ */ jsx(IndexTable.Cell, { children: customerName || "—" }),
+            /* @__PURE__ */ jsx(IndexTable.Cell, { children: /* @__PURE__ */ jsx(Badge, { tone: badge.tone, children: badge.children }) }),
+            /* @__PURE__ */ jsxs(IndexTable.Cell, { children: [
+              items.length,
+              " item",
+              items.length !== 1 ? "s" : ""
+            ] }),
+            /* @__PURE__ */ jsx(IndexTable.Cell, { children: new Date(createdAt).toLocaleDateString() }),
+            /* @__PURE__ */ jsx(IndexTable.Cell, { children: /* @__PURE__ */ jsxs(InlineStack, { gap: "200", children: [
+              status === "PENDING" && /* @__PURE__ */ jsx(
+                Button,
+                {
+                  size: "slim",
+                  variant: "primary",
+                  onClick: () => {
+                    setActiveModal(id);
+                    setVariantId("");
+                    setQuantity("1");
+                  },
+                  children: "Exchange"
+                }
+              ),
+              status === "EXCHANGE" && /* @__PURE__ */ jsx(Badge, { tone: "info", children: "Draft created" })
+            ] }) })
+          ]
+        },
+        id
+      );
+    }
+  );
+  return /* @__PURE__ */ jsxs(Page, { title: "Exchanges", children: [
+    /* @__PURE__ */ jsx(TitleBar, { title: "Exchanges" }),
+    /* @__PURE__ */ jsx(Layout, { children: /* @__PURE__ */ jsx(Layout.Section, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "400", children: [
+      /* @__PURE__ */ jsx("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12 }, children: [
+        { label: "Pending Exchange", count: pendingCount, key: "PENDING", color: "#ecc134" },
+        { label: "Exchanges in Progress", count: exchangeCount, key: "EXCHANGE", color: "#47c1bf" }
+      ].map(({ label, count, key, color }) => /* @__PURE__ */ jsx(Card, { children: /* @__PURE__ */ jsxs("div", { style: { borderLeft: `3px solid ${color}`, paddingLeft: 8 }, children: [
+        /* @__PURE__ */ jsx(Text, { variant: "headingXl", as: "p", fontWeight: "bold", children: count }),
+        /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "span", tone: "subdued", children: label })
+      ] }) }, key)) }),
+      fetcher.data?.ok === true && /* @__PURE__ */ jsx(Banner, { tone: "success", children: /* @__PURE__ */ jsxs(Text, { as: "p", variant: "bodyMd", children: [
+        "Exchange draft order created: ",
+        fetcher.data.draftOrderId
+      ] }) }),
+      fetcher.data?.ok === false && /* @__PURE__ */ jsx(Banner, { tone: "critical", children: /* @__PURE__ */ jsxs(Text, { as: "p", variant: "bodyMd", children: [
+        "Exchange failed: ",
+        fetcher.data.error
+      ] }) }),
+      /* @__PURE__ */ jsx(Card, { children: exchanges.length === 0 ? /* @__PURE__ */ jsx(EmptyState, { heading: "No exchanges pending", image: "", children: /* @__PURE__ */ jsx("p", { children: "Exchange requests from customers using the return portal will appear here." }) }) : /* @__PURE__ */ jsx(
+        IndexTable,
+        {
+          resourceName,
+          itemCount: exchanges.length,
+          selectedItemsCount: allResourcesSelected ? "All" : selectedResources.length,
+          onSelectionChange: handleSelectionChange,
+          headings: [
+            { title: "Order" },
+            { title: "Customer" },
+            { title: "Status" },
+            { title: "Items" },
+            { title: "Date" },
+            { title: "Action" }
+          ],
+          children: rowMarkup
+        }
+      ) })
+    ] }) }) }),
+    activeModal && /* @__PURE__ */ jsx(
+      Modal,
+      {
+        open: !!activeModal && fetcher.state === "idle",
+        onClose: () => setActiveModal(null),
+        title: "Create Exchange",
+        primaryAction: {
+          content: "Create Exchange Order",
+          onAction: () => handleExchangeSubmit(activeModal),
+          disabled: !variantId.trim()
+        },
+        secondaryActions: [
+          { content: "Cancel", onAction: () => setActiveModal(null) }
+        ],
+        children: /* @__PURE__ */ jsx(Modal.Section, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "400", children: [
+          /* @__PURE__ */ jsx(
+            TextField,
+            {
+              label: "Replacement Variant GID",
+              value: variantId,
+              onChange: setVariantId,
+              placeholder: "gid://shopify/ProductVariant/123456789",
+              autoComplete: "off",
+              helpText: "The Shopify variant GID of the replacement item"
+            }
+          ),
+          /* @__PURE__ */ jsx(
+            Select,
+            {
+              label: "Quantity",
+              value: quantity,
+              onChange: setQuantity,
+              options: [
+                { label: "1", value: "1" },
+                { label: "2", value: "2" },
+                { label: "3", value: "3" },
+                { label: "4", value: "4" },
+                { label: "5", value: "5" }
+              ]
+            }
+          )
+        ] }) })
+      }
+    )
+  ] });
+}
+
+const route3 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+  __proto__: null,
+  action: action$7,
+  default: ExchangesPage,
   loader: loader$a
 }, Symbol.toStringTag, { value: 'Module' }));
 
@@ -331,7 +1152,7 @@ const action$6 = async ({ request }) => {
   }
 };
 
-const route2 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route4 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action: action$6
 }, Symbol.toStringTag, { value: 'Module' }));
@@ -467,7 +1288,7 @@ function BillingPage() {
   ] });
 }
 
-const route3 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route5 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action: action$5,
   default: BillingPage,
@@ -584,7 +1405,7 @@ function ReturnDetailPage() {
   );
 }
 
-const route4 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route6 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   default: ReturnDetailPage,
   loader: loader$8
@@ -600,7 +1421,7 @@ const loader$7 = async ({ request }) => {
   return null;
 };
 
-const route5 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route7 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   loader: loader$7
 }, Symbol.toStringTag, { value: 'Module' }));
@@ -813,7 +1634,7 @@ function AnalyticsPage() {
   ] }) }) }) });
 }
 
-const route6 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route8 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   default: AnalyticsPage,
   loader: loader$6
@@ -1035,7 +1856,7 @@ function PoliciesPage() {
   );
 }
 
-const route7 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route9 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action: action$4,
   default: PoliciesPage,
@@ -1213,143 +2034,12 @@ function SettingsPage() {
   ] }) }) });
 }
 
-const route8 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route10 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action: action$3,
   default: SettingsPage,
   loader: loader$4
 }, Symbol.toStringTag, { value: 'Module' }));
-
-const API_VERSION = process.env.SHOPIFY_API_VERSION || "2024-10";
-async function shopifyAdminQuery(shop, accessToken, query, variables) {
-  const url = `https://${shop}/admin/api/${API_VERSION}/graphql.json`;
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Shopify-Access-Token": accessToken
-    },
-    body: JSON.stringify({ query, variables })
-  });
-  if (response.status === 401) {
-    const refreshed = await tryRefreshToken(shop);
-    if (refreshed) {
-      const retryResp = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Shopify-Access-Token": refreshed
-        },
-        body: JSON.stringify({ query, variables })
-      });
-      return retryResp.json();
-    }
-    throw new Error(`Shopify API token expired and refresh failed for ${shop}`);
-  }
-  return response.json();
-}
-async function tryRefreshToken(shop) {
-  const session = await prisma$1.session.findFirst({
-    where: { shop, isOnline: false }
-  });
-  if (!session?.refreshToken || !session?.accessToken) {
-    console.log(`[shopify] No refresh token available for ${shop}`);
-    return null;
-  }
-  const apiKey = process.env.SHOPIFY_API_KEY;
-  const apiSecret = process.env.SHOPIFY_API_SECRET;
-  if (!apiKey || !apiSecret) {
-    console.log(`[shopify] Missing SHOPIFY_API_KEY or SHOPIFY_API_SECRET`);
-    return null;
-  }
-  try {
-    const response = await fetch(
-      `https://${shop}/admin/oauth/access_token`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json"
-        },
-        body: JSON.stringify({
-          client_id: apiKey,
-          client_secret: apiSecret,
-          refresh_token: session.refreshToken,
-          access_token: session.accessToken,
-          grant_type: "refresh_token"
-        })
-      }
-    );
-    if (!response.ok) {
-      const text = await response.text();
-      console.log(`[shopify] Token refresh failed for ${shop}: ${text}`);
-      return null;
-    }
-    const data = await response.json();
-    await prisma$1.session.update({
-      where: { id: session.id },
-      data: {
-        accessToken: data.access_token,
-        refreshToken: data.refresh_token || session.refreshToken,
-        expires: data.expires_in ? new Date(Date.now() + data.expires_in * 1e3) : void 0
-      }
-    });
-    console.log(`[shopify] Token refreshed successfully for ${shop}`);
-    return data.access_token;
-  } catch (err) {
-    console.log(`[shopify] Token refresh error for ${shop}: ${err.message}`);
-    return null;
-  }
-}
-async function executeRefund(shop, accessToken, orderId, amount, restock = true, reason = "Customer return") {
-  const orderGid = orderId.startsWith("gid://") ? orderId : `gid://shopify/Order/${orderId}`;
-  const calcQuery = `mutation calculate($input: CalculateRefundInput!) {
-    calculateRefund(input: $input) {
-      refund { transactions { id amountSet { shopMoney { amount } } kind } }
-      userErrors { field message }
-    }
-  }`;
-  const calcResult = await shopifyAdminQuery(shop, accessToken, calcQuery, {
-    input: {
-      orderId: orderGid,
-      amount: { amount, currencyCode: "USD" },
-      refundLineItems: [],
-      restock
-    }
-  });
-  const calcErrors = calcResult?.data?.calculateRefund?.userErrors;
-  if (calcErrors?.length > 0) {
-    throw new Error(`Refund calculation failed: ${calcErrors.map((e) => e.message).join(", ")}`);
-  }
-  const calculatedRefund = calcResult?.data?.calculateRefund?.refund;
-  if (!calculatedRefund) throw new Error("Failed to calculate refund");
-  const execQuery = `mutation execute($input: RefundInput!) {
-    refundCreate(input: $input) {
-      refund { id transactions { id status processedAt amountSet { shopMoney { amount } } } }
-      userErrors { field message }
-    }
-  }`;
-  const execResult = await shopifyAdminQuery(shop, accessToken, execQuery, {
-    input: {
-      orderId: orderGid,
-      amount: { amount, currencyCode: "USD" },
-      restock,
-      note: reason,
-      transactions: calculatedRefund.transactions?.map((t) => ({
-        id: t.id,
-        amount: { amount: amount.toString(), currencyCode: "USD" },
-        kind: "refund",
-        gateway: t.id
-      })),
-      refundLineItems: []
-    }
-  });
-  const execErrors = execResult?.data?.refundCreate?.userErrors;
-  if (execErrors?.length > 0) {
-    throw new Error(`Refund execution failed: ${execErrors.map((e) => e.message).join(", ")}`);
-  }
-  return execResult?.data?.refundCreate?.refund;
-}
 
 const RELAY_URL = process.env.MAIL_RELAY_URL || "http://localhost:8787/send";
 const RELAY_KEY = process.env.MAIL_RELAY_KEY || "";
@@ -1742,7 +2432,7 @@ const GROWTH_TOOLS = /* @__PURE__ */ new Set([
   "issue_confirmation_token"
 ]);
 const PRO_TOOLS = /* @__PURE__ */ new Set([
-  // Reserved for future Pro-only tools
+  "exchange_return"
 ]);
 function isToolAllowed(toolName, planTier) {
   if (PRO_TOOLS.has(toolName) && planTier !== "pro") {
@@ -1795,11 +2485,12 @@ const RETURNS_TOOLS = [
   },
   {
     name: "check_fraud",
-    description: "Run fraud detection signals on a return request. Checks IP velocity, history patterns, amount anomalies.",
+    description: "Run fraud detection signals on a return request. Checks IP velocity, history patterns, amount anomalies, and custom merchant-configured fraud rules (blocked countries, max value, max returns, suspicious email domains).",
     inputSchema: {
       type: "object",
       properties: {
-        returnId: { type: "string", description: "The return request UUID" }
+        returnId: { type: "string", description: "The return request UUID" },
+        customerCountry: { type: "string", description: "Optional ISO 3166-1 alpha-2 country code of the customer (e.g. 'US', 'RU'). Used for blocked-country rule evaluation." }
       },
       required: ["returnId"]
     }
@@ -1832,6 +2523,20 @@ const RETURNS_TOOLS = [
         status: { type: "string", description: "Filter by status: PENDING, APPROVED, DENIED, EXCHANGE, SHIPPED, REFUNDED, CLOSED" },
         limit: { type: "number", description: "Max results (default 10)" }
       }
+    }
+  },
+  {
+    name: "exchange_return",
+    description: "Create an exchange order for a pending/exchange return. Marks the return as EXCHANGE and creates a draft order with a replacement item at no charge. Requires Pro plan.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        returnId: { type: "string", description: "The return request UUID" },
+        replacementVariantId: { type: "string", description: "Shopify variant GID of the replacement item (e.g. gid://shopify/ProductVariant/123)" },
+        replacementQuantity: { type: "number", description: "Quantity of the replacement item (default 1)" },
+        notes: { type: "string", description: "Internal notes about the exchange" }
+      },
+      required: ["returnId", "replacementVariantId"]
     }
   }
 ];
@@ -2092,8 +2797,9 @@ async function handleMcpRequest(body, shop) {
           if (totalAmount > 1e3) {
             signals.push({ signal: "high_value_return", score: 0.3, details: { amount: totalAmount } });
           }
+          let recentCount = 0;
           if (returnReq.customerEmail) {
-            const recentCount = await prisma$1.returnRequest.count({
+            recentCount = await prisma$1.returnRequest.count({
               where: {
                 customerEmail: returnReq.customerEmail,
                 createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1e3) }
@@ -2102,6 +2808,33 @@ async function handleMcpRequest(body, shop) {
             if (recentCount > 2) {
               signals.push({ signal: "frequent_returner", score: 0.5, details: { returnsIn30Days: recentCount } });
             }
+          }
+          const shopRec = await prisma$1.shop.findUnique({
+            where: { shop: returnReq.shop }
+          });
+          const customRules = loadFraudRules(shopRec?.config || {});
+          const windowMs = customRules.maxReturnsWindowDays * 24 * 60 * 60 * 1e3;
+          const windowedCount = returnReq.customerEmail && customRules.maxReturnsWindowDays !== 30 ? await prisma$1.returnRequest.count({
+            where: {
+              customerEmail: returnReq.customerEmail,
+              createdAt: { gte: new Date(Date.now() - windowMs) }
+            }
+          }) : recentCount;
+          const customResult = evaluateFraudRules(
+            {
+              totalAmount,
+              customerEmail: returnReq.customerEmail,
+              customerCountry: args.customerCountry || null
+            },
+            customRules,
+            windowedCount
+          );
+          for (const rule of customResult.triggeredRules) {
+            signals.push({
+              signal: rule.rule,
+              score: rule.score,
+              details: { description: rule.details }
+            });
           }
           for (const s of signals) {
             await prisma$1.fraudSignal.create({
@@ -2118,7 +2851,8 @@ async function handleMcpRequest(body, shop) {
             returnId: args.returnId,
             riskLevel: maxScore > 0.5 ? "high" : maxScore > 0.2 ? "medium" : "low",
             riskScore: maxScore,
-            signals
+            signals,
+            customRulesApplied: customRules.enabled
           });
         }
         case "list_policies": {
@@ -2187,6 +2921,73 @@ async function handleMcpRequest(body, shop) {
               totalItems: r.items.length,
               createdAt: r.createdAt
             }))
+          });
+        }
+        case "exchange_return": {
+          const returnReq = await prisma$1.returnRequest.findUnique({
+            where: { id: args.returnId }
+          });
+          if (!returnReq) return jsonRpcError(id, -32602, "Return not found");
+          if (returnReq.status !== "PENDING" && returnReq.status !== "EXCHANGE") {
+            return jsonRpcError(id, -32602, `Cannot exchange return in status ${returnReq.status}. Only PENDING or EXCHANGE status allowed.`);
+          }
+          const session = await prisma$1.session.findFirst({
+            where: { shop: returnReq.shop, isOnline: false }
+          });
+          if (!session?.accessToken) {
+            return jsonRpcError(id, -32e3, "No Shopify access token available for this store");
+          }
+          const replacementVariantId = args.replacementVariantId;
+          const replacementQuantity = args.replacementQuantity || 1;
+          const notes = args.notes || null;
+          const draftResult = await createDraftOrder(
+            returnReq.shop,
+            session.accessToken,
+            [{ variantId: replacementVariantId, quantity: replacementQuantity }],
+            returnReq.customerEmail || void 0,
+            `Exchange for return ${returnReq.id}${notes ? ` - ${notes}` : ""}`
+          );
+          if (draftResult.error || !draftResult.draftOrderId) {
+            return jsonRpcError(id, -32e3, `Failed to create exchange order: ${draftResult.error}`);
+          }
+          const updated = await prisma$1.returnRequest.update({
+            where: { id: args.returnId },
+            data: {
+              status: "EXCHANGE",
+              decidedBy: "agent",
+              decidedAt: /* @__PURE__ */ new Date(),
+              notes,
+              labels: [
+                {
+                  type: "exchange_order",
+                  status: "created",
+                  draftOrderId: draftResult.draftOrderId,
+                  replacementVariantId,
+                  replacementQuantity,
+                  createdAt: (/* @__PURE__ */ new Date()).toISOString()
+                }
+              ]
+            }
+          });
+          await prisma$1.decisionLog.create({
+            data: {
+              returnId: args.returnId,
+              actor: "agent",
+              action: "exchange",
+              details: {
+                draftOrderId: draftResult.draftOrderId,
+                replacementVariantId,
+                replacementQuantity,
+                notes
+              }
+            }
+          });
+          return jsonRpcResult(id, {
+            success: true,
+            status: "EXCHANGE",
+            returnId: updated.id,
+            draftOrderId: draftResult.draftOrderId,
+            message: "Exchange order created. The replacement item draft order has been created at no charge."
           });
         }
         default:
@@ -2322,7 +3123,7 @@ const loader$3 = async () => {
   });
 };
 
-const route9 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route11 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action: action$2,
   loader: loader$3
@@ -2335,7 +3136,7 @@ const action$1 = () => {
   return json({ ok: true, service: "shopigent-returns", status: "healthy" });
 };
 
-const route10 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route12 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action: action$1,
   loader: loader$2
@@ -2456,7 +3257,7 @@ function Dashboard() {
   ] });
 }
 
-const route11 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route13 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   default: Dashboard,
   loader: loader$1
@@ -2791,14 +3592,14 @@ function ReturnPortal() {
   ] }) }) });
 }
 
-const route12 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route14 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action,
   default: ReturnPortal,
   loader
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','imports':['/assets/components-DncgAStS.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-C90wUuKP.js','imports':['/assets/components-DncgAStS.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/context-D_7evObr.js'],'css':[]},'routes/returns._index':{'id':'routes/returns._index','parentId':'root','path':'returns','index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._index-rt4k2P_9.js','imports':['/assets/components-DncgAStS.js','/assets/Link-BBt1zwDf.js','/assets/Page-5js4YzMG.js','/assets/Layout-B3Y1nKjP.js','/assets/ButtonGroup-BsIQ5m9s.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-IJgJvmok.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/app.billing':{'id':'routes/app.billing','parentId':'root','path':'app/billing','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.billing-T-zYSjgi.js','imports':['/assets/components-DncgAStS.js','/assets/Page-5js4YzMG.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Banner-B4ksSTSv.js','/assets/ButtonGroup-BsIQ5m9s.js','/assets/InlineGrid-CI5duNHk.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/returns.$id':{'id':'routes/returns.$id','parentId':'root','path':'returns/:id','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._id-BQoHc_dn.js','imports':['/assets/components-DncgAStS.js','/assets/Page-5js4YzMG.js','/assets/Layout-B3Y1nKjP.js','/assets/ButtonGroup-BsIQ5m9s.js','/assets/Tag-0jZY3pfk.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js'],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/analytics':{'id':'routes/analytics','parentId':'root','path':'analytics','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/analytics-_sdfxYC2.js','imports':['/assets/components-DncgAStS.js','/assets/Page-5js4YzMG.js','/assets/Layout-B3Y1nKjP.js','/assets/ButtonGroup-BsIQ5m9s.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js'],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-Z-PIVh1u.js','imports':['/assets/components-DncgAStS.js','/assets/Page-5js4YzMG.js','/assets/Layout-B3Y1nKjP.js','/assets/Banner-B4ksSTSv.js','/assets/ButtonGroup-BsIQ5m9s.js','/assets/Tag-0jZY3pfk.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-D_7evObr.js','/assets/CSSTransition-CYBGIXjC.js','/assets/InlineGrid-CI5duNHk.js','/assets/Checkbox-IJgJvmok.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/settings':{'id':'routes/settings','parentId':'root','path':'settings','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/settings-16GMGQat.js','imports':['/assets/components-DncgAStS.js','/assets/Page-5js4YzMG.js','/assets/Layout-B3Y1nKjP.js','/assets/Banner-B4ksSTSv.js','/assets/ButtonGroup-BsIQ5m9s.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/api.mcp':{'id':'routes/api.mcp','parentId':'root','path':'api/mcp','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.mcp-l0sNRNKZ.js','imports':[],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-5A58lyik.js','imports':['/assets/components-DncgAStS.js','/assets/Link-BBt1zwDf.js','/assets/Page-5js4YzMG.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Layout-B3Y1nKjP.js','/assets/ButtonGroup-BsIQ5m9s.js','/assets/Banner-B4ksSTSv.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-IJgJvmok.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/return':{'id':'routes/return','parentId':'root','path':'return','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/return-BAe8blb8.js','imports':['/assets/components-DncgAStS.js','/assets/ButtonGroup-BsIQ5m9s.js','/assets/Banner-B4ksSTSv.js','/assets/Checkbox-IJgJvmok.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/banner-context-DEryxoPe.js'],'css':[]}},'url':'/assets/manifest-4a8862aa.js','version':'4a8862aa'};
+const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','imports':['/assets/components-DncgAStS.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-BfxDhPMr.js','imports':['/assets/components-DncgAStS.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/context-D_7evObr.js'],'css':[]},'routes/app.fraud-rules':{'id':'routes/app.fraud-rules','parentId':'root','path':'app/fraud-rules','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.fraud-rules-DkrG_FWt.js','imports':['/assets/components-DncgAStS.js','/assets/Page-CAJLY0O6.js','/assets/Layout-C13JKOf2.js','/assets/Banner-DGNxOIFU.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/Checkbox-DcQgWFe6.js','/assets/Tag-DdolXHyk.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/returns._index':{'id':'routes/returns._index','parentId':'root','path':'returns','index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._index-QL6eQetC.js','imports':['/assets/components-DncgAStS.js','/assets/Link-C9rT3U0_.js','/assets/Page-CAJLY0O6.js','/assets/Layout-C13JKOf2.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/EmptyState-CZyETyrk.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-DcQgWFe6.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/app.exchanges':{'id':'routes/app.exchanges','parentId':'root','path':'app/exchanges','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.exchanges-BkRckrdC.js','imports':['/assets/components-DncgAStS.js','/assets/Link-C9rT3U0_.js','/assets/Page-CAJLY0O6.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Layout-C13JKOf2.js','/assets/Banner-DGNxOIFU.js','/assets/EmptyState-CZyETyrk.js','/assets/Modal-Bc17I9P_.js','/assets/Select-CVI6jjHk.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-DcQgWFe6.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js','/assets/context-D_7evObr.js','/assets/InlineGrid-Ba7mGhzc.js'],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/app.billing':{'id':'routes/app.billing','parentId':'root','path':'app/billing','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.billing-YGzPe1nt.js','imports':['/assets/components-DncgAStS.js','/assets/Page-CAJLY0O6.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Banner-DGNxOIFU.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/InlineGrid-Ba7mGhzc.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/returns.$id':{'id':'routes/returns.$id','parentId':'root','path':'returns/:id','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._id-BcrZlCyv.js','imports':['/assets/components-DncgAStS.js','/assets/Page-CAJLY0O6.js','/assets/Layout-C13JKOf2.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/Tag-DdolXHyk.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js'],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/analytics':{'id':'routes/analytics','parentId':'root','path':'analytics','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/analytics-BhodOGcm.js','imports':['/assets/components-DncgAStS.js','/assets/Page-CAJLY0O6.js','/assets/Layout-C13JKOf2.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js'],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-Dg-dS-cJ.js','imports':['/assets/components-DncgAStS.js','/assets/Page-CAJLY0O6.js','/assets/Layout-C13JKOf2.js','/assets/Banner-DGNxOIFU.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/Tag-DdolXHyk.js','/assets/Modal-Bc17I9P_.js','/assets/Checkbox-DcQgWFe6.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/banner-context-DEryxoPe.js','/assets/context-D_7evObr.js','/assets/CSSTransition-CYBGIXjC.js','/assets/InlineGrid-Ba7mGhzc.js'],'css':[]},'routes/settings':{'id':'routes/settings','parentId':'root','path':'settings','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/settings-CeikpiMS.js','imports':['/assets/components-DncgAStS.js','/assets/Page-CAJLY0O6.js','/assets/Layout-C13JKOf2.js','/assets/Banner-DGNxOIFU.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/Select-CVI6jjHk.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/api.mcp':{'id':'routes/api.mcp','parentId':'root','path':'api/mcp','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.mcp-l0sNRNKZ.js','imports':[],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-Cy-sRJSX.js','imports':['/assets/components-DncgAStS.js','/assets/Link-C9rT3U0_.js','/assets/Page-CAJLY0O6.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Layout-C13JKOf2.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/Banner-DGNxOIFU.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-DcQgWFe6.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/return':{'id':'routes/return','parentId':'root','path':'return','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/return-DrBtyBcy.js','imports':['/assets/components-DncgAStS.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/Banner-DGNxOIFU.js','/assets/Checkbox-DcQgWFe6.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/banner-context-DEryxoPe.js'],'css':[]}},'url':'/assets/manifest-a3a75d0c.js','version':'a3a75d0c'};
 
 /**
        * `mode` is only relevant for the old Remix compiler but
@@ -2820,13 +3621,29 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           caseSensitive: undefined,
           module: route0
         },
+  "routes/app.fraud-rules": {
+          id: "routes/app.fraud-rules",
+          parentId: "root",
+          path: "app/fraud-rules",
+          index: undefined,
+          caseSensitive: undefined,
+          module: route1
+        },
   "routes/returns._index": {
           id: "routes/returns._index",
           parentId: "root",
           path: "returns",
           index: true,
           caseSensitive: undefined,
-          module: route1
+          module: route2
+        },
+  "routes/app.exchanges": {
+          id: "routes/app.exchanges",
+          parentId: "root",
+          path: "app/exchanges",
+          index: undefined,
+          caseSensitive: undefined,
+          module: route3
         },
   "routes/api.webhooks": {
           id: "routes/api.webhooks",
@@ -2834,7 +3651,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           path: "api/webhooks",
           index: undefined,
           caseSensitive: undefined,
-          module: route2
+          module: route4
         },
   "routes/app.billing": {
           id: "routes/app.billing",
@@ -2842,7 +3659,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           path: "app/billing",
           index: undefined,
           caseSensitive: undefined,
-          module: route3
+          module: route5
         },
   "routes/returns.$id": {
           id: "routes/returns.$id",
@@ -2850,7 +3667,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           path: "returns/:id",
           index: undefined,
           caseSensitive: undefined,
-          module: route4
+          module: route6
         },
   "routes/api.auth.$": {
           id: "routes/api.auth.$",
@@ -2858,7 +3675,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           path: "api/auth/*",
           index: undefined,
           caseSensitive: undefined,
-          module: route5
+          module: route7
         },
   "routes/analytics": {
           id: "routes/analytics",
@@ -2866,7 +3683,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           path: "analytics",
           index: undefined,
           caseSensitive: undefined,
-          module: route6
+          module: route8
         },
   "routes/policies": {
           id: "routes/policies",
@@ -2874,7 +3691,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           path: "policies",
           index: undefined,
           caseSensitive: undefined,
-          module: route7
+          module: route9
         },
   "routes/settings": {
           id: "routes/settings",
@@ -2882,7 +3699,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           path: "settings",
           index: undefined,
           caseSensitive: undefined,
-          module: route8
+          module: route10
         },
   "routes/api.mcp": {
           id: "routes/api.mcp",
@@ -2890,7 +3707,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           path: "api/mcp",
           index: undefined,
           caseSensitive: undefined,
-          module: route9
+          module: route11
         },
   "routes/healthz": {
           id: "routes/healthz",
@@ -2898,7 +3715,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           path: "healthz",
           index: undefined,
           caseSensitive: undefined,
-          module: route10
+          module: route12
         },
   "routes/_index": {
           id: "routes/_index",
@@ -2906,7 +3723,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           path: undefined,
           index: true,
           caseSensitive: undefined,
-          module: route11
+          module: route13
         },
   "routes/return": {
           id: "routes/return",
@@ -2914,7 +3731,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           path: "return",
           index: undefined,
           caseSensitive: undefined,
-          module: route12
+          module: route14
         }
       };
 

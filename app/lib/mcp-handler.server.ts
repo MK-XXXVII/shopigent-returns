@@ -5,6 +5,7 @@ import { createReturnLabel } from "./label-provider.server";
 import { issueConfirmationToken, verifyConfirmationToken } from "./confirmation.server";
 import { getPlanTier, isToolAllowed, checkPlanLimit } from "./plans.server";
 import { RETURNS_TOOLS } from "./mcp-types";
+import { loadFraudRules, evaluateFraudRules, type FraudRulesConfig } from "./fraud-rules.server";
 
 function jsonRpcError(id: string | number, code: number, message: string) {
   return { jsonrpc: "2.0", id, error: { code, message } };
@@ -321,8 +322,9 @@ export async function handleMcpRequest(body: any, shop?: string) {
           }
 
           // Check recent returns by same customer
+          let recentCount = 0;
           if (returnReq.customerEmail) {
-            const recentCount = await prisma.returnRequest.count({
+            recentCount = await prisma.returnRequest.count({
               where: {
                 customerEmail: returnReq.customerEmail,
                 createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
@@ -332,6 +334,44 @@ export async function handleMcpRequest(body: any, shop?: string) {
               signals.push({ signal: "frequent_returner", score: 0.5, details: { returnsIn30Days: recentCount } });
             }
           }
+
+          // ── Custom merchant-configured fraud rules ──────────
+          // Load the shop record for fraud rules config
+          const shopRec = await prisma.shop.findUnique({
+            where: { shop: returnReq.shop },
+          });
+          const customRules: FraudRulesConfig = loadFraudRules(shopRec?.config as Record<string, any> || {});
+
+          // Re-count within the merchant-configured window if different from hardcoded 30-day
+          const windowMs = customRules.maxReturnsWindowDays * 24 * 60 * 60 * 1000;
+          const windowedCount = returnReq.customerEmail && customRules.maxReturnsWindowDays !== 30
+            ? await prisma.returnRequest.count({
+                where: {
+                  customerEmail: returnReq.customerEmail,
+                  createdAt: { gte: new Date(Date.now() - windowMs) },
+                },
+              })
+            : recentCount;
+
+          const customResult = evaluateFraudRules(
+            {
+              totalAmount,
+              customerEmail: returnReq.customerEmail,
+              customerCountry: args.customerCountry || null,
+            },
+            customRules,
+            windowedCount
+          );
+
+          // Merge custom rule results into signals
+          for (const rule of customResult.triggeredRules) {
+            signals.push({
+              signal: rule.rule,
+              score: rule.score,
+              details: { description: rule.details },
+            });
+          }
+          // ── end custom rules ────────────────────────────────
 
           // Save signals
           for (const s of signals) {
@@ -352,6 +392,7 @@ export async function handleMcpRequest(body: any, shop?: string) {
             riskLevel: maxScore > 0.5 ? "high" : maxScore > 0.2 ? "medium" : "low",
             riskScore: maxScore,
             signals,
+            customRulesApplied: customRules.enabled,
           });
         }
 
@@ -424,6 +465,84 @@ export async function handleMcpRequest(body: any, shop?: string) {
               totalItems: (r.items as any[]).length,
               createdAt: r.createdAt,
             })),
+          });
+        }
+
+        case "exchange_return": {
+          const returnReq = await prisma.returnRequest.findUnique({
+            where: { id: args.returnId },
+          });
+          if (!returnReq) return jsonRpcError(id, -32602, "Return not found");
+          if (returnReq.status !== "PENDING" && returnReq.status !== "EXCHANGE") {
+            return jsonRpcError(id, -32602, `Cannot exchange return in status ${returnReq.status}. Only PENDING or EXCHANGE status allowed.`);
+          }
+
+          // Get the store's offline access token
+          const session = await prisma.session.findFirst({
+            where: { shop: returnReq.shop, isOnline: false },
+          });
+          if (!session?.accessToken) {
+            return jsonRpcError(id, -32000, "No Shopify access token available for this store");
+          }
+
+          const replacementVariantId = args.replacementVariantId;
+          const replacementQuantity = args.replacementQuantity || 1;
+          const notes = args.notes || null;
+
+          // Create draft order for the replacement item (100% discount = free exchange)
+          const draftResult = await createDraftOrder(
+            returnReq.shop,
+            session.accessToken,
+            [{ variantId: replacementVariantId, quantity: replacementQuantity }],
+            returnReq.customerEmail || undefined,
+            `Exchange for return ${returnReq.id}${notes ? ` - ${notes}` : ""}`
+          );
+
+          if (draftResult.error || !draftResult.draftOrderId) {
+            return jsonRpcError(id, -32000, `Failed to create exchange order: ${draftResult.error}`);
+          }
+
+          // Mark the return as EXCHANGE and store the replacement order info
+          const updated = await prisma.returnRequest.update({
+            where: { id: args.returnId },
+            data: {
+              status: "EXCHANGE",
+              decidedBy: "agent",
+              decidedAt: new Date(),
+              notes: notes,
+              labels: [
+                {
+                  type: "exchange_order",
+                  status: "created",
+                  draftOrderId: draftResult.draftOrderId,
+                  replacementVariantId,
+                  replacementQuantity,
+                  createdAt: new Date().toISOString(),
+                },
+              ],
+            },
+          });
+
+          await prisma.decisionLog.create({
+            data: {
+              returnId: args.returnId,
+              actor: "agent",
+              action: "exchange",
+              details: {
+                draftOrderId: draftResult.draftOrderId,
+                replacementVariantId,
+                replacementQuantity,
+                notes,
+              },
+            },
+          });
+
+          return jsonRpcResult(id, {
+            success: true,
+            status: "EXCHANGE",
+            returnId: updated.id,
+            draftOrderId: draftResult.draftOrderId,
+            message: "Exchange order created. The replacement item draft order has been created at no charge.",
           });
         }
 
