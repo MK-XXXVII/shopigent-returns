@@ -155,15 +155,18 @@ const action$9 = async ({ request }) => {
   const authHeader = request.headers.get("authorization");
   const key = authHeader?.slice(7);
   const hash = crypto.createHash("sha256").update(key || "").digest("hex");
-  const shop = await prisma$1.shop.findFirst({ where: { mcpApiKeyHash: hash } });
-  if (!shop) {
+  const authedShop = await prisma$1.shop.findFirst({ where: { mcpApiKeyHash: hash } });
+  if (!authedShop) {
     return json({ error: "Invalid API key" }, { status: 401 });
   }
-  await prisma$1.shop.update({
-    where: { id: shop.id },
-    data: { planName: "pro" }
+  const url = new URL(request.url);
+  const targetShop = url.searchParams.get("shop") || authedShop.shop;
+  await prisma$1.shop.upsert({
+    where: { shop: targetShop },
+    update: { planName: "pro" },
+    create: { id: targetShop, shop: targetShop, planName: "pro" }
   });
-  return json({ ok: true, shop: shop.shop, plan: "pro" });
+  return json({ ok: true, shop: targetShop, plan: "pro", upgradedBy: authedShop.shop });
 };
 
 const route1 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
