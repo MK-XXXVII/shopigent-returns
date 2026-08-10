@@ -1,8 +1,11 @@
-import { json, type ActionFunctionArgs } from "@remix-run/node";
+import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
 import * as crypto from "node:crypto";
 import prisma from "../lib/db.server";
 
 // DEV ONLY: Upgrade a shop to Pro plan
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  return json({ message: "Send POST to upgrade" });
+};
 // POST /api/upgrade-pro with Authorization: Bearer <returns_mcp_key>
 export const action = async ({ request }: ActionFunctionArgs) => {
   const authHeader = request.headers.get("authorization");
