@@ -47,7 +47,7 @@ export const RETURNS_TOOLS: McpTool[] = [
   },
   {
     name: "approve_return",
-    description: "Approve a pending return request. Optionally set refund amount and issue a return label.",
+    description: "Approve a pending return request. Optionally set refund amount, issue a return label, specify which items to refund, or issue store credit instead of a refund.",
     inputSchema: {
       type: "object",
       properties: {
@@ -55,6 +55,8 @@ export const RETURNS_TOOLS: McpTool[] = [
         refundAmount: { type: "number", description: "Optional override refund amount" },
         issueLabel: { type: "boolean", description: "Whether to generate a return label" },
         notes: { type: "string", description: "Notes about the decision" },
+        returnedItems: { type: "array", items: { type: "string" }, description: "Optional list of item IDs to refund. If omitted, all items are refunded." },
+        storeCredit: { type: "boolean", description: "If true, issue a store credit discount code instead of processing a refund" },
       },
       required: ["returnId"],
     },

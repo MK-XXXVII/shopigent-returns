@@ -1,6 +1,6 @@
 import prisma from "./db.server";
-import { executeRefund } from "./shopify-admin.server";
-import { sendEmail, returnApprovedEmail, returnDeniedEmail, refundProcessedEmail } from "./email.server";
+import { executeRefund, createStoreCredit } from "./shopify-admin.server";
+import { sendEmail, returnApprovedEmail, returnDeniedEmail, refundProcessedEmail, storeCreditProcessedEmail } from "./email.server";
 import { createReturnLabel } from "./label-provider.server";
 import { issueConfirmationToken, verifyConfirmationToken } from "./confirmation.server";
 import { getPlanTier, isToolAllowed, checkPlanLimit } from "./plans.server";
@@ -157,8 +157,13 @@ export async function handleMcpRequest(body: any, shop?: string) {
             }
           }
 
-          // Calculate refund amount
-          const items = returnReq.items as any[];
+          // Calculate refund amount — optionally filter by returnedItems
+          const allItems = returnReq.items as any[];
+          const items = args.returnedItems
+            ? allItems.filter((i: any) =>
+                args.returnedItems.includes(i.id) || args.returnedItems.includes(i.variantId)
+              )
+            : allItems;
           const totalAmount = args.refundAmount || items.reduce(
             (sum: number, i: any) => sum + (parseFloat(i.price || "0") * (i.quantity || 0)), 0
           );
@@ -169,19 +174,36 @@ export async function handleMcpRequest(body: any, shop?: string) {
           });
 
           let refundResult = null;
+          let storeCreditResult = null;
           if (session?.accessToken) {
             try {
               const orderIdNum = returnReq.orderId.replace("gid://shopify/Order/", "");
-              refundResult = await executeRefund(
-                returnReq.shop,
-                session.accessToken,
-                orderIdNum,
-                totalAmount,
-                true,
-                args.notes || "Auto-approved by Shopigent Returns AI agent"
-              );
+
+              if (args.storeCredit) {
+                // Issue store credit discount code instead of refund
+                storeCreditResult = await createStoreCredit(
+                  returnReq.shop,
+                  session.accessToken,
+                  totalAmount,
+                  returnReq.customerEmail || "",
+                  args.notes || "Return store credit"
+                );
+              } else {
+                refundResult = await executeRefund(
+                  returnReq.shop,
+                  session.accessToken,
+                  orderIdNum,
+                  totalAmount,
+                  true,
+                  args.notes || "Auto-approved by Shopigent Returns AI agent"
+                );
+              }
             } catch (err: any) {
-              refundResult = { error: err.message };
+              if (args.storeCredit) {
+                storeCreditResult = { error: err.message };
+              } else {
+                refundResult = { error: err.message };
+              }
             }
           }
 
@@ -207,12 +229,12 @@ export async function handleMcpRequest(body: any, shop?: string) {
           const updated = await prisma.returnRequest.update({
             where: { id: args.returnId },
             data: {
-              status: refundResult?.id ? "REFUNDED" : "APPROVED",
+              status: (refundResult?.id || storeCreditResult?.discountCode) ? "REFUNDED" : "APPROVED",
               decidedBy: "agent",
               decidedAt: new Date(),
               notes: args.notes || null,
               refundAmount: totalAmount,
-              refundId: refundResult?.id || null,
+              refundId: refundResult?.id || storeCreditResult?.discountId || null,
               labels: labelResult?.success
                 ? [{ type: "return_label", status: "ready", url: labelResult.labelUrl, tracking: labelResult.trackingNumber }]
                 : args.issueLabel
@@ -225,11 +247,14 @@ export async function handleMcpRequest(body: any, shop?: string) {
             data: {
               returnId: args.returnId,
               actor: "agent",
-              action: refundResult?.id ? "refund" : "approve",
+              action: args.storeCredit ? "store_credit" : (refundResult?.id ? "refund" : "approve"),
               details: {
                 refundAmount: totalAmount,
                 refundTransactionId: refundResult?.id || null,
-                refundError: refundResult?.error || null,
+                storeCreditCode: storeCreditResult?.discountCode || null,
+                storeCreditDiscountId: storeCreditResult?.discountId || null,
+                refundError: refundResult?.error || storeCreditResult?.error || null,
+                returnedItems: args.returnedItems || null,
                 issueLabel: args.issueLabel,
                 notes: args.notes,
               },
@@ -238,9 +263,19 @@ export async function handleMcpRequest(body: any, shop?: string) {
 
           // Send email notification
           if (returnReq.customerEmail) {
-            const emailData = refundResult?.id
-              ? refundProcessedEmail(returnReq.customerName || "Customer", returnReq.orderName || "", totalAmount)
-              : returnApprovedEmail(returnReq.customerName || "Customer", returnReq.orderName || "", totalAmount);
+            let emailData;
+            if (storeCreditResult?.discountCode) {
+              emailData = storeCreditProcessedEmail(
+                returnReq.customerName || "Customer",
+                returnReq.orderName || "",
+                totalAmount,
+                storeCreditResult.discountCode
+              );
+            } else if (refundResult?.id) {
+              emailData = refundProcessedEmail(returnReq.customerName || "Customer", returnReq.orderName || "", totalAmount);
+            } else {
+              emailData = returnApprovedEmail(returnReq.customerName || "Customer", returnReq.orderName || "", totalAmount);
+            }
             sendEmail({ ...emailData, to: returnReq.customerEmail });
           }
 
@@ -251,6 +286,9 @@ export async function handleMcpRequest(body: any, shop?: string) {
             refundExecuted: !!refundResult?.id,
             refundId: refundResult?.id || null,
             refundError: refundResult?.error || null,
+            storeCreditExecuted: !!storeCreditResult?.discountCode,
+            storeCreditCode: storeCreditResult?.discountCode || null,
+            storeCreditError: storeCreditResult?.error || null,
           });
         }
 

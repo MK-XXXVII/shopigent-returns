@@ -865,6 +865,50 @@ async function createDraftOrder$1(shop, accessToken, lineItems, customerEmail, n
   }
   return { draftOrderId: draftOrder.id };
 }
+async function createStoreCredit(shop, accessToken, amount, customerEmail, reason) {
+  const code = `STORE-CREDIT-${Date.now().toString(36).toUpperCase()}`;
+  const mutation = `mutation discountCodeBasicCreate($input: DiscountCodeBasicInput!) {
+    discountCodeBasicCreate(basicCodeDiscount: $input) {
+      codeDiscountNode {
+        id
+        codeDiscount {
+          ... on DiscountCodeBasic {
+            codes(first: 1) {
+              edges {
+                node { code }
+              }
+            }
+          }
+        }
+      }
+      userErrors { field message }
+    }
+  }`;
+  const variables = {
+    input: {
+      title: `Store Credit - ${reason}`,
+      code,
+      startsAt: (/* @__PURE__ */ new Date()).toISOString(),
+      endsAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1e3).toISOString(),
+      customerSelection: {
+        customers: [{ email: customerEmail }]
+      },
+      appliesOncePerCustomer: true,
+      usageLimit: 1,
+      discountType: "FIXED_AMOUNT",
+      discountValue: { amount },
+      appliesOn: { all: true }
+    }
+  };
+  const result = await shopifyAdminQuery(shop, accessToken, mutation, variables);
+  const errors = result?.data?.discountCodeBasicCreate?.userErrors;
+  if (errors?.length > 0) {
+    return { discountCode: "", discountId: null, error: errors.map((e) => e.message).join(", ") };
+  }
+  const discountNode = result?.data?.discountCodeBasicCreate?.codeDiscountNode;
+  const discountCode = discountNode?.codeDiscount?.codes?.edges?.[0]?.node?.code || code;
+  return { discountCode, discountId: discountNode?.id || null };
+}
 
 const STATUS_COLORS$1 = {
   PENDING: "warning",
@@ -2132,6 +2176,20 @@ function returnDeniedEmail(customerName, orderName, reason) {
     </div>`
   };
 }
+function storeCreditProcessedEmail(customerName, orderName, amount, discountCode) {
+  return {
+    to: "",
+    subject: `Store Credit Issued — ${orderName}`,
+    html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
+      <h2 style="color:#47c1bf">🎉 Store Credit Issued</h2>
+      <p>Hi ${customerName},</p>
+      <p>Your store credit of <strong>$${amount.toFixed(2)}</strong> for order <strong>${orderName}</strong> has been issued.</p>
+      <p>Use code <strong>${discountCode}</strong> on your next purchase.</p>
+      <p>The code expires in 1 year.</p>
+      <hr><p style="color:#666;font-size:12px">Shopigent Returns — AI-powered return management</p>
+    </div>`
+  };
+}
 function refundProcessedEmail(customerName, orderName, amount) {
   return {
     to: "",
@@ -2486,14 +2544,16 @@ const RETURNS_TOOLS = [
   },
   {
     name: "approve_return",
-    description: "Approve a pending return request. Optionally set refund amount and issue a return label.",
+    description: "Approve a pending return request. Optionally set refund amount, issue a return label, specify which items to refund, or issue store credit instead of a refund.",
     inputSchema: {
       type: "object",
       properties: {
         returnId: { type: "string", description: "The return request UUID" },
         refundAmount: { type: "number", description: "Optional override refund amount" },
         issueLabel: { type: "boolean", description: "Whether to generate a return label" },
-        notes: { type: "string", description: "Notes about the decision" }
+        notes: { type: "string", description: "Notes about the decision" },
+        returnedItems: { type: "array", items: { type: "string" }, description: "Optional list of item IDs to refund. If omitted, all items are refunded." },
+        storeCredit: { type: "boolean", description: "If true, issue a store credit discount code instead of processing a refund" }
       },
       required: ["returnId"]
     }
@@ -2691,7 +2751,10 @@ async function handleMcpRequest(body, shop) {
               return jsonRpcError(id, -32e3, `Confirmation required: ${check.reason}. Call issue_confirmation_token first.`);
             }
           }
-          const items = returnReq.items;
+          const allItems = returnReq.items;
+          const items = args.returnedItems ? allItems.filter(
+            (i) => args.returnedItems.includes(i.id) || args.returnedItems.includes(i.variantId)
+          ) : allItems;
           const totalAmount = args.refundAmount || items.reduce(
             (sum, i) => sum + parseFloat(i.price || "0") * (i.quantity || 0),
             0
@@ -2700,19 +2763,34 @@ async function handleMcpRequest(body, shop) {
             where: { shop: returnReq.shop, isOnline: false }
           });
           let refundResult = null;
+          let storeCreditResult = null;
           if (session?.accessToken) {
             try {
               const orderIdNum = returnReq.orderId.replace("gid://shopify/Order/", "");
-              refundResult = await executeRefund(
-                returnReq.shop,
-                session.accessToken,
-                orderIdNum,
-                totalAmount,
-                true,
-                args.notes || "Auto-approved by Shopigent Returns AI agent"
-              );
+              if (args.storeCredit) {
+                storeCreditResult = await createStoreCredit(
+                  returnReq.shop,
+                  session.accessToken,
+                  totalAmount,
+                  returnReq.customerEmail || "",
+                  args.notes || "Return store credit"
+                );
+              } else {
+                refundResult = await executeRefund(
+                  returnReq.shop,
+                  session.accessToken,
+                  orderIdNum,
+                  totalAmount,
+                  true,
+                  args.notes || "Auto-approved by Shopigent Returns AI agent"
+                );
+              }
             } catch (err) {
-              refundResult = { error: err.message };
+              if (args.storeCredit) {
+                storeCreditResult = { error: err.message };
+              } else {
+                refundResult = { error: err.message };
+              }
             }
           }
           let labelResult = null;
@@ -2735,12 +2813,12 @@ async function handleMcpRequest(body, shop) {
           const updated = await prisma$1.returnRequest.update({
             where: { id: args.returnId },
             data: {
-              status: refundResult?.id ? "REFUNDED" : "APPROVED",
+              status: refundResult?.id || storeCreditResult?.discountCode ? "REFUNDED" : "APPROVED",
               decidedBy: "agent",
               decidedAt: /* @__PURE__ */ new Date(),
               notes: args.notes || null,
               refundAmount: totalAmount,
-              refundId: refundResult?.id || null,
+              refundId: refundResult?.id || storeCreditResult?.discountId || null,
               labels: labelResult?.success ? [{ type: "return_label", status: "ready", url: labelResult.labelUrl, tracking: labelResult.trackingNumber }] : args.issueLabel ? [{ type: "return_label", status: "failed", error: labelResult?.error }] : void 0
             }
           });
@@ -2748,18 +2826,33 @@ async function handleMcpRequest(body, shop) {
             data: {
               returnId: args.returnId,
               actor: "agent",
-              action: refundResult?.id ? "refund" : "approve",
+              action: args.storeCredit ? "store_credit" : refundResult?.id ? "refund" : "approve",
               details: {
                 refundAmount: totalAmount,
                 refundTransactionId: refundResult?.id || null,
-                refundError: refundResult?.error || null,
+                storeCreditCode: storeCreditResult?.discountCode || null,
+                storeCreditDiscountId: storeCreditResult?.discountId || null,
+                refundError: refundResult?.error || storeCreditResult?.error || null,
+                returnedItems: args.returnedItems || null,
                 issueLabel: args.issueLabel,
                 notes: args.notes
               }
             }
           });
           if (returnReq.customerEmail) {
-            const emailData = refundResult?.id ? refundProcessedEmail(returnReq.customerName || "Customer", returnReq.orderName || "", totalAmount) : returnApprovedEmail(returnReq.customerName || "Customer", returnReq.orderName || "", totalAmount);
+            let emailData;
+            if (storeCreditResult?.discountCode) {
+              emailData = storeCreditProcessedEmail(
+                returnReq.customerName || "Customer",
+                returnReq.orderName || "",
+                totalAmount,
+                storeCreditResult.discountCode
+              );
+            } else if (refundResult?.id) {
+              emailData = refundProcessedEmail(returnReq.customerName || "Customer", returnReq.orderName || "", totalAmount);
+            } else {
+              emailData = returnApprovedEmail(returnReq.customerName || "Customer", returnReq.orderName || "", totalAmount);
+            }
             sendEmail({ ...emailData, to: returnReq.customerEmail });
           }
           return jsonRpcResult(id, {
@@ -2768,7 +2861,10 @@ async function handleMcpRequest(body, shop) {
             returnId: updated.id,
             refundExecuted: !!refundResult?.id,
             refundId: refundResult?.id || null,
-            refundError: refundResult?.error || null
+            refundError: refundResult?.error || null,
+            storeCreditExecuted: !!storeCreditResult?.discountCode,
+            storeCreditCode: storeCreditResult?.discountCode || null,
+            storeCreditError: storeCreditResult?.error || null
           });
         }
         case "deny_return": {

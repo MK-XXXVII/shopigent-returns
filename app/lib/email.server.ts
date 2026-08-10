@@ -94,6 +94,21 @@ export function returnDeniedEmail(customerName: string, orderName: string, reaso
   };
 }
 
+export function storeCreditProcessedEmail(customerName: string, orderName: string, amount: number, discountCode: string): EmailPayload {
+  return {
+    to: "",
+    subject: `Store Credit Issued — ${orderName}`,
+    html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
+      <h2 style="color:#47c1bf">🎉 Store Credit Issued</h2>
+      <p>Hi ${customerName},</p>
+      <p>Your store credit of <strong>$${amount.toFixed(2)}</strong> for order <strong>${orderName}</strong> has been issued.</p>
+      <p>Use code <strong>${discountCode}</strong> on your next purchase.</p>
+      <p>The code expires in 1 year.</p>
+      <hr><p style="color:#666;font-size:12px">Shopigent Returns — AI-powered return management</p>
+    </div>`,
+  };
+}
+
 export function refundProcessedEmail(customerName: string, orderName: string, amount: number): EmailPayload {
   return {
     to: "",

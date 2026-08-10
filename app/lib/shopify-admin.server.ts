@@ -249,3 +249,61 @@ export async function createDraftOrder(
 
   return { draftOrderId: draftOrder.id };
 }
+
+// Create a store credit discount code for a customer
+export async function createStoreCredit(
+  shop: string,
+  accessToken: string,
+  amount: number,
+  customerEmail: string,
+  reason: string
+): Promise<{ discountCode: string; discountId: string | null; error?: string }> {
+  const code = `STORE-CREDIT-${Date.now().toString(36).toUpperCase()}`;
+
+  const mutation = `mutation discountCodeBasicCreate($input: DiscountCodeBasicInput!) {
+    discountCodeBasicCreate(basicCodeDiscount: $input) {
+      codeDiscountNode {
+        id
+        codeDiscount {
+          ... on DiscountCodeBasic {
+            codes(first: 1) {
+              edges {
+                node { code }
+              }
+            }
+          }
+        }
+      }
+      userErrors { field message }
+    }
+  }`;
+
+  const variables = {
+    input: {
+      title: `Store Credit - ${reason || "Return"}`,
+      code,
+      startsAt: new Date().toISOString(),
+      endsAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+      customerSelection: {
+        customers: [{ email: customerEmail }],
+      },
+      appliesOncePerCustomer: true,
+      usageLimit: 1,
+      discountType: "FIXED_AMOUNT" as const,
+      discountValue: { amount },
+      appliesOn: { all: true },
+    },
+  };
+
+  const result = await shopifyAdminQuery(shop, accessToken, mutation, variables);
+
+  const errors = result?.data?.discountCodeBasicCreate?.userErrors;
+  if (errors?.length > 0) {
+    return { discountCode: "", discountId: null, error: errors.map((e: any) => e.message).join(", ") };
+  }
+
+  const discountNode = result?.data?.discountCodeBasicCreate?.codeDiscountNode;
+  const discountCode = discountNode?.codeDiscount?.codes?.edges?.[0]?.node?.code || code;
+
+  return { discountCode, discountId: discountNode?.id || null };
+}
