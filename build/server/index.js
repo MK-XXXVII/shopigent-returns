@@ -3386,6 +3386,15 @@ const route14 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   loader: loader$1
 }, Symbol.toStringTag, { value: 'Module' }));
 
+function shouldBypassOtp(email) {
+  if (process.env.DEV_BYPASS_OTP !== "true") return false;
+  const domain = email.split("@")[1]?.toLowerCase() || "";
+  return ["example.com", "test.com", "example.org"].includes(domain);
+}
+function generateDevOtp() {
+  return "123456";
+}
+
 const loader = async ({ request }) => {
   const url = new URL(request.url);
   const shop = url.searchParams.get("shop") || "";
@@ -3434,7 +3443,7 @@ const action = async ({ request }) => {
     } catch (err) {
       return json({ error: `Failed to verify email: ${err.message}` });
     }
-    const code = generateOtpCode();
+    const code = shouldBypassOtp(email) ? generateDevOtp() : generateOtpCode();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1e3);
     await prisma$1.otpCode.updateMany({
       where: { shop, email, used: false },
@@ -3454,8 +3463,11 @@ const action = async ({ request }) => {
         <hr><p style="color:#666;font-size:12px">Shopigent Returns — AI-powered return management</p>
       </div>`
     });
-    if (!sent) {
+    if (!sent && !shouldBypassOtp(email)) {
       return json({ error: "Failed to send verification email. Please try again." });
+    }
+    if (shouldBypassOtp(email)) {
+      return json({ otpSent: true, email, devOtp: code, devMessage: "DEV MODE: Use this code to verify" });
     }
     return json({ otpSent: true, email });
   }

@@ -3,7 +3,8 @@ import { useLoaderData, useFetcher } from "@remix-run/react";
 import { Card, BlockStack, Text, TextField, Button, Banner, Checkbox, InlineStack } from "@shopify/polaris";
 import { useState } from "react";
 import prisma from "../lib/db.server";
-import { sendEmail } from "../lib/email.server";
+import { sendEmail, storeCreditProcessedEmail } from "../lib/email.server";
+import { shouldBypassOtp, generateDevOtp } from "../lib/otp-dev.server";
 
 // Customer Portal — public-facing, no Shopify auth required
 // Uses the store's stored offline access token to query the Admin API
@@ -72,7 +73,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
 
     // Generate and store OTP code
-    const code = generateOtpCode();
+    const code = shouldBypassOtp(email) ? generateDevOtp() : generateOtpCode();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
     // Invalidate any previous unused codes for this shop+email
@@ -98,8 +99,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       </div>`,
     });
 
-    if (!sent) {
+    if (!sent && !shouldBypassOtp(email)) {
       return json({ error: "Failed to send verification email. Please try again." });
+    }
+
+    // Dev bypass: return the OTP code so the tester can use it
+    if (shouldBypassOtp(email)) {
+      return json({ otpSent: true, email, devOtp: code, devMessage: "DEV MODE: Use this code to verify" });
     }
 
     return json({ otpSent: true, email });
