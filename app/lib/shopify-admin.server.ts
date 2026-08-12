@@ -172,11 +172,16 @@ export async function executeRefund(
         note: reason,
         transactions: [{
           amount: amount.toString(),
-          gateway: "shopify",
+          gateway: "manual",
           kind: "REFUND",
+          orderId: orderGid,
         }],
       },
     });
+    // Check top-level GraphQL errors
+    if (directResult?.errors?.length) {
+      throw new Error(`Refund GraphQL error: ${directResult.errors.map((e: any) => e.message).join(", ")}`);
+    }
     const directErrors = directResult?.data?.refundCreate?.userErrors;
     if (directErrors?.length > 0) {
       throw new Error(`Refund failed: ${directErrors.map((e: any) => e.message).join(", ")}`);
@@ -222,6 +227,10 @@ export async function executeRefund(
 
   const execResult = await shopifyAdminQuery(shop, accessToken, execQuery, { input: execInput });
 
+  // Check top-level GraphQL errors
+  if (execResult?.errors?.length) {
+    throw new Error(`Refund GraphQL error: ${execResult.errors.map((e: any) => e.message).join(", ")}`);
+  }
   const execErrors = execResult?.data?.refundCreate?.userErrors;
   if (execErrors?.length > 0) {
     throw new Error(`Refund execution failed: ${execErrors.map((e: any) => e.message).join(", ")}`);
