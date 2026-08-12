@@ -3506,13 +3506,16 @@ const action = async ({ request }) => {
     const formattedName = orderName.startsWith("#") ? orderName : `#${orderName}`;
     try {
       const orderUrl = `https://${shop}/admin/api/2024-10/orders.json?name=${encodeURIComponent(formattedName)}&status=any`;
+      console.log("[return] Looking up order:", orderUrl);
       const orderResp = await fetch(orderUrl, {
         headers: { "X-Shopify-Access-Token": session.accessToken }
       });
+      const respText = await orderResp.text();
+      console.log("[return] Order API response:", respText.slice(0, 500));
       if (!orderResp.ok) {
-        return json({ error: "Order not found. Please check your order number and try again." });
+        return json({ error: `Order not found (${orderResp.status}). Please check your order number and try again.` });
       }
-      const data = await orderResp.json();
+      const data = JSON.parse(respText);
       const orders = (data.orders || []).slice(0, 1).map((o) => ({
         id: o.id,
         name: o.name,
