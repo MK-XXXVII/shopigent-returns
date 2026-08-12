@@ -3537,42 +3537,55 @@ const action = async ({ request }) => {
     }
     const formattedName = orderName.startsWith("#") ? orderName : `#${orderName}`;
     try {
-      const orderUrl = `https://${shop}/admin/api/2024-10/orders.json?name=${encodeURIComponent(formattedName)}&status=any`;
-      let token = session.accessToken;
-      let orderResp = await fetch(orderUrl, {
-        headers: { "X-Shopify-Access-Token": token }
-      });
-      if (orderResp.status === 401) {
-        const refreshed = await tryRefreshToken(shop);
-        if (refreshed) {
-          token = refreshed;
-          orderResp = await fetch(orderUrl, {
-            headers: { "X-Shopify-Access-Token": refreshed }
-          });
+      const query = `{
+        orders(first: 1, query: ${JSON.stringify(`name:${formattedName}`)}) {
+          edges {
+            node {
+              id
+              name
+              createdAt
+              totalPriceSet { shopMoney { amount currencyCode } }
+              fulfillments { status }
+                            lineItems(first: 20) {
+                edges {
+                  node {
+                    id
+                    title
+                    quantity
+                    variant { id sku }
+                    originalUnitPriceSet { shopMoney { amount } }
+                  }
+                }
+              }
+            }
+          }
         }
+      }`;
+      const { data, errors } = await shopifyAdminQuery(shop, session.accessToken, query);
+      if (errors?.length) {
+        throw new Error(errors.map((error) => error.message).join(", "));
       }
-      const respText = await orderResp.text();
-      console.log("[return] Order API response:", respText.slice(0, 500));
-      if (!orderResp.ok) {
-        return json({ error: `Order not found (${orderResp.status}). Please check your order number and try again.` });
-      }
-      const data = JSON.parse(respText);
-      const orders = (data.orders || []).slice(0, 1).map((o) => ({
-        id: o.id,
-        name: o.name,
-        createdAt: o.created_at,
-        total: o.total_price,
-        currency: o.currency,
-        fulfilled: o.fulfillment_status === "fulfilled",
-        items: (o.line_items || []).map((li) => ({
-          id: `gid://shopify/LineItem/${li.id}`,
-          title: li.title,
-          quantity: li.quantity,
-          price: li.price,
-          sku: li.sku || "",
-          variantId: li.variant_id ? `gid://shopify/ProductVariant/${li.variant_id}` : ""
-        }))
-      }));
+      const orders = (data?.orders?.edges || []).map((edge) => {
+        const order = edge.node;
+        return {
+          id: order.id,
+          name: order.name,
+          createdAt: order.createdAt,
+          total: order.totalPriceSet?.shopMoney?.amount || "0",
+          currency: order.totalPriceSet?.shopMoney?.currencyCode || "USD",
+          fulfilled: order.fulfillments?.some(
+            (f) => f.status === "SUCCESS"
+          ) || false,
+          items: (order.lineItems?.edges || []).map((lineItem) => ({
+            id: lineItem.node.id,
+            title: lineItem.node.title,
+            quantity: lineItem.node.quantity,
+            price: lineItem.node.originalUnitPriceSet?.shopMoney?.amount || "0",
+            sku: lineItem.node.variant?.sku || "",
+            variantId: lineItem.node.variant?.id || ""
+          }))
+        };
+      });
       if (orders.length === 0) {
         return json({ error: `Order ${formattedName} not found.` });
       }

@@ -143,8 +143,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
               name
               createdAt
               totalPriceSet { shopMoney { amount currencyCode } }
-              fulfillments(first: 5) { edges { node { status } } }
-              lineItems(first: 20) {
+              fulfillments { status }
+                            lineItems(first: 20) {
                 edges {
                   node {
                     id
@@ -174,8 +174,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           createdAt: order.createdAt,
           total: order.totalPriceSet?.shopMoney?.amount || "0",
           currency: order.totalPriceSet?.shopMoney?.currencyCode || "USD",
-          fulfilled: order.fulfillments?.edges?.some(
-            (fulfillment: any) => fulfillment.node.status === "SUCCESS"
+          fulfilled: order.fulfillments?.some(
+            (f: any) => f.status === "SUCCESS"
           ) || false,
           items: (order.lineItems?.edges || []).map((lineItem: any) => ({
             id: lineItem.node.id,
