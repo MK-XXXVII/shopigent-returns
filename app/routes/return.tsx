@@ -162,8 +162,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
       const { data, errors } = await shopifyAdminQuery(shop, session.accessToken, query);
 
-      if (errors?.length) {
-        throw new Error(errors.map((error: any) => error.message).join(", "));
+      if (errors) {
+        const errorMsg = Array.isArray(errors)
+          ? errors.map((e: any) => e.message || String(e)).join(", ")
+          : typeof errors === "string"
+            ? errors
+            : errors?.message || JSON.stringify(errors);
+        throw new Error(errorMsg);
       }
 
       const orders = (data?.orders?.edges || []).map((edge: any) => {
