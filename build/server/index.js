@@ -69,8 +69,7 @@ const shopify = shopifyApp({
     }
   },
   future: {
-    unstable_newEmbeddedAuthStrategy: true,
-    expiringOfflineAccessTokens: true
+    unstable_newEmbeddedAuthStrategy: true
   }
 });
 const authenticate = shopify.authenticate;
