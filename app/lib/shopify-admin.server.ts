@@ -50,7 +50,7 @@ export async function shopifyAdminQuery(
 }
 
 // Refresh an expired offline access token using the stored refresh token
-async function tryRefreshToken(shop: string): Promise<string | null> {
+export async function tryRefreshToken(shop: string): Promise<string | null> {
   const session = await prisma.session.findFirst({
     where: { shop, isOnline: false },
   });

@@ -740,7 +740,7 @@ async function shopifyAdminQuery(shop, accessToken, query, variables) {
     body: JSON.stringify({ query, variables })
   });
   if (response.status === 401) {
-    const refreshed = await tryRefreshToken(shop);
+    const refreshed = await tryRefreshToken$1(shop);
     if (refreshed) {
       const retryResp = await fetch(url, {
         method: "POST",
@@ -756,7 +756,7 @@ async function shopifyAdminQuery(shop, accessToken, query, variables) {
   }
   return response.json();
 }
-async function tryRefreshToken(shop) {
+async function tryRefreshToken$1(shop) {
   const session = await prisma$1.session.findFirst({
     where: { shop, isOnline: false }
   });
@@ -3447,25 +3447,6 @@ const action = async ({ request }) => {
     return json({ error: "Store is not connected. Please try again later." }, { status: 400 });
   }
   if (_action === "request_otp") {
-    const customerQuery = `{
-      customers(first: 1, query: "email:${email}") {
-        edges { node { id firstName lastName email } }
-      }
-    }`;
-    try {
-      const result = await shopifyAdminQuery(shop, session.accessToken, customerQuery);
-      const errors = result?.errors;
-      const customer = result?.data?.customers?.edges?.[0]?.node;
-      if (errors) {
-        console.error("[return] GraphQL errors:", JSON.stringify(errors));
-        return json({ error: `Shopify API error: ${errors[0]?.message || "Unknown error"}` });
-      }
-      if (!customer) {
-        return json({ error: `No customer found with email "${email}" in this store. Make sure they have placed an order.` });
-      }
-    } catch (err) {
-      return json({ error: `Failed to verify email: ${err.message}` });
-    }
     const code = shouldBypassOtp(email) ? generateDevOtp() : generateOtpCode();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1e3);
     await prisma$1.otpCode.updateMany({
@@ -3509,67 +3490,66 @@ const action = async ({ request }) => {
       where: { id: otp.id },
       data: { used: true }
     });
-    const query = `{
-      customers(first: 1, query: "${email}") {
-        edges {
-          node {
-            id firstName lastName
-            orders(first: 20, sortKey: CREATED_AT, reverse: true) {
-              edges {
-                node {
-                  id name createdAt
-                  totalPriceSet { shopMoney { amount currencyCode } }
-                  fulfillments(first: 5) { edges { node { status } } }
-                  lineItems(first: 20) {
-                    edges {
-                      node {
-                        id title quantity
-                        variant { id sku }
-                        originalUnitPriceSet { shopMoney { amount } }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }`;
     try {
-      const result = await shopifyAdminQuery(shop, session.accessToken, query);
-      const data = result;
-      const customer = data?.data?.customers?.edges?.[0]?.node;
-      if (!customer) {
-        return json({ error: "No customer found with this email." });
-      }
-      const orders = customer.orders.edges.map((e) => {
-        const node = e.node;
-        const items = node.lineItems.edges.map((li) => ({
-          id: li.node.id,
-          title: li.node.title,
-          quantity: li.node.quantity,
-          sku: li.node.variant?.sku || "",
-          price: li.node.originalUnitPriceSet?.shopMoney?.amount || "0",
-          variantId: li.node.variant?.id || ""
+      const ordersUrl = `https://${shop}/admin/api/2024-10/orders.json?email=${encodeURIComponent(email)}&status=any&limit=20`;
+      let token = session.accessToken;
+      const ordersResp = await fetch(ordersUrl, {
+        headers: { "X-Shopify-Access-Token": token }
+      });
+      if (ordersResp.status === 401) {
+        const refreshed = await tryRefreshToken(shop);
+        if (!refreshed) {
+          return json({ error: "Store connection expired. Please try again later." });
+        }
+        token = refreshed;
+        const retryResp = await fetch(ordersUrl, {
+          headers: { "X-Shopify-Access-Token": refreshed }
+        });
+        if (!retryResp.ok) {
+          return json({ error: "Failed to load orders after reconnecting. Please try again." });
+        }
+        const retryData = await retryResp.json();
+        const orders2 = retryData.orders.map((o) => ({
+          id: o.id,
+          name: o.name,
+          createdAt: o.created_at,
+          total: o.total_price,
+          currency: o.currency,
+          fulfilled: o.fulfillment_status === "fulfilled",
+          items: (o.line_items || []).map((li) => ({
+            id: `gid://shopify/LineItem/${li.id}`,
+            title: li.title,
+            quantity: li.quantity,
+            price: li.price,
+            sku: li.sku || "",
+            variantId: li.variant_id ? `gid://shopify/ProductVariant/${li.variant_id}` : ""
+          }))
         }));
-        return {
-          id: node.id,
-          name: node.name,
-          createdAt: node.createdAt,
-          total: node.totalPriceSet?.shopMoney?.amount || "0",
-          currency: node.totalPriceSet?.shopMoney?.currencyCode || "USD",
-          items,
-          fulfilled: node.fulfillments?.edges?.length > 0
-        };
-      });
-      return json({
-        verified: true,
-        customer: { name: `${customer.firstName || ""} ${customer.lastName || ""}`.trim() },
-        orders,
-        email
-      });
+        return json({ verified: true, customer: { name: email.split("@")[0] }, orders: orders2, email });
+      }
+      if (!ordersResp.ok) {
+        return json({ error: "Unable to load orders. Please try again later." });
+      }
+      const data = await ordersResp.json();
+      const orders = (data.orders || []).map((o) => ({
+        id: o.id,
+        name: o.name,
+        createdAt: o.created_at,
+        total: o.total_price,
+        currency: o.currency,
+        fulfilled: o.fulfillment_status === "fulfilled",
+        items: (o.line_items || []).map((li) => ({
+          id: `gid://shopify/LineItem/${li.id}`,
+          title: li.title,
+          quantity: li.quantity,
+          price: li.price,
+          sku: li.sku || "",
+          variantId: li.variant_id ? `gid://shopify/ProductVariant/${li.variant_id}` : ""
+        }))
+      }));
+      return json({ verified: true, customer: { name: email.split("@")[0] }, orders, email });
     } catch (err) {
+      console.error("[return] Orders lookup error:", err.message);
       return json({ error: `Failed to look up orders: ${err.message}` });
     }
   }
