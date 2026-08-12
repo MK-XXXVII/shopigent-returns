@@ -14,16 +14,22 @@ export async function shopifyAdminQuery(
   shop: string,
   accessToken: string,
   query: string,
-  variables?: Record<string, any>
+  variables?: Record<string, any>,
+  idempotencyKey?: string
 ): Promise<ShopifyResponse> {
   const url = `https://${shop}/admin/api/${API_VERSION}/graphql.json`;
 
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Shopify-Access-Token": accessToken,
+  };
+  if (idempotencyKey) {
+    headers["X-Shopify-Idempotency-Key"] = idempotencyKey;
+  }
+
   const response = await fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Shopify-Access-Token": accessToken,
-    },
+    headers,
     body: JSON.stringify({ query, variables }),
   });
 
@@ -159,12 +165,13 @@ export async function executeRefund(
   if (!order) {
     console.error("[refund] Order lookup failed:", JSON.stringify(orderResult?.errors || orderResult));
     // If protected customer data is blocked, try to refund without order lookup
-    const directRefundQuery = `mutation refundCreate($input: RefundInput!) {
+    const directRefundQuery = `mutation refundCreate($input: RefundInput!) @idempotent {
       refundCreate(input: $input) {
         refund { id transactions(first: 10) { nodes { id status } } }
         userErrors { field message }
       }
     }`;
+    const fallbackKey = `${orderId}-${Date.now()}-fallback`;
     const directResult = await shopifyAdminQuery(shop, accessToken, directRefundQuery, {
       input: {
         orderId: orderGid,
@@ -177,7 +184,7 @@ export async function executeRefund(
           orderId: orderGid,
         }],
       },
-    });
+    }, fallbackKey);
     // Check top-level GraphQL errors
     if (directResult?.errors?.length) {
       throw new Error(`Refund GraphQL error: ${directResult.errors.map((e: any) => e.message).join(", ")}`);
@@ -202,7 +209,8 @@ export async function executeRefund(
   })) || [];
 
   // Step 2: Execute refund directly (no calculateRefund needed)
-  const execQuery = `mutation refundCreate($input: RefundInput!) {
+  const idempotencyKey = `${orderId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const execQuery = `mutation refundCreate($input: RefundInput!) @idempotent {
     refundCreate(input: $input) {
       refund { id transactions(first: 10) { nodes { id status processedAt amountSet { shopMoney { amount } } } } }
       userErrors { field message }
@@ -225,7 +233,7 @@ export async function executeRefund(
     }],
   };
 
-  const execResult = await shopifyAdminQuery(shop, accessToken, execQuery, { input: execInput });
+  const execResult = await shopifyAdminQuery(shop, accessToken, execQuery, { input: execInput }, idempotencyKey);
 
   // Check top-level GraphQL errors
   if (execResult?.errors?.length) {

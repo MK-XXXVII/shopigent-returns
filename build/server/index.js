@@ -761,14 +761,18 @@ const route5 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
 }, Symbol.toStringTag, { value: 'Module' }));
 
 const API_VERSION = process.env.SHOPIFY_API_VERSION || "2024-10";
-async function shopifyAdminQuery(shop, accessToken, query, variables) {
+async function shopifyAdminQuery(shop, accessToken, query, variables, idempotencyKey) {
   const url = `https://${shop}/admin/api/${API_VERSION}/graphql.json`;
+  const headers = {
+    "Content-Type": "application/json",
+    "X-Shopify-Access-Token": accessToken
+  };
+  if (idempotencyKey) {
+    headers["X-Shopify-Idempotency-Key"] = idempotencyKey;
+  }
   const response = await fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Shopify-Access-Token": accessToken
-    },
+    headers,
     body: JSON.stringify({ query, variables })
   });
   if (response.status === 401) {
@@ -853,12 +857,13 @@ async function executeRefund(shop, accessToken, orderId, amount, restock = true,
   const order = orderResult?.data?.order;
   if (!order) {
     console.error("[refund] Order lookup failed:", JSON.stringify(orderResult?.errors || orderResult));
-    const directRefundQuery = `mutation refundCreate($input: RefundInput!) {
+    const directRefundQuery = `mutation refundCreate($input: RefundInput!) @idempotent {
       refundCreate(input: $input) {
         refund { id transactions(first: 10) { nodes { id status } } }
         userErrors { field message }
       }
     }`;
+    const fallbackKey = `${orderId}-${Date.now()}-fallback`;
     const directResult = await shopifyAdminQuery(shop, accessToken, directRefundQuery, {
       input: {
         orderId: orderGid,
@@ -871,7 +876,7 @@ async function executeRefund(shop, accessToken, orderId, amount, restock = true,
           orderId: orderGid
         }]
       }
-    });
+    }, fallbackKey);
     if (directResult?.errors?.length) {
       throw new Error(`Refund GraphQL error: ${directResult.errors.map((e) => e.message).join(", ")}`);
     }
@@ -889,7 +894,8 @@ async function executeRefund(shop, accessToken, orderId, amount, restock = true,
     quantity: e.node.quantity,
     restockType: restock ? "RETURN" : "NO_RESTOCK"
   })) || [];
-  const execQuery = `mutation refundCreate($input: RefundInput!) {
+  const idempotencyKey = `${orderId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const execQuery = `mutation refundCreate($input: RefundInput!) @idempotent {
     refundCreate(input: $input) {
       refund { id transactions(first: 10) { nodes { id status processedAt amountSet { shopMoney { amount } } } } }
       userErrors { field message }
@@ -910,7 +916,7 @@ async function executeRefund(shop, accessToken, orderId, amount, restock = true,
       kind: "REFUND"
     }]
   };
-  const execResult = await shopifyAdminQuery(shop, accessToken, execQuery, { input: execInput });
+  const execResult = await shopifyAdminQuery(shop, accessToken, execQuery, { input: execInput }, idempotencyKey);
   if (execResult?.errors?.length) {
     throw new Error(`Refund GraphQL error: ${execResult.errors.map((e) => e.message).join(", ")}`);
   }
