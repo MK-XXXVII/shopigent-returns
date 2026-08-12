@@ -146,6 +146,11 @@ export async function handleMcpRequest(body: any, shop?: string) {
           });
           if (!returnReq) return jsonRpcError(id, -32602, "Return not found");
 
+          // Prevent double-approval / replay attacks
+          if (returnReq.status !== "PENDING") {
+            return jsonRpcError(id, -32000, `Return is already ${returnReq.status}. Only PENDING returns can be approved.`);
+          }
+
           // Verify confirmation token
           const secret = process.env.CONFIRMATION_TOKEN_SECRET;
           if (secret) {
@@ -313,6 +318,11 @@ export async function handleMcpRequest(body: any, shop?: string) {
             where: { id: args.returnId },
           });
           if (!returnReq) return jsonRpcError(id, -32602, "Return not found");
+
+          // Prevent double-processing
+          if (returnReq.status !== "PENDING") {
+            return jsonRpcError(id, -32000, `Return is already ${returnReq.status}. Only PENDING returns can be denied.`);
+          }
 
           // Verify confirmation token
           const secret = process.env.CONFIRMATION_TOKEN_SECRET;

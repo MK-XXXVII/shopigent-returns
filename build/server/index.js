@@ -2837,6 +2837,9 @@ async function handleMcpRequest(body, shop) {
             where: { id: args.returnId }
           });
           if (!returnReq) return jsonRpcError(id, -32602, "Return not found");
+          if (returnReq.status !== "PENDING") {
+            return jsonRpcError(id, -32e3, `Return is already ${returnReq.status}. Only PENDING returns can be approved.`);
+          }
           const secret = process.env.CONFIRMATION_TOKEN_SECRET;
           if (secret) {
             const check = verifyConfirmationToken(
@@ -2978,6 +2981,9 @@ async function handleMcpRequest(body, shop) {
             where: { id: args.returnId }
           });
           if (!returnReq) return jsonRpcError(id, -32602, "Return not found");
+          if (returnReq.status !== "PENDING") {
+            return jsonRpcError(id, -32e3, `Return is already ${returnReq.status}. Only PENDING returns can be denied.`);
+          }
           const secret = process.env.CONFIRMATION_TOKEN_SECRET;
           if (secret) {
             const check = verifyConfirmationToken(
