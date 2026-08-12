@@ -111,58 +111,42 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       data: { used: true },
     });
 
-    // ─── Now lookup orders (OTP verified) ────────────────────
-    // Use REST API orders.json — requires only read_orders scope
-    // (GraphQL customers query requires protected customer data approval)
-    try {
-      const ordersUrl = `https://${shop}/admin/api/2024-10/orders.json?email=${encodeURIComponent(email)}&status=any&limit=20`;
-      let token = session.accessToken;
+    // ─── Now OTP verified — ask for order number ──────────────
+    // Instead of looking up orders by email (requires protected customer data approval),
+    // we ask the customer for their order number and look it up by name
+    return json({
+      verified: true,
+      customer: { name: email.split("@")[0] },
+      email,
+      needsOrderNumber: true,
+      message: "Please enter your order number to start the return.",
+    });
+  }
 
-      const ordersResp = await fetch(ordersUrl, {
-        headers: { "X-Shopify-Access-Token": token },
+  // ─── Step 3: Look up order by number ──────────────────────
+  if (_action === "lookup_order") {
+    const orderName = (formData.get("orderName") as string || "").trim();
+
+    if (!orderName) {
+      return json({ error: "Please enter your order number." });
+    }
+
+    // Format the order name (e.g., "1001" → "#1001")
+    const formattedName = orderName.startsWith("#") ? orderName : `#${orderName}`;
+
+    try {
+      // Look up order by name — this does NOT require protected customer data
+      const orderUrl = `https://${shop}/admin/api/2024-10/orders.json?name=${encodeURIComponent(formattedName)}&status=any`;
+      const orderResp = await fetch(orderUrl, {
+        headers: { "X-Shopify-Access-Token": session.accessToken },
       });
 
-      if (ordersResp.status === 401) {
-        // Token expired — try refresh
-        const refreshed = await tryRefreshToken(shop);
-        if (!refreshed) {
-          return json({ error: "Store connection expired. Please try again later." });
-        }
-        token = refreshed;
-        const retryResp = await fetch(ordersUrl, {
-          headers: { "X-Shopify-Access-Token": refreshed },
-        });
-        if (!retryResp.ok) {
-          return json({ error: "Failed to load orders after reconnecting. Please try again." });
-        }
-        const retryData = await retryResp.json();
-        const orders = retryData.orders.map((o: any) => ({
-          id: o.id,
-          name: o.name,
-          createdAt: o.created_at,
-          total: o.total_price,
-          currency: o.currency,
-          fulfilled: o.fulfillment_status === "fulfilled",
-          items: (o.line_items || []).map((li: any) => ({
-            id: `gid://shopify/LineItem/${li.id}`,
-            title: li.title,
-            quantity: li.quantity,
-            price: li.price,
-            sku: li.sku || "",
-            variantId: li.variant_id ? `gid://shopify/ProductVariant/${li.variant_id}` : "",
-          })),
-        }));
-        return json({ verified: true, customer: { name: email.split("@")[0] }, orders, email });
+      if (!orderResp.ok) {
+        return json({ error: "Order not found. Please check your order number and try again." });
       }
 
-      if (!ordersResp.ok) {
-        const errText = await ordersResp.text();
-        console.error("[return] Orders API failed:", ordersResp.status, errText.slice(0, 300));
-        return json({ error: "Unable to load orders. Please try again later." });
-      }
-
-      const data = await ordersResp.json();
-      const orders = (data.orders || []).map((o: any) => ({
+      const data = await orderResp.json();
+      const orders = (data.orders || []).slice(0, 1).map((o: any) => ({
         id: o.id,
         name: o.name,
         createdAt: o.created_at,
@@ -179,10 +163,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         })),
       }));
 
+      if (orders.length === 0) {
+        return json({ error: `Order ${formattedName} not found.` });
+      }
+
       return json({ verified: true, customer: { name: email.split("@")[0] }, orders, email });
     } catch (err: any) {
-      console.error("[return] Orders lookup error:", err.message);
-      return json({ error: `Failed to look up orders: ${err.message}` });
+      console.error("[return] Order lookup error:", err.message);
+      return json({ error: `Failed to look up order: ${err.message}` });
     }
   }
 
@@ -226,6 +214,7 @@ export default function ReturnPortal() {
   const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [reason, setReason] = useState("");
+  const [orderNumber, setOrderNumber] = useState("");
 
   const data = fetcher.data;
   const isSubmitting = fetcher.state === "submitting";
@@ -327,7 +316,29 @@ export default function ReturnPortal() {
             </fetcher.Form>
           )}
 
-          {/* Step 3: Orders (after OTP verification) */}
+          {/* Step 3: Enter Order Number (after OTP verification) */}
+          {verified && data?.needsOrderNumber && !orders?.length && (
+            <fetcher.Form method="post">
+              <input type="hidden" name="_action" value="lookup_order" />
+              <input type="hidden" name="shop" value={shop} />
+              <input type="hidden" name="email" value={data.email || email} />
+              <BlockStack gap="300">
+                <TextField
+                  label="Order Number"
+                  type="text"
+                  name="orderName"
+                  value={orderNumber}
+                  onChange={setOrderNumber}
+                  placeholder="e.g. #1001 or 1001"
+                />
+                <Button submit variant="primary" loading={isSubmitting} disabled={!orderNumber}>
+                  Find Order
+                </Button>
+              </BlockStack>
+            </fetcher.Form>
+          )}
+
+          {/* Step 4: Orders (after order lookup) */}
           {verified && orders.length > 0 && (
             <BlockStack gap="300">
               {orders.map((order: any) => {

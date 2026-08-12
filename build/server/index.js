@@ -3490,50 +3490,30 @@ const action = async ({ request }) => {
       where: { id: otp.id },
       data: { used: true }
     });
+    return json({
+      verified: true,
+      customer: { name: email.split("@")[0] },
+      email,
+      needsOrderNumber: true,
+      message: "Please enter your order number to start the return."
+    });
+  }
+  if (_action === "lookup_order") {
+    const orderName = (formData.get("orderName") || "").trim();
+    if (!orderName) {
+      return json({ error: "Please enter your order number." });
+    }
+    const formattedName = orderName.startsWith("#") ? orderName : `#${orderName}`;
     try {
-      const ordersUrl = `https://${shop}/admin/api/2024-10/orders.json?email=${encodeURIComponent(email)}&status=any&limit=20`;
-      let token = session.accessToken;
-      const ordersResp = await fetch(ordersUrl, {
-        headers: { "X-Shopify-Access-Token": token }
+      const orderUrl = `https://${shop}/admin/api/2024-10/orders.json?name=${encodeURIComponent(formattedName)}&status=any`;
+      const orderResp = await fetch(orderUrl, {
+        headers: { "X-Shopify-Access-Token": session.accessToken }
       });
-      if (ordersResp.status === 401) {
-        const refreshed = await tryRefreshToken(shop);
-        if (!refreshed) {
-          return json({ error: "Store connection expired. Please try again later." });
-        }
-        token = refreshed;
-        const retryResp = await fetch(ordersUrl, {
-          headers: { "X-Shopify-Access-Token": refreshed }
-        });
-        if (!retryResp.ok) {
-          return json({ error: "Failed to load orders after reconnecting. Please try again." });
-        }
-        const retryData = await retryResp.json();
-        const orders2 = retryData.orders.map((o) => ({
-          id: o.id,
-          name: o.name,
-          createdAt: o.created_at,
-          total: o.total_price,
-          currency: o.currency,
-          fulfilled: o.fulfillment_status === "fulfilled",
-          items: (o.line_items || []).map((li) => ({
-            id: `gid://shopify/LineItem/${li.id}`,
-            title: li.title,
-            quantity: li.quantity,
-            price: li.price,
-            sku: li.sku || "",
-            variantId: li.variant_id ? `gid://shopify/ProductVariant/${li.variant_id}` : ""
-          }))
-        }));
-        return json({ verified: true, customer: { name: email.split("@")[0] }, orders: orders2, email });
+      if (!orderResp.ok) {
+        return json({ error: "Order not found. Please check your order number and try again." });
       }
-      if (!ordersResp.ok) {
-        const errText = await ordersResp.text();
-        console.error("[return] Orders API failed:", ordersResp.status, errText.slice(0, 300));
-        return json({ error: "Unable to load orders. Please try again later." });
-      }
-      const data = await ordersResp.json();
-      const orders = (data.orders || []).map((o) => ({
+      const data = await orderResp.json();
+      const orders = (data.orders || []).slice(0, 1).map((o) => ({
         id: o.id,
         name: o.name,
         createdAt: o.created_at,
@@ -3549,10 +3529,13 @@ const action = async ({ request }) => {
           variantId: li.variant_id ? `gid://shopify/ProductVariant/${li.variant_id}` : ""
         }))
       }));
+      if (orders.length === 0) {
+        return json({ error: `Order ${formattedName} not found.` });
+      }
       return json({ verified: true, customer: { name: email.split("@")[0] }, orders, email });
     } catch (err) {
-      console.error("[return] Orders lookup error:", err.message);
-      return json({ error: `Failed to look up orders: ${err.message}` });
+      console.error("[return] Order lookup error:", err.message);
+      return json({ error: `Failed to look up order: ${err.message}` });
     }
   }
   if (_action === "submit_return") {
@@ -3589,6 +3572,7 @@ function ReturnPortal() {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [selectedItems, setSelectedItems] = useState([]);
   const [reason, setReason] = useState("");
+  const [orderNumber, setOrderNumber] = useState("");
   const data = fetcher.data;
   const isSubmitting = fetcher.state === "submitting";
   const otpSent = data?.otpSent === true;
@@ -3657,6 +3641,25 @@ function ReturnPortal() {
           }
         ),
         /* @__PURE__ */ jsx(Button, { submit: true, variant: "primary", loading: isSubmitting && fetcher.formData?.get("_action") === "verify_otp", disabled: code.length !== 6, children: "Verify & Look Up Orders" })
+      ] })
+    ] }),
+    verified && data?.needsOrderNumber && !orders?.length && /* @__PURE__ */ jsxs(fetcher.Form, { method: "post", children: [
+      /* @__PURE__ */ jsx("input", { type: "hidden", name: "_action", value: "lookup_order" }),
+      /* @__PURE__ */ jsx("input", { type: "hidden", name: "shop", value: shop }),
+      /* @__PURE__ */ jsx("input", { type: "hidden", name: "email", value: data.email || email }),
+      /* @__PURE__ */ jsxs(BlockStack, { gap: "300", children: [
+        /* @__PURE__ */ jsx(
+          TextField,
+          {
+            label: "Order Number",
+            type: "text",
+            name: "orderName",
+            value: orderNumber,
+            onChange: setOrderNumber,
+            placeholder: "e.g. #1001 or 1001"
+          }
+        ),
+        /* @__PURE__ */ jsx(Button, { submit: true, variant: "primary", loading: isSubmitting, disabled: !orderNumber, children: "Find Order" })
       ] })
     ] }),
     verified && orders.length > 0 && /* @__PURE__ */ jsx(BlockStack, { gap: "300", children: orders.map((order) => {
@@ -3732,7 +3735,7 @@ const route16 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   loader
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','imports':['/assets/components-DncgAStS.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-BfxDhPMr.js','imports':['/assets/components-DncgAStS.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/context-D_7evObr.js'],'css':[]},'routes/api.refresh-session':{'id':'routes/api.refresh-session','parentId':'root','path':'api/refresh-session','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.refresh-session-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.upgrade-pro':{'id':'routes/api.upgrade-pro','parentId':'root','path':'api/upgrade-pro','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.upgrade-pro-l0sNRNKZ.js','imports':[],'css':[]},'routes/app.fraud-rules':{'id':'routes/app.fraud-rules','parentId':'root','path':'app/fraud-rules','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.fraud-rules-DkrG_FWt.js','imports':['/assets/components-DncgAStS.js','/assets/Page-CAJLY0O6.js','/assets/Layout-C13JKOf2.js','/assets/Banner-DGNxOIFU.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/Checkbox-DcQgWFe6.js','/assets/Tag-DdolXHyk.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/returns._index':{'id':'routes/returns._index','parentId':'root','path':'returns','index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._index-QL6eQetC.js','imports':['/assets/components-DncgAStS.js','/assets/Link-C9rT3U0_.js','/assets/Page-CAJLY0O6.js','/assets/Layout-C13JKOf2.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/EmptyState-CZyETyrk.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-DcQgWFe6.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/app.exchanges':{'id':'routes/app.exchanges','parentId':'root','path':'app/exchanges','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.exchanges-BkRckrdC.js','imports':['/assets/components-DncgAStS.js','/assets/Link-C9rT3U0_.js','/assets/Page-CAJLY0O6.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Layout-C13JKOf2.js','/assets/Banner-DGNxOIFU.js','/assets/EmptyState-CZyETyrk.js','/assets/Modal-Bc17I9P_.js','/assets/Select-CVI6jjHk.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-DcQgWFe6.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js','/assets/context-D_7evObr.js','/assets/InlineGrid-Ba7mGhzc.js'],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/app.billing':{'id':'routes/app.billing','parentId':'root','path':'app/billing','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.billing-YGzPe1nt.js','imports':['/assets/components-DncgAStS.js','/assets/Page-CAJLY0O6.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Banner-DGNxOIFU.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/InlineGrid-Ba7mGhzc.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/returns.$id':{'id':'routes/returns.$id','parentId':'root','path':'returns/:id','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._id-BcrZlCyv.js','imports':['/assets/components-DncgAStS.js','/assets/Page-CAJLY0O6.js','/assets/Layout-C13JKOf2.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/Tag-DdolXHyk.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js'],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/analytics':{'id':'routes/analytics','parentId':'root','path':'analytics','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/analytics-BhodOGcm.js','imports':['/assets/components-DncgAStS.js','/assets/Page-CAJLY0O6.js','/assets/Layout-C13JKOf2.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js'],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-Dg-dS-cJ.js','imports':['/assets/components-DncgAStS.js','/assets/Page-CAJLY0O6.js','/assets/Layout-C13JKOf2.js','/assets/Banner-DGNxOIFU.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/Tag-DdolXHyk.js','/assets/Modal-Bc17I9P_.js','/assets/Checkbox-DcQgWFe6.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/banner-context-DEryxoPe.js','/assets/context-D_7evObr.js','/assets/CSSTransition-CYBGIXjC.js','/assets/InlineGrid-Ba7mGhzc.js'],'css':[]},'routes/settings':{'id':'routes/settings','parentId':'root','path':'settings','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/settings-CeikpiMS.js','imports':['/assets/components-DncgAStS.js','/assets/Page-CAJLY0O6.js','/assets/Layout-C13JKOf2.js','/assets/Banner-DGNxOIFU.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/Select-CVI6jjHk.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/api.mcp':{'id':'routes/api.mcp','parentId':'root','path':'api/mcp','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.mcp-l0sNRNKZ.js','imports':[],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-Cy-sRJSX.js','imports':['/assets/components-DncgAStS.js','/assets/Link-C9rT3U0_.js','/assets/Page-CAJLY0O6.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Layout-C13JKOf2.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/Banner-DGNxOIFU.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-DcQgWFe6.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/return':{'id':'routes/return','parentId':'root','path':'return','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/return-DrBtyBcy.js','imports':['/assets/components-DncgAStS.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/Banner-DGNxOIFU.js','/assets/Checkbox-DcQgWFe6.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/banner-context-DEryxoPe.js'],'css':[]}},'url':'/assets/manifest-a39d2f3e.js','version':'a39d2f3e'};
+const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','imports':['/assets/components-DncgAStS.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-BfxDhPMr.js','imports':['/assets/components-DncgAStS.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/context-D_7evObr.js'],'css':[]},'routes/api.refresh-session':{'id':'routes/api.refresh-session','parentId':'root','path':'api/refresh-session','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.refresh-session-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.upgrade-pro':{'id':'routes/api.upgrade-pro','parentId':'root','path':'api/upgrade-pro','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.upgrade-pro-l0sNRNKZ.js','imports':[],'css':[]},'routes/app.fraud-rules':{'id':'routes/app.fraud-rules','parentId':'root','path':'app/fraud-rules','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.fraud-rules-DkrG_FWt.js','imports':['/assets/components-DncgAStS.js','/assets/Page-CAJLY0O6.js','/assets/Layout-C13JKOf2.js','/assets/Banner-DGNxOIFU.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/Checkbox-DcQgWFe6.js','/assets/Tag-DdolXHyk.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/returns._index':{'id':'routes/returns._index','parentId':'root','path':'returns','index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._index-QL6eQetC.js','imports':['/assets/components-DncgAStS.js','/assets/Link-C9rT3U0_.js','/assets/Page-CAJLY0O6.js','/assets/Layout-C13JKOf2.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/EmptyState-CZyETyrk.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-DcQgWFe6.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/app.exchanges':{'id':'routes/app.exchanges','parentId':'root','path':'app/exchanges','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.exchanges-BkRckrdC.js','imports':['/assets/components-DncgAStS.js','/assets/Link-C9rT3U0_.js','/assets/Page-CAJLY0O6.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Layout-C13JKOf2.js','/assets/Banner-DGNxOIFU.js','/assets/EmptyState-CZyETyrk.js','/assets/Modal-Bc17I9P_.js','/assets/Select-CVI6jjHk.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-DcQgWFe6.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js','/assets/context-D_7evObr.js','/assets/InlineGrid-Ba7mGhzc.js'],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/app.billing':{'id':'routes/app.billing','parentId':'root','path':'app/billing','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.billing-YGzPe1nt.js','imports':['/assets/components-DncgAStS.js','/assets/Page-CAJLY0O6.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Banner-DGNxOIFU.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/InlineGrid-Ba7mGhzc.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/returns.$id':{'id':'routes/returns.$id','parentId':'root','path':'returns/:id','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._id-BcrZlCyv.js','imports':['/assets/components-DncgAStS.js','/assets/Page-CAJLY0O6.js','/assets/Layout-C13JKOf2.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/Tag-DdolXHyk.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js'],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/analytics':{'id':'routes/analytics','parentId':'root','path':'analytics','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/analytics-BhodOGcm.js','imports':['/assets/components-DncgAStS.js','/assets/Page-CAJLY0O6.js','/assets/Layout-C13JKOf2.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js'],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-Dg-dS-cJ.js','imports':['/assets/components-DncgAStS.js','/assets/Page-CAJLY0O6.js','/assets/Layout-C13JKOf2.js','/assets/Banner-DGNxOIFU.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/Tag-DdolXHyk.js','/assets/Modal-Bc17I9P_.js','/assets/Checkbox-DcQgWFe6.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/banner-context-DEryxoPe.js','/assets/context-D_7evObr.js','/assets/CSSTransition-CYBGIXjC.js','/assets/InlineGrid-Ba7mGhzc.js'],'css':[]},'routes/settings':{'id':'routes/settings','parentId':'root','path':'settings','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/settings-CeikpiMS.js','imports':['/assets/components-DncgAStS.js','/assets/Page-CAJLY0O6.js','/assets/Layout-C13JKOf2.js','/assets/Banner-DGNxOIFU.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/Select-CVI6jjHk.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/api.mcp':{'id':'routes/api.mcp','parentId':'root','path':'api/mcp','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.mcp-l0sNRNKZ.js','imports':[],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-Cy-sRJSX.js','imports':['/assets/components-DncgAStS.js','/assets/Link-C9rT3U0_.js','/assets/Page-CAJLY0O6.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Layout-C13JKOf2.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/Banner-DGNxOIFU.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-DcQgWFe6.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/return':{'id':'routes/return','parentId':'root','path':'return','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/return-C1BNa9KQ.js','imports':['/assets/components-DncgAStS.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/Banner-DGNxOIFU.js','/assets/Checkbox-DcQgWFe6.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/banner-context-DEryxoPe.js'],'css':[]}},'url':'/assets/manifest-d601fe4f.js','version':'d601fe4f'};
 
 /**
        * `mode` is only relevant for the old Remix compiler but
