@@ -2831,7 +2831,6 @@ async function handleMcpRequest(body, shop) {
               const realTotal = realOrder ? parseFloat(realOrder.totalPriceSet?.shopMoney?.amount || "0") : 0;
               const orderGid = realOrder?.id || returnReq.orderId;
               const effectiveAmount = args.refundAmount || (items.length > 0 && parseFloat(items[0]?.price || "0") > 0 ? totalAmount : realTotal > 0 ? realTotal : totalAmount);
-              const orderIdNum = orderGid.replace("gid://shopify/Order/", "");
               if (args.storeCredit) {
                 storeCreditResult = await createStoreCredit(
                   returnReq.shop,
@@ -2844,7 +2843,7 @@ async function handleMcpRequest(body, shop) {
                 refundResult = await executeRefund(
                   returnReq.shop,
                   session.accessToken,
-                  orderIdNum,
+                  orderGid,
                   effectiveAmount,
                   true,
                   args.notes || "Auto-approved by Shopigent Returns AI agent"

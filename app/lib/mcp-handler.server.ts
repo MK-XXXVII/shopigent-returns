@@ -190,8 +190,6 @@ export async function handleMcpRequest(body: any, shop?: string) {
                 ? totalAmount
                 : realTotal > 0 ? realTotal : totalAmount);
 
-              const orderIdNum = orderGid.replace("gid://shopify/Order/", "");
-
               if (args.storeCredit) {
                 // Issue store credit discount code instead of refund
                 storeCreditResult = await createStoreCredit(
@@ -205,7 +203,7 @@ export async function handleMcpRequest(body: any, shop?: string) {
                 refundResult = await executeRefund(
                   returnReq.shop,
                   session.accessToken,
-                  orderIdNum,
+                  orderGid,
                   effectiveAmount,
                   true,
                   args.notes || "Auto-approved by Shopigent Returns AI agent"
