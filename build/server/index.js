@@ -855,7 +855,7 @@ async function executeRefund(shop, accessToken, orderId, amount, restock = true,
     console.error("[refund] Order lookup failed:", JSON.stringify(orderResult?.errors || orderResult));
     const directRefundQuery = `mutation refundCreate($input: RefundInput!) {
       refundCreate(input: $input) {
-        refund { id transactions { id status } }
+        refund { id transactions(first: 10) { nodes { id status } } }
         userErrors { field message }
       }
     }`;
@@ -891,7 +891,7 @@ async function executeRefund(shop, accessToken, orderId, amount, restock = true,
   })) || [];
   const execQuery = `mutation refundCreate($input: RefundInput!) {
     refundCreate(input: $input) {
-      refund { id transactions { id status processedAt amountSet { shopMoney { amount } } } }
+      refund { id transactions(first: 10) { nodes { id status processedAt amountSet { shopMoney { amount } } } } }
       userErrors { field message }
     }
   }`;
