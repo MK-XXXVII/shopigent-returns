@@ -740,7 +740,7 @@ async function shopifyAdminQuery(shop, accessToken, query, variables) {
     body: JSON.stringify({ query, variables })
   });
   if (response.status === 401) {
-    const refreshed = await tryRefreshToken$1(shop);
+    const refreshed = await tryRefreshToken(shop);
     if (refreshed) {
       const retryResp = await fetch(url, {
         method: "POST",
@@ -756,7 +756,7 @@ async function shopifyAdminQuery(shop, accessToken, query, variables) {
   }
   return response.json();
 }
-async function tryRefreshToken$1(shop) {
+async function tryRefreshToken(shop) {
   const session = await prisma$1.session.findFirst({
     where: { shop, isOnline: false }
   });
@@ -3528,6 +3528,8 @@ const action = async ({ request }) => {
         return json({ verified: true, customer: { name: email.split("@")[0] }, orders: orders2, email });
       }
       if (!ordersResp.ok) {
+        const errText = await ordersResp.text();
+        console.error("[return] Orders API failed:", ordersResp.status, errText.slice(0, 300));
         return json({ error: "Unable to load orders. Please try again later." });
       }
       const data = await ordersResp.json();

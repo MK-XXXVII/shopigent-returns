@@ -5,7 +5,7 @@ import { useState } from "react";
 import prisma from "../lib/db.server";
 import { sendEmail, storeCreditProcessedEmail } from "../lib/email.server";
 import { shouldBypassOtp, generateDevOtp } from "../lib/otp-dev.server";
-import { shopifyAdminQuery } from "../lib/shopify-admin.server";
+import { shopifyAdminQuery, tryRefreshToken } from "../lib/shopify-admin.server";
 
 // Customer Portal — public-facing, no Shopify auth required
 // Uses the store's stored offline access token to query the Admin API
@@ -156,6 +156,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       }
 
       if (!ordersResp.ok) {
+        const errText = await ordersResp.text();
+        console.error("[return] Orders API failed:", ordersResp.status, errText.slice(0, 300));
         return json({ error: "Unable to load orders. Please try again later." });
       }
 
