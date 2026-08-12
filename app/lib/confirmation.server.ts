@@ -91,9 +91,11 @@ export function verifyConfirmationToken(
     }
 
     // Check args hash
+    const cleanArgs = { ...expectedArgs };
+    delete cleanArgs.confirmationToken;
     const argsHash = crypto
       .createHash("sha256")
-      .update(JSON.stringify(expectedArgs))
+      .update(JSON.stringify(cleanArgs))
       .digest("hex")
       .slice(0, 16);
 

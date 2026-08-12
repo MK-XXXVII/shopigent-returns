@@ -2525,7 +2525,9 @@ function verifyConfirmationToken(token, secret, expectedShop, expectedAction, ex
     if (payload.returnId !== expectedReturnId) {
       return { valid: false, reason: "Return ID mismatch" };
     }
-    const argsHash = crypto.createHash("sha256").update(JSON.stringify(expectedArgs)).digest("hex").slice(0, 16);
+    const cleanArgs = { ...expectedArgs };
+    delete cleanArgs.confirmationToken;
+    const argsHash = crypto.createHash("sha256").update(JSON.stringify(cleanArgs)).digest("hex").slice(0, 16);
     if (payload.argsHash !== argsHash) {
       return { valid: false, reason: "Arguments mismatch" };
     }
