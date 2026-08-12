@@ -842,47 +842,46 @@ async function tryRefreshToken(shop) {
 }
 async function executeRefund(shop, accessToken, orderId, amount, restock = true, reason = "Customer return") {
   const orderGid = orderId.startsWith("gid://") ? orderId : `gid://shopify/Order/${orderId}`;
-  const calcQuery = `mutation calculate($input: CalculateRefundInput!) {
-    calculateRefund(input: $input) {
-      refund { transactions { id amountSet { shopMoney { amount } } kind } }
-      userErrors { field message }
+  const orderQuery = `{
+    order(id: "${orderGid}") {
+      id
+      transactions(first: 5) { edges { node { id amountSet { shopMoney { amount } } kind } } }
+      lineItems(first: 20) { edges { node { id quantity } } }
     }
   }`;
-  const calcResult = await shopifyAdminQuery(shop, accessToken, calcQuery, {
-    input: {
-      orderId: orderGid,
-      amount: { amount, currencyCode: "USD" },
-      refundLineItems: [],
-      restock
-    }
-  });
-  const calcErrors = calcResult?.data?.calculateRefund?.userErrors;
-  if (calcErrors?.length > 0) {
-    throw new Error(`Refund calculation failed: ${calcErrors.map((e) => e.message).join(", ")}`);
-  }
-  const calculatedRefund = calcResult?.data?.calculateRefund?.refund;
-  if (!calculatedRefund) throw new Error("Failed to calculate refund");
-  const execQuery = `mutation execute($input: RefundInput!) {
+  const orderResult = await shopifyAdminQuery(shop, accessToken, orderQuery);
+  const order = orderResult?.data?.order;
+  if (!order) throw new Error("Order not found");
+  const paymentTx = order.transactions?.edges?.find(
+    (e) => e.node.kind === "CAPTURE" || e.node.kind === "SALE" || e.node.kind === "AUTHORIZATION"
+  )?.node;
+  const refundLineItems = order.lineItems?.edges?.map((e) => ({
+    lineItemId: e.node.id,
+    quantity: e.node.quantity,
+    restockType: restock ? "RETURN" : "NO_RESTOCK"
+  })) || [];
+  const execQuery = `mutation refundCreate($input: RefundInput!) {
     refundCreate(input: $input) {
       refund { id transactions { id status processedAt amountSet { shopMoney { amount } } } }
       userErrors { field message }
     }
   }`;
-  const execResult = await shopifyAdminQuery(shop, accessToken, execQuery, {
-    input: {
-      orderId: orderGid,
-      amount: { amount, currencyCode: "USD" },
-      restock,
-      note: reason,
-      transactions: calculatedRefund.transactions?.map((t) => ({
-        id: t.id,
-        amount: { amount: amount.toString(), currencyCode: "USD" },
-        kind: "refund",
-        gateway: t.id
-      })),
-      refundLineItems: []
-    }
-  });
+  const execInput = {
+    orderId: orderGid,
+    refundLineItems,
+    note: reason,
+    transactions: paymentTx ? [{
+      parentId: paymentTx.id,
+      amount: amount.toString(),
+      gateway: "shopify",
+      kind: "REFUND"
+    }] : [{
+      amount: amount.toString(),
+      gateway: "shopify",
+      kind: "REFUND"
+    }]
+  };
+  const execResult = await shopifyAdminQuery(shop, accessToken, execQuery, { input: execInput });
   const execErrors = execResult?.data?.refundCreate?.userErrors;
   if (execErrors?.length > 0) {
     throw new Error(`Refund execution failed: ${execErrors.map((e) => e.message).join(", ")}`);
