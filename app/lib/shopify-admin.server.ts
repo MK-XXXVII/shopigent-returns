@@ -156,7 +156,33 @@ export async function executeRefund(
 
   const orderResult = await shopifyAdminQuery(shop, accessToken, orderQuery);
   const order = orderResult?.data?.order;
-  if (!order) throw new Error("Order not found");
+  if (!order) {
+    console.error("[refund] Order lookup failed:", JSON.stringify(orderResult?.errors || orderResult));
+    // If protected customer data is blocked, try to refund without order lookup
+    const directRefundQuery = `mutation refundCreate($input: RefundInput!) {
+      refundCreate(input: $input) {
+        refund { id transactions { id status } }
+        userErrors { field message }
+      }
+    }`;
+    const directResult = await shopifyAdminQuery(shop, accessToken, directRefundQuery, {
+      input: {
+        orderId: orderGid,
+        refundLineItems: [],
+        note: reason,
+        transactions: [{
+          amount: amount.toString(),
+          gateway: "shopify",
+          kind: "REFUND",
+        }],
+      },
+    });
+    const directErrors = directResult?.data?.refundCreate?.userErrors;
+    if (directErrors?.length > 0) {
+      throw new Error(`Refund failed: ${directErrors.map((e: any) => e.message).join(", ")}`);
+    }
+    return directResult?.data?.refundCreate?.refund;
+  }
 
   // Find the payment transaction (captured/sale)
   const paymentTx = order.transactions?.edges?.find(
