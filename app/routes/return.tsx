@@ -165,11 +165,29 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const customerName = formData.get("customerName") as string;
     const customerEmail = formData.get("customerEmail") as string;
     const reason = formData.get("reason") as string;
-    const selectedItems = JSON.parse(formData.get("selectedItems") as string || "[]");
     const orderName2 = formData.get("orderName2") as string;
 
+    // Items can be provided as JSON or entered manually
+    let selectedItems: any[] = [];
+    const itemsJson = formData.get("selectedItems") as string;
+    const manualItemNames = formData.get("manualItemNames") as string;
+
+    if (itemsJson) {
+      try { selectedItems = JSON.parse(itemsJson); } catch {}
+    }
+
+    // If no items from JSON, parse manual input (comma-separated item names)
+    if (selectedItems.length === 0 && manualItemNames) {
+      selectedItems = manualItemNames.split(",").map((s, i) => ({
+        id: `manual-${i}`,
+        title: s.trim(),
+        quantity: 1,
+        price: "0",
+      }));
+    }
+
     if (!orderId || selectedItems.length === 0) {
-      return json({ error: "Please select at least one item to return." });
+      return json({ error: "Please enter at least one item to return." });
     }
 
     await prisma.returnRequest.create({
@@ -200,6 +218,7 @@ export default function ReturnPortal() {
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [reason, setReason] = useState("");
   const [orderNumber, setOrderNumber] = useState("");
+  const [manualItems, setManualItems] = useState<{ name: string; qty: string; price: string }[]>([]);
 
   const data = fetcher.data;
   const isSubmitting = fetcher.state === "submitting";
@@ -355,29 +374,16 @@ export default function ReturnPortal() {
                           <input type="hidden" name="orderName2" value={order.name} />
                           <input type="hidden" name="customerName" value={customer?.name || ""} />
                           <input type="hidden" name="customerEmail" value={data.email || ""} />
-                          <input type="hidden" name="selectedItems" value={JSON.stringify(
-                            order.items.filter((i: any) => selectedItems.includes(i.id))
-                          )} />
-                          <input type="hidden" name="reason" value={reason} />
-
                           <BlockStack gap="300">
-                            <Text variant="headingSm" as="h4" fontWeight="bold">Select items to return:</Text>
-                            {order.items.map((item: any) => (
-                              <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 0", borderBottom: "1px solid #e0e0e0" }}>
-                                <Checkbox label="" checked={selectedItems.includes(item.id)} onChange={() => toggleItem(item.id)} />
-                                <div style={{ flex: 1 }}>
-                                  <Text variant="bodyMd" as="span" fontWeight="bold">{item.title}</Text>
-                                  <Text variant="bodySm" as="p" tone="subdued">
-                                    x{item.quantity} · ${item.price}{item.sku && ` · SKU: ${item.sku}`}
-                                  </Text>
-                                </div>
-                              </div>
-                            ))}
-
+                            <Text variant="headingSm" as="h4" fontWeight="bold">Items to return:</Text>
+                            <Text variant="bodySm" as="p" tone="subdued">
+                              Enter item names separated by commas (e.g. "Leather Jacket, T-Shirt")
+                            </Text>
+                            <input type="text" name="manualItemNames" placeholder="e.g. Leather Jacket, T-Shirt"
+                              style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid #ccc", fontSize: 14 }} />
                             <TextField label="Reason for return" name="reason" value={reason} onChange={setReason}
                               placeholder="e.g. Wrong size, defective, changed mind..." multiline={2} />
-
-                            <Button submit variant="primary" disabled={selectedItems.length === 0}>
+                            <Button submit variant="primary" disabled={!reason}>
                               Submit Return Request
                             </Button>
                           </BlockStack>
