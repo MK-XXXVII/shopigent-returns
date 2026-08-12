@@ -5,6 +5,7 @@ import { useState } from "react";
 import prisma from "../lib/db.server";
 import { sendEmail, storeCreditProcessedEmail } from "../lib/email.server";
 import { shouldBypassOtp, generateDevOtp } from "../lib/otp-dev.server";
+import { shopifyAdminQuery } from "../lib/shopify-admin.server";
 
 // Customer Portal — public-facing, no Shopify auth required
 // Uses the store's stored offline access token to query the Admin API
@@ -53,18 +54,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }`;
 
     try {
-      const response = await fetch(`https://${shop}/admin/api/2024-10/graphql.json`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Shopify-Access-Token": session.accessToken,
-        },
-        body: JSON.stringify({ query: customerQuery }),
-      });
-
-      const data = await response.json();
-      const errors = data?.errors;
-      const customer = data?.data?.customers?.edges?.[0]?.node;
+      const result = await shopifyAdminQuery(shop, session.accessToken, customerQuery);
+      const errors = result?.errors;
+      const customer = result?.data?.customers?.edges?.[0]?.node;
 
       if (errors) {
         console.error("[return] GraphQL errors:", JSON.stringify(errors));
@@ -169,16 +161,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }`;
 
     try {
-      const response = await fetch(`https://${shop}/admin/api/2024-10/graphql.json`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Shopify-Access-Token": session.accessToken,
-        },
-        body: JSON.stringify({ query }),
-      });
-
-      const data = await response.json();
+      const result = await shopifyAdminQuery(shop, session.accessToken, query);
+      const data = result;
       const customer = data?.data?.customers?.edges?.[0]?.node;
 
       if (!customer) {
