@@ -137,10 +137,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     try {
       // Look up order by name — this does NOT require protected customer data
       const orderUrl = `https://${shop}/admin/api/2024-10/orders.json?name=${encodeURIComponent(formattedName)}&status=any`;
-      console.log("[return] Looking up order:", orderUrl);
-      const orderResp = await fetch(orderUrl, {
-        headers: { "X-Shopify-Access-Token": session.accessToken },
+      let token = session.accessToken;
+
+      let orderResp = await fetch(orderUrl, {
+        headers: { "X-Shopify-Access-Token": token },
       });
+
+      if (orderResp.status === 401) {
+        // Token expired — try refresh
+        const refreshed = await tryRefreshToken(shop);
+        if (refreshed) {
+          token = refreshed;
+          orderResp = await fetch(orderUrl, {
+            headers: { "X-Shopify-Access-Token": refreshed },
+          });
+        }
+      }
 
       const respText = await orderResp.text();
       console.log("[return] Order API response:", respText.slice(0, 500));
