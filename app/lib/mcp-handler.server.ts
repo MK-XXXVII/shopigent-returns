@@ -15,6 +15,11 @@ function jsonRpcResult(id: string | number, result: any) {
   return { jsonrpc: "2.0", id, result };
 }
 
+function jsonRpcToolResult(id: string | number, data: any) {
+  const text = typeof data === "string" ? data : JSON.stringify(data, null, 2);
+  return { jsonrpc: "2.0", id, result: { content: [{ type: "text", text }] } };
+}
+
 export async function handleMcpRequest(body: any, shop?: string) {
   const { method, id, params } = body;
 
@@ -95,7 +100,7 @@ export async function handleMcpRequest(body: any, shop?: string) {
             confidence = 0.3;
           }
 
-          return jsonRpcResult(id, {
+          return jsonRpcToolResult(id, {
             returnId: returnReq.id,
             orderName: returnReq.orderName,
             customerName: returnReq.customerName,
@@ -128,7 +133,7 @@ export async function handleMcpRequest(body: any, shop?: string) {
             args.args || {}
           );
 
-          return jsonRpcResult(id, {
+          return jsonRpcToolResult(id, {
             confirmationToken: token,
             expiresInMs: 5 * 60 * 1000,
             message: "Include this token as `confirmationToken` in your approve_return or deny_return call.",
@@ -290,7 +295,7 @@ export async function handleMcpRequest(body: any, shop?: string) {
             sendEmail({ ...emailData, to: returnReq.customerEmail });
           }
 
-          return jsonRpcResult(id, {
+          return jsonRpcToolResult(id, {
             success: true,
             status: updated.status,
             returnId: updated.id,
@@ -349,7 +354,7 @@ export async function handleMcpRequest(body: any, shop?: string) {
             sendEmail({ ...returnDeniedEmail(returnReq.customerName || "Customer", returnReq.orderName || "", args.reason), to: returnReq.customerEmail });
           }
 
-          return jsonRpcResult(id, { success: true, status: "DENIED", returnId: updated.id });
+          return jsonRpcToolResult(id, { success: true, status: "DENIED", returnId: updated.id });
         }
 
         case "check_fraud": {
@@ -436,7 +441,7 @@ export async function handleMcpRequest(body: any, shop?: string) {
 
           const maxScore = signals.length > 0 ? Math.max(...signals.map((s: any) => s.score)) : 0;
 
-          return jsonRpcResult(id, {
+          return jsonRpcToolResult(id, {
             returnId: args.returnId,
             riskLevel: maxScore > 0.5 ? "high" : maxScore > 0.2 ? "medium" : "low",
             riskScore: maxScore,
@@ -450,7 +455,7 @@ export async function handleMcpRequest(body: any, shop?: string) {
             where: { isActive: true },
             orderBy: { priority: "asc" },
           });
-          return jsonRpcResult(id, {
+          return jsonRpcToolResult(id, {
             policies: policies.map((p) => ({
               id: p.id,
               name: p.name,
@@ -487,7 +492,7 @@ export async function handleMcpRequest(body: any, shop?: string) {
             if (matches) { bestMatch = policy; break; }
           }
 
-          return jsonRpcResult(id, {
+          return jsonRpcToolResult(id, {
             totalAmount,
             daysSinceOrder,
             bestMatch: bestMatch ? {
@@ -505,7 +510,7 @@ export async function handleMcpRequest(body: any, shop?: string) {
             orderBy: { createdAt: "desc" },
             take: args.limit || 10,
           });
-          return jsonRpcResult(id, {
+          return jsonRpcToolResult(id, {
             returns: returns.map((r) => ({
               id: r.id,
               orderName: r.orderName,
@@ -586,7 +591,7 @@ export async function handleMcpRequest(body: any, shop?: string) {
             },
           });
 
-          return jsonRpcResult(id, {
+          return jsonRpcToolResult(id, {
             success: true,
             status: "EXCHANGE",
             returnId: updated.id,
