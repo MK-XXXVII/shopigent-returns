@@ -2825,12 +2825,19 @@ async function handleMcpRequest(body, shop) {
           let storeCreditResult = null;
           if (session?.accessToken) {
             try {
-              const orderIdNum = returnReq.orderId.replace("gid://shopify/Order/", "");
+              const orderName = returnReq.orderName || returnReq.orderId;
+              const orderQuery = `{ orders(first: 1, query: "name:${orderName}") { edges { node { id totalPriceSet { shopMoney { amount } } } } } }`;
+              const orderResult = await shopifyAdminQuery(returnReq.shop, session.accessToken, orderQuery);
+              const realOrder = orderResult?.data?.orders?.edges?.[0]?.node;
+              const realTotal = realOrder ? parseFloat(realOrder.totalPriceSet?.shopMoney?.amount || "0") : 0;
+              const orderGid = realOrder?.id || returnReq.orderId;
+              const effectiveAmount = args.refundAmount || (items.length > 0 && parseFloat(items[0]?.price || "0") > 0 ? totalAmount : realTotal > 0 ? realTotal : totalAmount);
+              const orderIdNum = orderGid.replace("gid://shopify/Order/", "");
               if (args.storeCredit) {
                 storeCreditResult = await createStoreCredit(
                   returnReq.shop,
                   session.accessToken,
-                  totalAmount,
+                  effectiveAmount,
                   returnReq.customerEmail || "",
                   args.notes || "Return store credit"
                 );
@@ -2839,7 +2846,7 @@ async function handleMcpRequest(body, shop) {
                   returnReq.shop,
                   session.accessToken,
                   orderIdNum,
-                  totalAmount,
+                  effectiveAmount,
                   true,
                   args.notes || "Auto-approved by Shopigent Returns AI agent"
                 );

@@ -1,5 +1,5 @@
 import prisma from "./db.server";
-import { executeRefund, createStoreCredit } from "./shopify-admin.server";
+import { executeRefund, createStoreCredit, shopifyAdminQuery } from "./shopify-admin.server";
 import { sendEmail, returnApprovedEmail, returnDeniedEmail, refundProcessedEmail, storeCreditProcessedEmail } from "./email.server";
 import { createReturnLabel } from "./label-provider.server";
 import { issueConfirmationToken, verifyConfirmationToken } from "./confirmation.server";
@@ -177,14 +177,27 @@ export async function handleMcpRequest(body: any, shop?: string) {
           let storeCreditResult = null;
           if (session?.accessToken) {
             try {
-              const orderIdNum = returnReq.orderId.replace("gid://shopify/Order/", "");
+              // Look up the actual order in Shopify
+              const orderName = returnReq.orderName || returnReq.orderId;
+              const orderQuery = `{ orders(first: 1, query: "name:${orderName}") { edges { node { id totalPriceSet { shopMoney { amount } } } } } }`;
+              const orderResult = await shopifyAdminQuery(returnReq.shop, session.accessToken, orderQuery);
+              const realOrder = orderResult?.data?.orders?.edges?.[0]?.node;
+              const realTotal = realOrder ? parseFloat(realOrder.totalPriceSet?.shopMoney?.amount || "0") : 0;
+              const orderGid = realOrder?.id || returnReq.orderId;
+
+              // Use real order total if no manual items with prices
+              const effectiveAmount = args.refundAmount || (items.length > 0 && parseFloat(items[0]?.price || "0") > 0
+                ? totalAmount
+                : realTotal > 0 ? realTotal : totalAmount);
+
+              const orderIdNum = orderGid.replace("gid://shopify/Order/", "");
 
               if (args.storeCredit) {
                 // Issue store credit discount code instead of refund
                 storeCreditResult = await createStoreCredit(
                   returnReq.shop,
                   session.accessToken,
-                  totalAmount,
+                  effectiveAmount,
                   returnReq.customerEmail || "",
                   args.notes || "Return store credit"
                 );
@@ -193,7 +206,7 @@ export async function handleMcpRequest(body: any, shop?: string) {
                   returnReq.shop,
                   session.accessToken,
                   orderIdNum,
-                  totalAmount,
+                  effectiveAmount,
                   true,
                   args.notes || "Auto-approved by Shopigent Returns AI agent"
                 );
