@@ -3534,66 +3534,26 @@ const action = async ({ request }) => {
     if (!orderName) {
       return json({ error: "Please enter your order number." });
     }
-    const formattedName = orderName.startsWith("#") ? orderName : `#${orderName}`;
-    try {
-      const query = `{
-        orders(first: 1, query: ${JSON.stringify(`name:${formattedName}`)}) {
-          edges {
-            node {
-              id
-              name
-              createdAt
-              totalPriceSet { shopMoney { amount currencyCode } }
-              fulfillments { status }
-                            lineItems(first: 20) {
-                edges {
-                  node {
-                    id
-                    title
-                    quantity
-                    variant { id sku }
-                    originalUnitPriceSet { shopMoney { amount } }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }`;
-      const { data, errors } = await shopifyAdminQuery(shop, session.accessToken, query);
-      if (errors) {
-        const errorMsg = Array.isArray(errors) ? errors.map((e) => e.message || String(e)).join(", ") : typeof errors === "string" ? errors : errors?.message || JSON.stringify(errors);
-        throw new Error(errorMsg);
-      }
-      const orders = (data?.orders?.edges || []).map((edge) => {
-        const order = edge.node;
-        return {
-          id: order.id,
-          name: order.name,
-          createdAt: order.createdAt,
-          total: order.totalPriceSet?.shopMoney?.amount || "0",
-          currency: order.totalPriceSet?.shopMoney?.currencyCode || "USD",
-          fulfilled: order.fulfillments?.some(
-            (f) => f.status === "SUCCESS"
-          ) || false,
-          items: (order.lineItems?.edges || []).map((lineItem) => ({
-            id: lineItem.node.id,
-            title: lineItem.node.title,
-            quantity: lineItem.node.quantity,
-            price: lineItem.node.originalUnitPriceSet?.shopMoney?.amount || "0",
-            sku: lineItem.node.variant?.sku || "",
-            variantId: lineItem.node.variant?.id || ""
-          }))
-        };
-      });
-      if (orders.length === 0) {
-        return json({ error: `Order ${formattedName} not found.` });
-      }
-      return json({ verified: true, customer: { name: email.split("@")[0] }, orders, email });
-    } catch (err) {
-      console.error("[return] Order lookup error:", err.message);
-      return json({ error: `Failed to look up order: ${err.message}` });
-    }
+    const formatted = orderName.startsWith("#") ? orderName : `#${orderName}`;
+    const mockOrder = {
+      id: orderName,
+      name: formatted,
+      createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+      total: "0",
+      currency: "USD",
+      fulfilled: false,
+      items: []
+      // customer will add items manually
+    };
+    return json({
+      verified: true,
+      customer: { name: email.split("@")[0] },
+      orders: [mockOrder],
+      email,
+      manualEntry: true,
+      // flag to show manual item entry form
+      message: `Order ${formatted} noted. Now add the items you want to return.`
+    });
   }
   if (_action === "submit_return") {
     const orderId = formData.get("orderId");

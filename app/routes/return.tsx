@@ -123,7 +123,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     });
   }
 
-  // ─── Step 3: Look up order by number ──────────────────────
+  // ─── Step 3: Look up order by number (reference only) ─────
   if (_action === "lookup_order") {
     const orderName = (formData.get("orderName") as string || "").trim();
 
@@ -132,76 +132,31 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
 
     // Format the order name (e.g., "1001" → "#1001")
-    const formattedName = orderName.startsWith("#") ? orderName : `#${orderName}`;
+    const formatted = orderName.startsWith("#") ? orderName : `#${orderName}`;
 
-    try {
-      const query = `{
-        orders(first: 1, query: ${JSON.stringify(`name:${formattedName}`)}) {
-          edges {
-            node {
-              id
-              name
-              createdAt
-              totalPriceSet { shopMoney { amount currencyCode } }
-              fulfillments { status }
-                            lineItems(first: 20) {
-                edges {
-                  node {
-                    id
-                    title
-                    quantity
-                    variant { id sku }
-                    originalUnitPriceSet { shopMoney { amount } }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }`;
+    // Don't query Shopify API (protected customer data).
+    // Accept the order number for reference; customer will enter items manually.
+    // The MCP agent will validate the order when processing the return.
 
-      const { data, errors } = await shopifyAdminQuery(shop, session.accessToken, query);
+    // Create a mock order with the order name so the UI can show the item entry form
+    const mockOrder = {
+      id: orderName,
+      name: formatted,
+      createdAt: new Date().toISOString(),
+      total: "0",
+      currency: "USD",
+      fulfilled: false,
+      items: [], // customer will add items manually
+    };
 
-      if (errors) {
-        const errorMsg = Array.isArray(errors)
-          ? errors.map((e: any) => e.message || String(e)).join(", ")
-          : typeof errors === "string"
-            ? errors
-            : errors?.message || JSON.stringify(errors);
-        throw new Error(errorMsg);
-      }
-
-      const orders = (data?.orders?.edges || []).map((edge: any) => {
-        const order = edge.node;
-        return {
-          id: order.id,
-          name: order.name,
-          createdAt: order.createdAt,
-          total: order.totalPriceSet?.shopMoney?.amount || "0",
-          currency: order.totalPriceSet?.shopMoney?.currencyCode || "USD",
-          fulfilled: order.fulfillments?.some(
-            (f: any) => f.status === "SUCCESS"
-          ) || false,
-          items: (order.lineItems?.edges || []).map((lineItem: any) => ({
-            id: lineItem.node.id,
-            title: lineItem.node.title,
-            quantity: lineItem.node.quantity,
-            price: lineItem.node.originalUnitPriceSet?.shopMoney?.amount || "0",
-            sku: lineItem.node.variant?.sku || "",
-            variantId: lineItem.node.variant?.id || "",
-          })),
-        };
-      });
-
-      if (orders.length === 0) {
-        return json({ error: `Order ${formattedName} not found.` });
-      }
-
-      return json({ verified: true, customer: { name: email.split("@")[0] }, orders, email });
-    } catch (err: any) {
-      console.error("[return] Order lookup error:", err.message);
-      return json({ error: `Failed to look up order: ${err.message}` });
-    }
+    return json({
+      verified: true,
+      customer: { name: email.split("@")[0] },
+      orders: [mockOrder],
+      email,
+      manualEntry: true, // flag to show manual item entry form
+      message: `Order ${formatted} noted. Now add the items you want to return.`,
+    });
   }
 
   // ─── Submit Return ─────────────────────────────────────────
