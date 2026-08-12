@@ -74,16 +74,15 @@ export async function tryRefreshToken(shop: string): Promise<string | null> {
       {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
+          "Content-Type": "application/x-www-form-urlencoded",
           Accept: "application/json",
         },
-        body: JSON.stringify({
+        body: new URLSearchParams({
           client_id: apiKey,
           client_secret: apiSecret,
-          refresh_token: session.refreshToken,
-          access_token: session.accessToken,
           grant_type: "refresh_token",
-        }),
+          refresh_token: session.refreshToken,
+        }).toString(),
       }
     );
 

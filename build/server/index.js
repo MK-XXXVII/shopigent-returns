@@ -69,7 +69,8 @@ const shopify = shopifyApp({
     }
   },
   future: {
-    unstable_newEmbeddedAuthStrategy: true
+    unstable_newEmbeddedAuthStrategy: true,
+    expiringOfflineAccessTokens: true
   }
 });
 const authenticate = shopify.authenticate;
@@ -807,16 +808,15 @@ async function tryRefreshToken(shop) {
       {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
+          "Content-Type": "application/x-www-form-urlencoded",
           Accept: "application/json"
         },
-        body: JSON.stringify({
+        body: new URLSearchParams({
           client_id: apiKey,
           client_secret: apiSecret,
-          refresh_token: session.refreshToken,
-          access_token: session.accessToken,
-          grant_type: "refresh_token"
-        })
+          grant_type: "refresh_token",
+          refresh_token: session.refreshToken
+        }).toString()
       }
     );
     if (!response.ok) {
