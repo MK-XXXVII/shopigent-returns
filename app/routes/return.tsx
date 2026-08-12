@@ -47,8 +47,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (_action === "request_otp") {
     // Check if customer exists in Shopify
     const customerQuery = `{
-      customers(first: 1, query: "${email}") {
-        edges { node { id firstName lastName } }
+      customers(first: 1, query: "email:${email}") {
+        edges { node { id firstName lastName email } }
       }
     }`;
 
@@ -63,10 +63,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       });
 
       const data = await response.json();
+      const errors = data?.errors;
       const customer = data?.data?.customers?.edges?.[0]?.node;
 
+      if (errors) {
+        console.error("[return] GraphQL errors:", JSON.stringify(errors));
+        return json({ error: `Shopify API error: ${errors[0]?.message || "Unknown error"}` });
+      }
+
       if (!customer) {
-        return json({ error: "No customer found with this email in this store." });
+        return json({ error: `No customer found with email "${email}" in this store. Make sure they have placed an order.` });
       }
     } catch (err: any) {
       return json({ error: `Failed to verify email: ${err.message}` });
