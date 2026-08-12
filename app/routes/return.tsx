@@ -373,6 +373,7 @@ export default function ReturnPortal() {
                           <input type="hidden" name="orderId" value={order.id} />
                           <input type="hidden" name="orderName2" value={order.name} />
                           <input type="hidden" name="customerName" value={customer?.name || ""} />
+                          <input type="hidden" name="email" value={data.email || ""} />
                           <input type="hidden" name="customerEmail" value={data.email || ""} />
                           <BlockStack gap="300">
                             <Text variant="headingSm" as="h4" fontWeight="bold">Items to return:</Text>
