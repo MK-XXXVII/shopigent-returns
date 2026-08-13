@@ -5,7 +5,7 @@ import { useState } from "react";
 import prisma from "../lib/db.server";
 import { sendEmail, storeCreditProcessedEmail } from "../lib/email.server";
 import { shouldBypassOtp, generateDevOtp } from "../lib/otp-dev.server";
-import { shopifyAdminQuery } from "../lib/shopify-admin.server";
+import { shopifyAdminQuery, getOrdersByEmail } from "../lib/shopify-admin.server";
 
 // Customer Portal — public-facing, no Shopify auth required
 // Uses the store's stored offline access token to query the Admin API
@@ -111,16 +111,53 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       data: { used: true },
     });
 
-    // ─── Now OTP verified — ask for order number ──────────────
-    // Instead of looking up orders by email (requires protected customer data approval),
-    // we ask the customer for their order number and look it up by name
-    return json({
-      verified: true,
-      customer: { name: email.split("@")[0] },
-      email,
-      needsOrderNumber: true,
-      message: "Please enter your order number to start the return.",
-    });
+    // ─── Look up orders by email via Shopify API ──────────────
+    try {
+      const customerResult = await getOrdersByEmail(shop, session.accessToken, email);
+      const customers = customerResult?.customers || [];
+
+      if (customers.length === 0) {
+        return json({
+          verified: true,
+          customer: { name: email.split("@")[0] },
+          email,
+          orders: [],
+          noOrders: true,
+          message: "No orders found for this email address.",
+        });
+      }
+
+      // Flatten all orders from all matching customers
+      const allOrders = customers.flatMap((c: any) =>
+        (c.orders || []).map((o: any) => ({
+          id: String(o.id),
+          name: o.name,
+          createdAt: o.created_at,
+          total: o.total_price || o.total_price_set?.shop_money?.amount || "0",
+          currency: o.currency || "USD",
+          fulfilled: o.fulfillment_status === "fulfilled",
+          items: (o.line_items || []).map((li: any) => ({
+            id: String(li.id),
+            variantId: `gid://shopify/ProductVariant/${li.variant_id}`,
+            title: li.title,
+            quantity: li.quantity,
+            price: li.price || "0",
+            sku: li.sku || "",
+          })),
+        }))
+      );
+
+      return json({
+        verified: true,
+        customer: { name: customers[0]?.first_name || email.split("@")[0] },
+        email,
+        orders: allOrders,
+        message: `Found ${allOrders.length} order(s). Select the items you want to return.`,
+      });
+    } catch (err: any) {
+      console.error(`[portal] Order lookup failed for ${email}:`, err.message);
+      return json({ error: "Unable to look up orders. Please try again or contact support." });
+    }
   }
 
   // ─── Step 3: Look up order by number (reference only) ─────
@@ -167,23 +204,31 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const reason = formData.get("reason") as string;
     const orderName2 = formData.get("orderName2") as string;
 
-    // Items can be provided as JSON or entered manually
+    // Parse selected items from checkboxes
+    const selectedItemIds = formData.getAll("selectedItemIds") as string[];
+
+    // Look up the actual items from the order via Shopify API
     let selectedItems: any[] = [];
-    const itemsJson = formData.get("selectedItems") as string;
-    const manualItemNames = formData.get("manualItemNames") as string;
 
-    if (itemsJson) {
-      try { selectedItems = JSON.parse(itemsJson); } catch {}
-    }
-
-    // If no items from JSON, parse manual input (comma-separated item names)
-    if (selectedItems.length === 0 && manualItemNames) {
-      selectedItems = manualItemNames.split(",").map((s, i) => ({
-        id: `manual-${i}`,
-        title: s.trim(),
-        quantity: 1,
-        price: "0",
-      }));
+    if (selectedItemIds.length > 0) {
+      const customerResult = await getOrdersByEmail(shop, session.accessToken, customerEmail);
+      const customers = customerResult?.customers || [];
+      for (const c of customers) {
+        for (const o of (c.orders || [])) {
+          if (String(o.id) === orderId) {
+            selectedItems = (o.line_items || [])
+              .filter((li: any) => selectedItemIds.includes(String(li.id)))
+              .map((li: any) => ({
+                id: String(li.id),
+                variantId: `gid://shopify/ProductVariant/${li.variant_id}`,
+                title: li.title,
+                quantity: li.quantity,
+                price: li.price || "0",
+                sku: li.sku || "",
+              }));
+          }
+        }
+      }
     }
 
     if (!orderId || selectedItems.length === 0) {
@@ -320,86 +365,60 @@ export default function ReturnPortal() {
             </fetcher.Form>
           )}
 
-          {/* Step 3: Enter Order Number (after OTP verification) */}
-          {verified && data?.needsOrderNumber && !orders?.length && (
+          {/* Step 3: Orders with items (after OTP verification) */}
+          {verified && orders.length > 0 && (
             <fetcher.Form method="post">
-              <input type="hidden" name="_action" value="lookup_order" />
+              <input type="hidden" name="_action" value="submit_return" />
               <input type="hidden" name="shop" value={shop} />
-              <input type="hidden" name="email" value={data.email || email} />
+              <input type="hidden" name="customerName" value={customer?.name || ""} />
+              <input type="hidden" name="email" value={data.email || ""} />
+              <input type="hidden" name="customerEmail" value={data.email || ""} />
               <BlockStack gap="300">
-                <TextField
-                  label="Order Number"
-                  type="text"
-                  name="orderName"
-                  value={orderNumber}
-                  onChange={setOrderNumber}
-                  placeholder="e.g. #1001 or 1001"
-                />
-                <Button submit variant="primary" loading={isSubmitting} disabled={!orderNumber}>
-                  Find Order
+                <Text variant="bodyMd" as="p">{data.message}</Text>
+                {orders.map((order: any) => {
+                  const orderTotal = parseFloat(order.total);
+                  return (
+                    <Card key={order.id}>
+                      <BlockStack gap="200">
+                        <InlineStack align="space-between">
+                          <Text variant="headingSm" as="h3" fontWeight="bold">{order.name}</Text>
+                          <Text variant="bodySm" as="span" tone="subdued">
+                            {new Date(order.createdAt).toLocaleDateString()} · {order.currency} ${orderTotal.toFixed(2)}
+                          </Text>
+                        </InlineStack>
+                        <input type="hidden" name="orderId" value={order.id} />
+                        <input type="hidden" name="orderName2" value={order.name} />
+                        <Text variant="bodySm" as="p" fontWeight="bold">Select items to return:</Text>
+                        {order.items.map((item: any) => (
+                          <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}>
+                            <input
+                              type="checkbox"
+                              name="selectedItemIds"
+                              value={item.id}
+                              defaultChecked={false}
+                              style={{ width: 18, height: 18 }}
+                            />
+                            <span style={{ flex: 1 }}>{item.title}</span>
+                            <span style={{ color: "#666", fontSize: 13 }}>×{item.quantity}</span>
+                            <span style={{ color: "#666", fontSize: 13 }}>${item.price}</span>
+                          </div>
+                        ))}
+                      </BlockStack>
+                    </Card>
+                  );
+                })}
+                <TextField label="Reason for return" name="reason" value={reason} onChange={setReason}
+                  placeholder="e.g. Wrong size, defective, changed mind..." multiline={2} />
+                <Button submit variant="primary" disabled={!reason} loading={isSubmitting}>
+                  Submit Return Request
                 </Button>
               </BlockStack>
             </fetcher.Form>
           )}
 
-          {/* Step 4: Orders (after order lookup) */}
-          {verified && orders.length > 0 && (
-            <BlockStack gap="300">
-              {orders.map((order: any) => {
-                const orderTotal = parseFloat(order.total);
-                const isSelected = selectedOrder === order.id;
-                return (
-                  <Card key={order.id} background={isSelected ? "bg-surface-experimental" : undefined}>
-                    <div style={{ cursor: "pointer" }} onClick={() => {
-                      setSelectedOrder(isSelected ? null : order.id);
-                      setSelectedItems([]);
-                    }}>
-                      <InlineStack align="space-between">
-                        <BlockStack gap="100">
-                          <Text variant="headingSm" as="h3" fontWeight="bold">{order.name}</Text>
-                          <Text variant="bodySm" as="p" tone="subdued">
-                            {new Date(order.createdAt).toLocaleDateString()} · {order.currency} ${orderTotal.toFixed(2)}
-                          </Text>
-                        </BlockStack>
-                        {order.fulfilled && <Text variant="bodySm" as="span" tone="success">Delivered</Text>}
-                      </InlineStack>
-                    </div>
-
-                    {isSelected && (
-                      <div style={{ marginTop: 16 }}>
-                        <fetcher.Form method="post">
-                          <input type="hidden" name="_action" value="submit_return" />
-                          <input type="hidden" name="shop" value={shop} />
-                          <input type="hidden" name="orderId" value={order.id} />
-                          <input type="hidden" name="orderName2" value={order.name} />
-                          <input type="hidden" name="customerName" value={customer?.name || ""} />
-                          <input type="hidden" name="email" value={data.email || ""} />
-                          <input type="hidden" name="customerEmail" value={data.email || ""} />
-                          <BlockStack gap="300">
-                            <Text variant="headingSm" as="h4" fontWeight="bold">Items to return:</Text>
-                            <Text variant="bodySm" as="p" tone="subdued">
-                              Enter item names separated by commas (e.g. "Leather Jacket, T-Shirt")
-                            </Text>
-                            <input type="text" name="manualItemNames" placeholder="e.g. Leather Jacket, T-Shirt"
-                              style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid #ccc", fontSize: 14 }} />
-                            <TextField label="Reason for return" name="reason" value={reason} onChange={setReason}
-                              placeholder="e.g. Wrong size, defective, changed mind..." multiline={2} />
-                            <Button submit variant="primary" disabled={!reason}>
-                              Submit Return Request
-                            </Button>
-                          </BlockStack>
-                        </fetcher.Form>
-                      </div>
-                    )}
-                  </Card>
-                );
-              })}
-            </BlockStack>
-          )}
-
-          {verified && orders.length === 0 && !error && (
+          {verified && orders.length === 0 && (
             <Banner tone="info">
-              <p>No orders found for this email.</p>
+              <p>{data?.message || "No orders found for this email address."}</p>
             </Banner>
           )}
         </BlockStack>
