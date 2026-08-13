@@ -5,7 +5,7 @@ import { useState } from "react";
 import prisma from "../lib/db.server";
 import { sendEmail, storeCreditProcessedEmail } from "../lib/email.server";
 import { shouldBypassOtp, generateDevOtp } from "../lib/otp-dev.server";
-import { shopifyAdminQuery, getOrdersByEmail } from "../lib/shopify-admin.server";
+import { shopifyAdminQuery, getOrdersByEmail, executeRefund } from "../lib/shopify-admin.server";
 
 // Customer Portal — public-facing, no Shopify auth required
 // Uses the store's stored offline access token to query the Admin API
@@ -281,6 +281,24 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           await prisma.decisionLog.create({
             data: { returnId: returnRec.id, actor: "auto", action: "approve", details: { source: "auto_policy", policy: policy.name, amount: totalAmount } },
           });
+          // Try to execute refund in Shopify
+          try {
+            const sess = await prisma.session.findFirst({ where: { shop, isOnline: false } });
+            if (sess?.accessToken) {
+              const result = await executeRefund(shop, sess.accessToken, orderId, totalAmount, true);
+              if (result?.id) {
+                await prisma.returnRequest.update({
+                  where: { id: returnRec.id },
+                  data: { status: "REFUNDED", refundAmount: totalAmount, refundId: result.id },
+                });
+                await prisma.decisionLog.create({
+                  data: { returnId: returnRec.id, actor: "auto", action: "refund", details: { refundId: result.id, amount: totalAmount } },
+                });
+              }
+            }
+          } catch (err: any) {
+            console.error(`[portal] Auto-approve refund failed: ${err.message}`);
+          }
           break;
         }
       }

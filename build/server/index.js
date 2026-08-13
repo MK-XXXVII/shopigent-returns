@@ -4062,6 +4062,23 @@ const action = async ({ request }) => {
           await prisma$1.decisionLog.create({
             data: { returnId: returnRec.id, actor: "auto", action: "approve", details: { source: "auto_policy", policy: policy.name, amount: totalAmount } }
           });
+          try {
+            const sess = await prisma$1.session.findFirst({ where: { shop, isOnline: false } });
+            if (sess?.accessToken) {
+              const result = await executeRefund(shop, sess.accessToken, orderId, totalAmount, true);
+              if (result?.id) {
+                await prisma$1.returnRequest.update({
+                  where: { id: returnRec.id },
+                  data: { status: "REFUNDED", refundAmount: totalAmount, refundId: result.id }
+                });
+                await prisma$1.decisionLog.create({
+                  data: { returnId: returnRec.id, actor: "auto", action: "refund", details: { refundId: result.id, amount: totalAmount } }
+                });
+              }
+            }
+          } catch (err) {
+            console.error(`[portal] Auto-approve refund failed: ${err.message}`);
+          }
           break;
         }
       }
