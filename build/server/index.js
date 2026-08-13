@@ -1891,7 +1891,9 @@ const action$5 = async ({ request, params }) => {
       if (sess?.accessToken) {
         try {
           await executeRefund(shop, sess.accessToken, returnReq.orderId, amount, true);
-        } catch {
+          console.log(`[admin] Refund executed for ${returnReq.orderId}`);
+        } catch (err) {
+          console.error(`[admin] Refund failed for ${returnReq.orderId}:`, err.message);
         }
       }
       await prisma$1.decisionLog.create({ data: { returnId, actor: "admin", action: "approve", details: { source: "detail_page" } } });
@@ -3968,7 +3970,7 @@ const action = async ({ request }) => {
     }
     const orderResult = await getOrdersByEmail(shop, session.accessToken, customerEmail);
     const shopifyOrders = orderResult?.orders || [];
-    let created = 0;
+    let createdCount = 0;
     for (const [orderId, data] of orderData) {
       if (data.itemIds.length === 0) continue;
       const shopifyOrder = shopifyOrders.find((o) => String(o.id) === orderId);
@@ -3981,7 +3983,7 @@ const action = async ({ request }) => {
         sku: li.sku || ""
       })) : [];
       if (selectedItems.length === 0) continue;
-      await prisma$1.returnRequest.create({
+      const returnRec = await prisma$1.returnRequest.create({
         data: {
           shop,
           orderId,
@@ -3993,14 +3995,40 @@ const action = async ({ request }) => {
           status: "PENDING"
         }
       });
-      created++;
+      const policies = await prisma$1.policy.findMany({
+        where: { shop, isActive: true },
+        orderBy: { priority: "asc" }
+      });
+      const totalAmount = selectedItems.reduce((s, i) => s + parseFloat(i.price || "0") * (i.quantity || 0), 0);
+      for (const policy of policies) {
+        const conditions = policy.conditions;
+        const matches = conditions.every((c) => {
+          if (c.field === "maxDays") return true;
+          if (c.field === "maxAmount") return totalAmount <= c.value;
+          if (c.field === "minAmount") return totalAmount > c.value;
+          if (c.field === "autoApprove") return c.value === true;
+          if (c.field === "restockingFee") return true;
+          return true;
+        });
+        if (matches && conditions.some((c) => c.field === "autoApprove" && c.value === true)) {
+          await prisma$1.returnRequest.update({
+            where: { id: returnRec.id },
+            data: { status: "APPROVED", decidedBy: "auto", decidedAt: /* @__PURE__ */ new Date() }
+          });
+          await prisma$1.decisionLog.create({
+            data: { returnId: returnRec.id, actor: "auto", action: "approve", details: { source: "auto_policy", policy: policy.name, amount: totalAmount } }
+          });
+          break;
+        }
+      }
+      createdCount++;
     }
-    if (created === 0) {
+    if (createdCount === 0) {
       return json({ error: "No valid items selected. Please try again." });
     }
     return json({
       success: true,
-      message: `${created} return request${created > 1 ? "s" : ""} submitted! We'll review ${created > 1 ? "them" : "it"} shortly.`
+      message: `${createdCount} return request${createdCount > 1 ? "s" : ""} submitted${autoApproved ? " and auto-approved!" : "!"} We'll review ${createdCount > 1 ? "them" : "it"} shortly.`
     });
   }
   return json({ error: "Invalid action" });

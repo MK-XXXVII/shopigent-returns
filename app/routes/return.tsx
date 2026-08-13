@@ -219,7 +219,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const orderResult = await getOrdersByEmail(shop, session.accessToken, customerEmail);
     const shopifyOrders = orderResult?.orders || [];
 
-    let created = 0;
+    let createdCount = 0;
     for (const [orderId, data] of orderData) {
       if (data.itemIds.length === 0) continue;
 
@@ -240,7 +240,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
       if (selectedItems.length === 0) continue;
 
-      await prisma.returnRequest.create({
+      const returnRec = await prisma.returnRequest.create({
         data: {
           shop,
           orderId,
@@ -252,16 +252,47 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           status: "PENDING",
         },
       });
-      created++;
+
+      // Auto-approve if policy matches
+      let autoApproved = false;
+      const policies = await prisma.policy.findMany({
+        where: { shop, isActive: true },
+        orderBy: { priority: "asc" },
+      });
+      const totalAmount = selectedItems.reduce((s: number, i: any) => s + (parseFloat(i.price || "0") * (i.quantity || 0)), 0);
+      for (const policy of policies) {
+        const conditions = policy.conditions as any[];
+        const matches = conditions.every((c: any) => {
+          if (c.field === "maxDays") return true; // can't check days without order date
+          if (c.field === "maxAmount") return totalAmount <= c.value;
+          if (c.field === "minAmount") return totalAmount > c.value;
+          if (c.field === "autoApprove") return c.value === true;
+          if (c.field === "restockingFee") return true;
+          return true;
+        });
+        if (matches && conditions.some((c: any) => c.field === "autoApprove" && c.value === true)) {
+          autoApproved = true;
+          // Auto-approve the return
+          await prisma.returnRequest.update({
+            where: { id: returnRec.id },
+            data: { status: "APPROVED", decidedBy: "auto", decidedAt: new Date() },
+          });
+          await prisma.decisionLog.create({
+            data: { returnId: returnRec.id, actor: "auto", action: "approve", details: { source: "auto_policy", policy: policy.name, amount: totalAmount } },
+          });
+          break;
+        }
+      }
+      createdCount++;
     }
 
-    if (created === 0) {
+    if (createdCount === 0) {
       return json({ error: "No valid items selected. Please try again." });
     }
 
     return json({
       success: true,
-      message: `${created} return request${created > 1 ? "s" : ""} submitted! We'll review ${created > 1 ? "them" : "it"} shortly.`,
+      message: `${createdCount} return request${createdCount > 1 ? "s" : ""} submitted${autoApproved ? " and auto-approved!" : "!"} We'll review ${createdCount > 1 ? "them" : "it"} shortly.`,
     });
   }
 

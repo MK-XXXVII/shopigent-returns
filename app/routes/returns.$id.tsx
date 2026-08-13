@@ -80,7 +80,12 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       const amount = (returnReq.items as any[]).reduce((s: number, i: any) => s + (parseFloat(i.price || "0") * (i.quantity || 0)), 0);
       const sess = await prisma.session.findFirst({ where: { shop, isOnline: false } });
       if (sess?.accessToken) {
-        try { await executeRefund(shop, sess.accessToken, returnReq.orderId, amount, true); } catch {}
+        try {
+          await executeRefund(shop, sess.accessToken, returnReq.orderId, amount, true);
+          console.log(`[admin] Refund executed for ${returnReq.orderId}`);
+        } catch (err: any) {
+          console.error(`[admin] Refund failed for ${returnReq.orderId}:`, err.message);
+        }
       }
       await prisma.decisionLog.create({ data: { returnId, actor: "admin", action: "approve", details: { source: "detail_page" } } });
       if (returnReq.customerEmail) sendEmail({ ...returnApprovedEmail(returnReq.customerName || "Customer", returnReq.orderName || ""), to: returnReq.customerEmail });
