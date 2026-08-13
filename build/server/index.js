@@ -3861,66 +3861,44 @@ function generateDevOtp() {
 
 async function createShopifyReturn(shop, accessToken, orderId, items) {
   const orderGid = orderId.startsWith("gid://") ? orderId : `gid://shopify/Order/${orderId}`;
-  const orderQuery = `{
-    order(id: "${orderGid}") {
-      id
-      displayFulfillmentStatus
-      lineItems(first: 50) {
-        nodes {
-          id
-          variant { id }
-          quantity
-          fulfillableQuantity
-          totalQuantity
-        }
-      }
-      fulfillments(first: 10) {
-        id
-        status
-        lineItems(first: 50) {
-          nodes {
-            id
-            lineItem { id variant { id } }
-            quantity
-          }
-        }
-      }
-    }
-  }`;
-  const orderResult = await shopifyAdminQuery(shop, accessToken, orderQuery);
-  console.log(`[shopify-return] Order query result:`, JSON.stringify(orderResult).slice(0, 2e3));
-  const order = orderResult?.data?.order;
+  const numericOrderId = orderId.replace("gid://shopify/Order/", "");
+  const restUrl = `https://${shop}/admin/api/2026-10/orders/${numericOrderId}.json`;
+  const restResp = await fetch(restUrl, {
+    headers: { "X-Shopify-Access-Token": accessToken }
+  });
+  const restData = await restResp.json();
+  const order = restData?.order;
   if (!order) {
-    return { error: "Order not found or inaccessible" };
+    return { error: "Order not found" };
   }
+  console.log(`[shopify-return] REST order:`, JSON.stringify({
+    id: order.id,
+    name: order.name,
+    fulfillment_status: order.fulfillment_status,
+    line_items: order.line_items?.map((li) => ({ id: li.id, variant_id: li.variant_id, fulfillable_quantity: li.fulfillable_quantity })),
+    fulfillments: order.fulfillments?.map((f) => ({ id: f.id, status: f.status, line_items: f.line_items?.map((fli) => ({ id: fli.id, line_item_id: fli.line_item_id })) }))
+  }).slice(0, 3e3));
   const returnLineItems = [];
   for (const reqItem of items) {
+    const variantId = reqItem.variantId.replace("gid://shopify/ProductVariant/", "");
     let fulfillmentLineItemId = null;
     for (const fulfillment of order.fulfillments || []) {
-      for (const fli of fulfillment.lineItems?.nodes || []) {
-        if (fli.lineItem?.variant?.id === reqItem.variantId) {
-          fulfillmentLineItemId = fli.id;
+      for (const fli of fulfillment.line_items || []) {
+        const matchingLineItem = order.line_items?.find((li) => li.id === fli.line_item_id);
+        if (matchingLineItem && String(matchingLineItem.variant_id) === variantId) {
+          fulfillmentLineItemId = `gid://shopify/FulfillmentLineItem/${fli.id}`;
           break;
         }
       }
       if (fulfillmentLineItemId) break;
     }
     if (!fulfillmentLineItemId) {
-      const lineItem = (order.lineItems?.nodes || []).find(
-        (li) => li.variant?.id === reqItem.variantId
-      );
-      if (lineItem) {
-        return { error: `Item "${reqItem.variantId}" needs to be fulfilled first. Please create a fulfillment in Shopify admin.` };
-      }
-      return { error: `Item variant ${reqItem.variantId} not found in order` };
+      return { error: `Item variant ${variantId} hasn't been fulfilled. Fulfill the order in Shopify admin first.` };
     }
     returnLineItems.push({
       fulfillmentLineItemId,
       quantity: reqItem.quantity
     });
-  }
-  if (returnLineItems.length === 0) {
-    return { error: "No matching items found in order fulfillments" };
   }
   const mutation = `mutation returnRequest($input: ReturnRequestInput!) {
     returnRequest(input: $input) {
@@ -3944,7 +3922,7 @@ async function createShopifyReturn(shop, accessToken, orderId, items) {
   }
   const returnObj = result?.data?.returnRequest?.return;
   if (!returnObj) {
-    return { error: "Failed to create return" };
+    return { error: "Failed to create return: no return object" };
   }
   return { returnId: returnObj.id };
 }
@@ -4322,19 +4300,24 @@ function ReturnPortal() {
                   defaultValue: item.quantity,
                   min: "1",
                   max: item.quantity,
+                  "data-price": item.price,
+                  "data-item-id": item.id,
+                  onChange: (e) => {
+                    const p = parseFloat(e.target.dataset.price || "0");
+                    const q = parseInt(e.target.value) || 1;
+                    const total = e.target.parentElement?.querySelector(".line-total");
+                    if (total) total.textContent = `$${(p * q).toFixed(2)}`;
+                  },
                   style: { width: 50, padding: "4px 8px", borderRadius: 4, border: "1px solid #ccc", fontSize: 13 }
                 }
               ),
               /* @__PURE__ */ jsxs("span", { style: { color: "#666", fontSize: 13 }, children: [
-                "$",
                 parseFloat(item.price).toFixed(2),
-                " × ",
-                item.quantity,
-                " = ",
-                /* @__PURE__ */ jsxs("strong", { children: [
-                  "$$",
-                  (parseFloat(item.price) * item.quantity).toFixed(2)
-                ] })
+                " × "
+              ] }),
+              /* @__PURE__ */ jsxs("span", { className: "line-total", style: { color: "#666", fontSize: 13, fontWeight: "bold" }, children: [
+                "$",
+                (parseFloat(item.price) * item.quantity).toFixed(2)
               ] })
             ] }, item.id))
           ] }) }, order.id);
@@ -4364,7 +4347,7 @@ const route21 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   loader
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','imports':['/assets/components-CdU1FCkv.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-CT5gW-Ys.js','imports':['/assets/components-CdU1FCkv.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/context-ulSF2uG3.js'],'css':[]},'routes/api.refresh-session':{'id':'routes/api.refresh-session','parentId':'root','path':'api/refresh-session','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.refresh-session-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.check-session':{'id':'routes/api.check-session','parentId':'root','path':'api/check-session','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.check-session-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.seed-policies':{'id':'routes/api.seed-policies','parentId':'root','path':'api/seed-policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.seed-policies-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.quick-action':{'id':'routes/api.quick-action','parentId':'root','path':'api/quick-action','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.quick-action-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.test-refund':{'id':'routes/api.test-refund','parentId':'root','path':'api/test-refund','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.test-refund-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.upgrade-pro':{'id':'routes/api.upgrade-pro','parentId':'root','path':'api/upgrade-pro','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.upgrade-pro-l0sNRNKZ.js','imports':[],'css':[]},'routes/app.fraud-rules':{'id':'routes/app.fraud-rules','parentId':'root','path':'app/fraud-rules','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.fraud-rules-BGYrXVm9.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Checkbox-o8QdqIDE.js','/assets/Tag-C0_xAJFL.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/returns._index':{'id':'routes/returns._index','parentId':'root','path':'returns','index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._index-3B22G6fw.js','imports':['/assets/components-CdU1FCkv.js','/assets/Link-DitTtWTX.js','/assets/Page-BMJ0XUbE.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Layout-TqR5M3D9.js','/assets/EmptyState-B47Lu63v.js','/assets/context-DAVpCaJ7.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/Checkbox-o8QdqIDE.js','/assets/CSSTransition-BZID_MIM.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/app.exchanges':{'id':'routes/app.exchanges','parentId':'root','path':'app/exchanges','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.exchanges-CfBv6q4K.js','imports':['/assets/components-CdU1FCkv.js','/assets/Link-DitTtWTX.js','/assets/Page-BMJ0XUbE.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/EmptyState-B47Lu63v.js','/assets/Modal-LjBbTQ5v.js','/assets/Select-C25pWQee.js','/assets/context-DAVpCaJ7.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/Checkbox-o8QdqIDE.js','/assets/CSSTransition-BZID_MIM.js','/assets/banner-context-0ew862t1.js','/assets/context-ulSF2uG3.js','/assets/InlineGrid-BIw6R_K2.js'],'css':[]},'routes/api.seed-all':{'id':'routes/api.seed-all','parentId':'root','path':'api/seed-all','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.seed-all-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/app.billing':{'id':'routes/app.billing','parentId':'root','path':'app/billing','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.billing-DSWhSTBp.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Banner-BU17Rzbf.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/InlineGrid-BIw6R_K2.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/returns.$id':{'id':'routes/returns.$id','parentId':'root','path':'returns/:id','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._id-DW0V_Tja.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Banner-BU17Rzbf.js','/assets/Tag-C0_xAJFL.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/analytics':{'id':'routes/analytics','parentId':'root','path':'analytics','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/analytics-gqPt2l69.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js'],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-CwyEXBW7.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Tag-C0_xAJFL.js','/assets/Modal-LjBbTQ5v.js','/assets/Checkbox-o8QdqIDE.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js','/assets/context-ulSF2uG3.js','/assets/CSSTransition-BZID_MIM.js','/assets/InlineGrid-BIw6R_K2.js'],'css':[]},'routes/settings':{'id':'routes/settings','parentId':'root','path':'settings','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/settings-Cxn0Mpmg.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Select-C25pWQee.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/api.mcp':{'id':'routes/api.mcp','parentId':'root','path':'api/mcp','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.mcp-l0sNRNKZ.js','imports':[],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-DkL3cuOy.js','imports':['/assets/components-CdU1FCkv.js','/assets/Link-DitTtWTX.js','/assets/Page-BMJ0XUbE.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/context-DAVpCaJ7.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/Checkbox-o8QdqIDE.js','/assets/CSSTransition-BZID_MIM.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/return':{'id':'routes/return','parentId':'root','path':'return','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/return-BbjC8L6F.js','imports':['/assets/components-CdU1FCkv.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Banner-BU17Rzbf.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/banner-context-0ew862t1.js'],'css':[]}},'url':'/assets/manifest-7e6a6c9c.js','version':'7e6a6c9c'};
+const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','imports':['/assets/components-CdU1FCkv.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-CT5gW-Ys.js','imports':['/assets/components-CdU1FCkv.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/context-ulSF2uG3.js'],'css':[]},'routes/api.refresh-session':{'id':'routes/api.refresh-session','parentId':'root','path':'api/refresh-session','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.refresh-session-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.check-session':{'id':'routes/api.check-session','parentId':'root','path':'api/check-session','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.check-session-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.seed-policies':{'id':'routes/api.seed-policies','parentId':'root','path':'api/seed-policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.seed-policies-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.quick-action':{'id':'routes/api.quick-action','parentId':'root','path':'api/quick-action','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.quick-action-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.test-refund':{'id':'routes/api.test-refund','parentId':'root','path':'api/test-refund','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.test-refund-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.upgrade-pro':{'id':'routes/api.upgrade-pro','parentId':'root','path':'api/upgrade-pro','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.upgrade-pro-l0sNRNKZ.js','imports':[],'css':[]},'routes/app.fraud-rules':{'id':'routes/app.fraud-rules','parentId':'root','path':'app/fraud-rules','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.fraud-rules-BGYrXVm9.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Checkbox-o8QdqIDE.js','/assets/Tag-C0_xAJFL.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/returns._index':{'id':'routes/returns._index','parentId':'root','path':'returns','index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._index-3B22G6fw.js','imports':['/assets/components-CdU1FCkv.js','/assets/Link-DitTtWTX.js','/assets/Page-BMJ0XUbE.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Layout-TqR5M3D9.js','/assets/EmptyState-B47Lu63v.js','/assets/context-DAVpCaJ7.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/Checkbox-o8QdqIDE.js','/assets/CSSTransition-BZID_MIM.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/app.exchanges':{'id':'routes/app.exchanges','parentId':'root','path':'app/exchanges','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.exchanges-CfBv6q4K.js','imports':['/assets/components-CdU1FCkv.js','/assets/Link-DitTtWTX.js','/assets/Page-BMJ0XUbE.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/EmptyState-B47Lu63v.js','/assets/Modal-LjBbTQ5v.js','/assets/Select-C25pWQee.js','/assets/context-DAVpCaJ7.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/Checkbox-o8QdqIDE.js','/assets/CSSTransition-BZID_MIM.js','/assets/banner-context-0ew862t1.js','/assets/context-ulSF2uG3.js','/assets/InlineGrid-BIw6R_K2.js'],'css':[]},'routes/api.seed-all':{'id':'routes/api.seed-all','parentId':'root','path':'api/seed-all','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.seed-all-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/app.billing':{'id':'routes/app.billing','parentId':'root','path':'app/billing','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.billing-DSWhSTBp.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Banner-BU17Rzbf.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/InlineGrid-BIw6R_K2.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/returns.$id':{'id':'routes/returns.$id','parentId':'root','path':'returns/:id','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._id-DW0V_Tja.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Banner-BU17Rzbf.js','/assets/Tag-C0_xAJFL.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/analytics':{'id':'routes/analytics','parentId':'root','path':'analytics','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/analytics-gqPt2l69.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js'],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-CwyEXBW7.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Tag-C0_xAJFL.js','/assets/Modal-LjBbTQ5v.js','/assets/Checkbox-o8QdqIDE.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js','/assets/context-ulSF2uG3.js','/assets/CSSTransition-BZID_MIM.js','/assets/InlineGrid-BIw6R_K2.js'],'css':[]},'routes/settings':{'id':'routes/settings','parentId':'root','path':'settings','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/settings-Cxn0Mpmg.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Select-C25pWQee.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/api.mcp':{'id':'routes/api.mcp','parentId':'root','path':'api/mcp','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.mcp-l0sNRNKZ.js','imports':[],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-DkL3cuOy.js','imports':['/assets/components-CdU1FCkv.js','/assets/Link-DitTtWTX.js','/assets/Page-BMJ0XUbE.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/context-DAVpCaJ7.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/Checkbox-o8QdqIDE.js','/assets/CSSTransition-BZID_MIM.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/return':{'id':'routes/return','parentId':'root','path':'return','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/return-Dn0BN_ve.js','imports':['/assets/components-CdU1FCkv.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Banner-BU17Rzbf.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/banner-context-0ew862t1.js'],'css':[]}},'url':'/assets/manifest-27f24cb8.js','version':'27f24cb8'};
 
 /**
        * `mode` is only relevant for the old Remix compiler but

@@ -1,7 +1,7 @@
 import { shopifyAdminQuery } from "./shopify-admin.server";
 
 // Create a Shopify Return on the order via returnRequest
-// This makes the return visible in the Shopify order admin with REQUESTED status
+// Uses the simple REST API approach to get fulfillment line items
 export async function createShopifyReturn(
   shop: string,
   accessToken: string,
@@ -9,72 +9,51 @@ export async function createShopifyReturn(
   items: { variantId: string; quantity: number }[]
 ): Promise<{ returnId?: string; error?: string }> {
   const orderGid = orderId.startsWith("gid://") ? orderId : `gid://shopify/Order/${orderId}`;
+  const numericOrderId = orderId.replace("gid://shopify/Order/", "");
 
-  // Step 1: Get order details including line items and fulfillments
-  const orderQuery = `{
-    order(id: "${orderGid}") {
-      id
-      displayFulfillmentStatus
-      lineItems(first: 50) {
-        nodes {
-          id
-          variant { id }
-          quantity
-          fulfillableQuantity
-          totalQuantity
-        }
-      }
-      fulfillments(first: 10) {
-        id
-        status
-        lineItems(first: 50) {
-          nodes {
-            id
-            lineItem { id variant { id } }
-            quantity
-          }
-        }
-      }
-    }
-  }`;
+  // Step 1: Get order via REST API (simpler) to find fulfillment IDs
+  const restUrl = `https://${shop}/admin/api/2026-10/orders/${numericOrderId}.json`;
+  const restResp = await fetch(restUrl, {
+    headers: { "X-Shopify-Access-Token": accessToken },
+  });
+  const restData = await restResp.json();
+  const order = restData?.order;
 
-  const orderResult = await shopifyAdminQuery(shop, accessToken, orderQuery);
-  console.log(`[shopify-return] Order query result:`, JSON.stringify(orderResult).slice(0, 2000));
-
-  const order = orderResult?.data?.order;
   if (!order) {
-    return { error: "Order not found or inaccessible" };
+    return { error: "Order not found" };
   }
 
-  // Step 2: Get fulfillment line item IDs for the items being returned
+  console.log(`[shopify-return] REST order:`, JSON.stringify({
+    id: order.id,
+    name: order.name,
+    fulfillment_status: order.fulfillment_status,
+    line_items: order.line_items?.map((li: any) => ({ id: li.id, variant_id: li.variant_id, fulfillable_quantity: li.fulfillable_quantity })),
+    fulfillments: order.fulfillments?.map((f: any) => ({ id: f.id, status: f.status, line_items: f.line_items?.map((fli: any) => ({ id: fli.id, line_item_id: fli.line_item_id })) })),
+  }).slice(0, 3000));
+
+  // Step 2: Build return line items with fulfillmentLineItemId
   const returnLineItems: any[] = [];
 
   for (const reqItem of items) {
-    // Try to find a fulfillment line item matching this variant
+    const variantId = reqItem.variantId.replace("gid://shopify/ProductVariant/", "");
     let fulfillmentLineItemId: string | null = null;
 
-    // Search through all fulfillments
+    // Search through REST fulfillments
     for (const fulfillment of (order.fulfillments || [])) {
-      for (const fli of (fulfillment.lineItems?.nodes || [])) {
-        if (fli.lineItem?.variant?.id === reqItem.variantId) {
-          fulfillmentLineItemId = fli.id;
+      for (const fli of (fulfillment.line_items || [])) {
+        // Check if this fulfillment line item matches our variant
+        const matchingLineItem = order.line_items?.find((li: any) => li.id === fli.line_item_id);
+        if (matchingLineItem && String(matchingLineItem.variant_id) === variantId) {
+          // Convert REST fulfillment line item ID to GID format
+          fulfillmentLineItemId = `gid://shopify/FulfillmentLineItem/${fli.id}`;
           break;
         }
       }
       if (fulfillmentLineItemId) break;
     }
 
-    // If no fulfillment line item found, use the line item id as fallback
     if (!fulfillmentLineItemId) {
-      const lineItem = (order.lineItems?.nodes || []).find((li: any) =>
-        li.variant?.id === reqItem.variantId
-      );
-      if (lineItem) {
-        // We can't use lineItem.id — Shopify requires fulfillmentLineItemId
-        // Return a useful error
-        return { error: `Item "${reqItem.variantId}" needs to be fulfilled first. Please create a fulfillment in Shopify admin.` };
-      }
-      return { error: `Item variant ${reqItem.variantId} not found in order` };
+      return { error: `Item variant ${variantId} hasn't been fulfilled. Fulfill the order in Shopify admin first.` };
     }
 
     returnLineItems.push({
@@ -83,11 +62,7 @@ export async function createShopifyReturn(
     });
   }
 
-  if (returnLineItems.length === 0) {
-    return { error: "No matching items found in order fulfillments" };
-  }
-
-  // Step 3: Create the return request (REQUESTED status — merchant must approve)
+  // Step 3: Create the return
   const mutation = `mutation returnRequest($input: ReturnRequestInput!) {
     returnRequest(input: $input) {
       return { id status }
@@ -115,7 +90,7 @@ export async function createShopifyReturn(
 
   const returnObj = result?.data?.returnRequest?.return;
   if (!returnObj) {
-    return { error: "Failed to create return" };
+    return { error: "Failed to create return: no return object" };
   }
 
   return { returnId: returnObj.id };

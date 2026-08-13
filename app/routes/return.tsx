@@ -484,9 +484,13 @@ export default function ReturnPortal() {
                               defaultValue={item.quantity}
                               min="1"
                               max={item.quantity}
+                              data-price={item.price}
+                              data-item-id={item.id}
+                              onChange={(e) => { const p = parseFloat(e.target.dataset.price || "0"); const q = parseInt(e.target.value) || 1; const total = e.target.parentElement?.querySelector(".line-total"); if (total) total.textContent = `$${(p*q).toFixed(2)}`; }}
                               style={{ width: 50, padding: "4px 8px", borderRadius: 4, border: "1px solid #ccc", fontSize: 13 }}
                             />
-                            <span style={{ color: "#666", fontSize: 13 }}>${parseFloat(item.price).toFixed(2)} × {item.quantity} = <strong>$${(parseFloat(item.price) * item.quantity).toFixed(2)}</strong></span>
+                            <span style={{ color: "#666", fontSize: 13 }}>{parseFloat(item.price).toFixed(2)} × </span>
+                            <span className="line-total" style={{ color: "#666", fontSize: 13, fontWeight: "bold" }}>${(parseFloat(item.price) * item.quantity).toFixed(2)}</span>
                           </div>
                         ))}
                       </BlockStack>
