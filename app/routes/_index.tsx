@@ -1,5 +1,5 @@
 import { json, type LoaderFunctionArgs } from "@remix-run/node";
-import { useLoaderData } from "@remix-run/react";
+import { useLoaderData, useNavigate } from "@remix-run/react";
 import {
   Page,
   Layout,
@@ -8,10 +8,10 @@ import {
   Text,
   Banner,
   IndexTable,
-  Thumbnail,
   Badge,
-  useIndexResourceState,
   Link,
+  Button,
+  InlineStack,
 } from "@shopify/polaris";
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import shopify from "../shopify.server";
@@ -69,37 +69,55 @@ function statusBadge(status: string) {
 
 export default function Dashboard() {
   const { stats, recentReturns } = useLoaderData<typeof loader>();
-
-  const resourceName = {
-    singular: "return",
-    plural: "returns",
-  };
-
-  const { selectedResources, allResourcesSelected, handleSelectionChange } =
-    useIndexResourceState(recentReturns);
+  const navigate = useNavigate();
 
   const rowMarkup = recentReturns.map(
-    ({ id, orderName, customerName, status, createdAt }, index) => (
-      <IndexTable.Row
-        id={id}
-        key={id}
-        selected={selectedResources.includes(id)}
-        position={index}
-      >
-        <IndexTable.Cell>
-          <Link url={`/returns/${id}`}>{orderName || "—"}</Link>
-        </IndexTable.Cell>
-        <IndexTable.Cell>{customerName || "—"}</IndexTable.Cell>
-        <IndexTable.Cell>
-          <Badge tone={statusBadge(status).status}>
-            {statusBadge(status).children}
-          </Badge>
-        </IndexTable.Cell>
-        <IndexTable.Cell>
-          {new Date(createdAt).toLocaleDateString()}
-        </IndexTable.Cell>
-      </IndexTable.Row>
-    )
+    ({ id, orderName, customerName, status, createdAt }, index) => {
+      const badge = statusBadge(status);
+      const isPending = status === "PENDING";
+      return (
+        <IndexTable.Row
+          id={id}
+          key={id}
+          position={index}
+          onClick={() => navigate(`/returns/${id}`)}
+        >
+          <IndexTable.Cell>
+            <Link url={`/returns/${id}`} onClick={(e: any) => { e.stopPropagation(); navigate(`/returns/${id}`); }}>
+              {orderName || "—"}
+            </Link>
+          </IndexTable.Cell>
+          <IndexTable.Cell>{customerName || "—"}</IndexTable.Cell>
+          <IndexTable.Cell>
+            <Badge tone={badge.status}>{badge.children}</Badge>
+          </IndexTable.Cell>
+          <IndexTable.Cell>
+            {new Date(createdAt).toLocaleDateString()}
+          </IndexTable.Cell>
+          <IndexTable.Cell>
+            <InlineStack gap="100">
+              <Button size="micro" onClick={(e: any) => { e.stopPropagation(); navigate(`/returns/${id}`); }}>
+                View
+              </Button>
+              {isPending && (
+                <>
+                  <Button size="micro" variant="primary" tone="success" onClick={(e: any) => {
+                    e.stopPropagation(); navigate(`/returns/${id}`);
+                  }}>
+                    Approve
+                  </Button>
+                  <Button size="micro" tone="critical" onClick={(e: any) => {
+                    e.stopPropagation(); navigate(`/returns/${id}`);
+                  }}>
+                    Deny
+                  </Button>
+                </>
+              )}
+            </InlineStack>
+          </IndexTable.Cell>
+        </IndexTable.Row>
+      );
+    }
   );
 
   return (
@@ -164,17 +182,14 @@ export default function Dashboard() {
                 </Banner>
               ) : (
                 <IndexTable
-                  resourceName={resourceName}
+                  resourceName={{ singular: "return", plural: "returns" }}
                   itemCount={recentReturns.length}
-                  selectedItemsCount={
-                    allResourcesSelected ? "All" : selectedResources.length
-                  }
-                  onSelectionChange={handleSelectionChange}
                   headings={[
                     { title: "Order" },
                     { title: "Customer" },
                     { title: "Status" },
                     { title: "Date" },
+                    { title: "Actions" },
                   ]}
                 >
                   {rowMarkup}

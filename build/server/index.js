@@ -1,7 +1,7 @@
 import { jsx, jsxs, Fragment } from 'react/jsx-runtime';
 import { RemixServer, useLoaderData, Meta, Links, Outlet, Link, ScrollRestoration, Scripts, useRouteError, isRouteErrorResponse, useFetcher, useNavigate } from '@remix-run/react';
 import { renderToString } from 'react-dom/server';
-import { AppProvider, Page, Layout, Banner, Text, Card, BlockStack, Checkbox, InlineStack, TextField, Button, Tag, useIndexResourceState, IndexTable, Link as Link$1, Badge, EmptyState, Modal, Select, InlineGrid, Box } from '@shopify/polaris';
+import { AppProvider, Page, Layout, Banner, Text, Card, BlockStack, Checkbox, InlineStack, TextField, Button, Tag, IndexTable, Link as Link$1, Badge, EmptyState, useIndexResourceState, Modal, Select, InlineGrid, Box } from '@shopify/polaris';
 import { AppProvider as AppProvider$1 } from '@shopify/shopify-app-remix/react';
 import { NavMenu, TitleBar } from '@shopify/app-bridge-react';
 import '@shopify/shopify-app-remix/server/adapters/node';
@@ -711,8 +711,6 @@ function statusBadge$2(status) {
 function ReturnsPage() {
   const { returns, counts, currentStatus } = useLoaderData();
   const navigate = useNavigate();
-  const resourceName = { singular: "return", plural: "returns" };
-  const { selectedResources, allResourcesSelected, handleSelectionChange } = useIndexResourceState(returns);
   const totalCount = Object.values(counts).reduce((a, b) => a + b, 0);
   const rowMarkup = returns.map(
     ({ id, orderName, customerName, status, createdAt }, index) => {
@@ -722,7 +720,6 @@ function ReturnsPage() {
         IndexTable.Row,
         {
           id,
-          selected: selectedResources.includes(id),
           position: index,
           onClick: () => navigate(`/returns/${id}`),
           children: [
@@ -793,10 +790,8 @@ function ReturnsPage() {
     ) : /* @__PURE__ */ jsx(
       IndexTable,
       {
-        resourceName,
+        resourceName: { singular: "return", plural: "returns" },
         itemCount: returns.length,
-        selectedItemsCount: allResourcesSelected ? "All" : selectedResources.length,
-        onSelectionChange: handleSelectionChange,
         headings: [
           { title: "Order" },
           { title: "Customer" },
@@ -3561,27 +3556,46 @@ function statusBadge(status) {
 }
 function Dashboard() {
   const { stats, recentReturns } = useLoaderData();
-  const resourceName = {
-    singular: "return",
-    plural: "returns"
-  };
-  const { selectedResources, allResourcesSelected, handleSelectionChange } = useIndexResourceState(recentReturns);
+  const navigate = useNavigate();
   const rowMarkup = recentReturns.map(
-    ({ id, orderName, customerName, status, createdAt }, index) => /* @__PURE__ */ jsxs(
-      IndexTable.Row,
-      {
-        id,
-        selected: selectedResources.includes(id),
-        position: index,
-        children: [
-          /* @__PURE__ */ jsx(IndexTable.Cell, { children: /* @__PURE__ */ jsx(Link$1, { url: `/returns/${id}`, children: orderName || "—" }) }),
-          /* @__PURE__ */ jsx(IndexTable.Cell, { children: customerName || "—" }),
-          /* @__PURE__ */ jsx(IndexTable.Cell, { children: /* @__PURE__ */ jsx(Badge, { tone: statusBadge(status).status, children: statusBadge(status).children }) }),
-          /* @__PURE__ */ jsx(IndexTable.Cell, { children: new Date(createdAt).toLocaleDateString() })
-        ]
-      },
-      id
-    )
+    ({ id, orderName, customerName, status, createdAt }, index) => {
+      const badge = statusBadge(status);
+      const isPending = status === "PENDING";
+      return /* @__PURE__ */ jsxs(
+        IndexTable.Row,
+        {
+          id,
+          position: index,
+          onClick: () => navigate(`/returns/${id}`),
+          children: [
+            /* @__PURE__ */ jsx(IndexTable.Cell, { children: /* @__PURE__ */ jsx(Link$1, { url: `/returns/${id}`, onClick: (e) => {
+              e.stopPropagation();
+              navigate(`/returns/${id}`);
+            }, children: orderName || "—" }) }),
+            /* @__PURE__ */ jsx(IndexTable.Cell, { children: customerName || "—" }),
+            /* @__PURE__ */ jsx(IndexTable.Cell, { children: /* @__PURE__ */ jsx(Badge, { tone: badge.status, children: badge.children }) }),
+            /* @__PURE__ */ jsx(IndexTable.Cell, { children: new Date(createdAt).toLocaleDateString() }),
+            /* @__PURE__ */ jsx(IndexTable.Cell, { children: /* @__PURE__ */ jsxs(InlineStack, { gap: "100", children: [
+              /* @__PURE__ */ jsx(Button, { size: "micro", onClick: (e) => {
+                e.stopPropagation();
+                navigate(`/returns/${id}`);
+              }, children: "View" }),
+              isPending && /* @__PURE__ */ jsxs(Fragment, { children: [
+                /* @__PURE__ */ jsx(Button, { size: "micro", variant: "primary", tone: "success", onClick: (e) => {
+                  e.stopPropagation();
+                  navigate(`/returns/${id}`);
+                }, children: "Approve" }),
+                /* @__PURE__ */ jsx(Button, { size: "micro", tone: "critical", onClick: (e) => {
+                  e.stopPropagation();
+                  navigate(`/returns/${id}`);
+                }, children: "Deny" })
+              ] })
+            ] }) })
+          ]
+        },
+        id
+      );
+    }
   );
   return /* @__PURE__ */ jsxs(Page, { title: "Dashboard", children: [
     /* @__PURE__ */ jsx(TitleBar, { title: "Shopigent Returns" }),
@@ -3611,15 +3625,14 @@ function Dashboard() {
         recentReturns.length === 0 ? /* @__PURE__ */ jsx(Banner, { tone: "info", children: /* @__PURE__ */ jsx("p", { children: "No returns yet. Returns will appear here when customers submit them." }) }) : /* @__PURE__ */ jsx(
           IndexTable,
           {
-            resourceName,
+            resourceName: { singular: "return", plural: "returns" },
             itemCount: recentReturns.length,
-            selectedItemsCount: allResourcesSelected ? "All" : selectedResources.length,
-            onSelectionChange: handleSelectionChange,
             headings: [
               { title: "Order" },
               { title: "Customer" },
               { title: "Status" },
-              { title: "Date" }
+              { title: "Date" },
+              { title: "Actions" }
             ],
             children: rowMarkup
           }
@@ -3981,7 +3994,7 @@ const route19 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   loader
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const serverManifest = {'entry':{'module':'/assets/entry.client-DwLu3i2f.js','imports':['/assets/components-DFiHs5Nh.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-CypujVTh.js','imports':['/assets/components-DFiHs5Nh.js','/assets/use-is-after-initial-mount-DRGAZw92.js','/assets/context-DPa52o6y.js','/assets/context-B2shhgoX.js'],'css':[]},'routes/api.refresh-session':{'id':'routes/api.refresh-session','parentId':'root','path':'api/refresh-session','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.refresh-session-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.check-session':{'id':'routes/api.check-session','parentId':'root','path':'api/check-session','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.check-session-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.seed-policies':{'id':'routes/api.seed-policies','parentId':'root','path':'api/seed-policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.seed-policies-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.upgrade-pro':{'id':'routes/api.upgrade-pro','parentId':'root','path':'api/upgrade-pro','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.upgrade-pro-l0sNRNKZ.js','imports':[],'css':[]},'routes/app.fraud-rules':{'id':'routes/app.fraud-rules','parentId':'root','path':'app/fraud-rules','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.fraud-rules-YkAMMdP4.js','imports':['/assets/components-DFiHs5Nh.js','/assets/Page-BIyrW7hU.js','/assets/Layout-DzcfHWnn.js','/assets/Banner-BUeUPnW0.js','/assets/ButtonGroup-C-17slgm.js','/assets/Checkbox-Bnyb9Nav.js','/assets/Tag-Cs_F8cCR.js','/assets/use-is-after-initial-mount-DRGAZw92.js','/assets/context-DPa52o6y.js','/assets/banner-context-wwRjf6yf.js'],'css':[]},'routes/returns._index':{'id':'routes/returns._index','parentId':'root','path':'returns','index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._index-DnXLWiqM.js','imports':['/assets/components-DFiHs5Nh.js','/assets/Link-s1fgJpP-.js','/assets/Page-BIyrW7hU.js','/assets/ButtonGroup-C-17slgm.js','/assets/Layout-DzcfHWnn.js','/assets/EmptyState-JrGWj-dR.js','/assets/context-DPa52o6y.js','/assets/use-is-after-initial-mount-DRGAZw92.js','/assets/Checkbox-Bnyb9Nav.js','/assets/CSSTransition-Cjljhway.js','/assets/banner-context-wwRjf6yf.js'],'css':[]},'routes/app.exchanges':{'id':'routes/app.exchanges','parentId':'root','path':'app/exchanges','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.exchanges-D0aAytUW.js','imports':['/assets/components-DFiHs5Nh.js','/assets/Link-s1fgJpP-.js','/assets/Page-BIyrW7hU.js','/assets/ButtonGroup-C-17slgm.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Layout-DzcfHWnn.js','/assets/Banner-BUeUPnW0.js','/assets/EmptyState-JrGWj-dR.js','/assets/Modal-g1VcaJ1K.js','/assets/Select-BKpHpBPl.js','/assets/context-DPa52o6y.js','/assets/use-is-after-initial-mount-DRGAZw92.js','/assets/Checkbox-Bnyb9Nav.js','/assets/CSSTransition-Cjljhway.js','/assets/banner-context-wwRjf6yf.js','/assets/context-B2shhgoX.js','/assets/InlineGrid-DyNHb6Hp.js'],'css':[]},'routes/api.seed-all':{'id':'routes/api.seed-all','parentId':'root','path':'api/seed-all','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.seed-all-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/app.billing':{'id':'routes/app.billing','parentId':'root','path':'app/billing','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.billing-CD3y4F3n.js','imports':['/assets/components-DFiHs5Nh.js','/assets/Page-BIyrW7hU.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Banner-BUeUPnW0.js','/assets/ButtonGroup-C-17slgm.js','/assets/InlineGrid-DyNHb6Hp.js','/assets/use-is-after-initial-mount-DRGAZw92.js','/assets/context-DPa52o6y.js','/assets/banner-context-wwRjf6yf.js'],'css':[]},'routes/returns.$id':{'id':'routes/returns.$id','parentId':'root','path':'returns/:id','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._id-CG1DPnEa.js','imports':['/assets/components-DFiHs5Nh.js','/assets/Page-BIyrW7hU.js','/assets/Layout-DzcfHWnn.js','/assets/ButtonGroup-C-17slgm.js','/assets/Tag-Cs_F8cCR.js','/assets/use-is-after-initial-mount-DRGAZw92.js','/assets/context-DPa52o6y.js'],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/analytics':{'id':'routes/analytics','parentId':'root','path':'analytics','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/analytics-DfuQ5-yY.js','imports':['/assets/components-DFiHs5Nh.js','/assets/Page-BIyrW7hU.js','/assets/Layout-DzcfHWnn.js','/assets/ButtonGroup-C-17slgm.js','/assets/use-is-after-initial-mount-DRGAZw92.js','/assets/context-DPa52o6y.js'],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-Uv5KPk5-.js','imports':['/assets/components-DFiHs5Nh.js','/assets/Page-BIyrW7hU.js','/assets/Layout-DzcfHWnn.js','/assets/Banner-BUeUPnW0.js','/assets/ButtonGroup-C-17slgm.js','/assets/Tag-Cs_F8cCR.js','/assets/Modal-g1VcaJ1K.js','/assets/Checkbox-Bnyb9Nav.js','/assets/use-is-after-initial-mount-DRGAZw92.js','/assets/context-DPa52o6y.js','/assets/banner-context-wwRjf6yf.js','/assets/context-B2shhgoX.js','/assets/CSSTransition-Cjljhway.js','/assets/InlineGrid-DyNHb6Hp.js'],'css':[]},'routes/settings':{'id':'routes/settings','parentId':'root','path':'settings','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/settings-CCAn2PuH.js','imports':['/assets/components-DFiHs5Nh.js','/assets/Page-BIyrW7hU.js','/assets/Layout-DzcfHWnn.js','/assets/Banner-BUeUPnW0.js','/assets/ButtonGroup-C-17slgm.js','/assets/Select-BKpHpBPl.js','/assets/use-is-after-initial-mount-DRGAZw92.js','/assets/context-DPa52o6y.js','/assets/banner-context-wwRjf6yf.js'],'css':[]},'routes/api.mcp':{'id':'routes/api.mcp','parentId':'root','path':'api/mcp','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.mcp-l0sNRNKZ.js','imports':[],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-CtihCsVN.js','imports':['/assets/components-DFiHs5Nh.js','/assets/Link-s1fgJpP-.js','/assets/Page-BIyrW7hU.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Layout-DzcfHWnn.js','/assets/ButtonGroup-C-17slgm.js','/assets/Banner-BUeUPnW0.js','/assets/context-DPa52o6y.js','/assets/use-is-after-initial-mount-DRGAZw92.js','/assets/Checkbox-Bnyb9Nav.js','/assets/CSSTransition-Cjljhway.js','/assets/banner-context-wwRjf6yf.js'],'css':[]},'routes/return':{'id':'routes/return','parentId':'root','path':'return','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/return-DgC3foEy.js','imports':['/assets/components-DFiHs5Nh.js','/assets/ButtonGroup-C-17slgm.js','/assets/Banner-BUeUPnW0.js','/assets/use-is-after-initial-mount-DRGAZw92.js','/assets/banner-context-wwRjf6yf.js'],'css':[]}},'url':'/assets/manifest-e297838b.js','version':'e297838b'};
+const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','imports':['/assets/components-CdU1FCkv.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-CT5gW-Ys.js','imports':['/assets/components-CdU1FCkv.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/context-ulSF2uG3.js'],'css':[]},'routes/api.refresh-session':{'id':'routes/api.refresh-session','parentId':'root','path':'api/refresh-session','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.refresh-session-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.check-session':{'id':'routes/api.check-session','parentId':'root','path':'api/check-session','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.check-session-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.seed-policies':{'id':'routes/api.seed-policies','parentId':'root','path':'api/seed-policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.seed-policies-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.upgrade-pro':{'id':'routes/api.upgrade-pro','parentId':'root','path':'api/upgrade-pro','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.upgrade-pro-l0sNRNKZ.js','imports':[],'css':[]},'routes/app.fraud-rules':{'id':'routes/app.fraud-rules','parentId':'root','path':'app/fraud-rules','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.fraud-rules-BGYrXVm9.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Checkbox-o8QdqIDE.js','/assets/Tag-C0_xAJFL.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/returns._index':{'id':'routes/returns._index','parentId':'root','path':'returns','index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._index-3B22G6fw.js','imports':['/assets/components-CdU1FCkv.js','/assets/Link-DitTtWTX.js','/assets/Page-BMJ0XUbE.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Layout-TqR5M3D9.js','/assets/EmptyState-B47Lu63v.js','/assets/context-DAVpCaJ7.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/Checkbox-o8QdqIDE.js','/assets/CSSTransition-BZID_MIM.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/app.exchanges':{'id':'routes/app.exchanges','parentId':'root','path':'app/exchanges','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.exchanges-CfBv6q4K.js','imports':['/assets/components-CdU1FCkv.js','/assets/Link-DitTtWTX.js','/assets/Page-BMJ0XUbE.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/EmptyState-B47Lu63v.js','/assets/Modal-LjBbTQ5v.js','/assets/Select-C25pWQee.js','/assets/context-DAVpCaJ7.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/Checkbox-o8QdqIDE.js','/assets/CSSTransition-BZID_MIM.js','/assets/banner-context-0ew862t1.js','/assets/context-ulSF2uG3.js','/assets/InlineGrid-BIw6R_K2.js'],'css':[]},'routes/api.seed-all':{'id':'routes/api.seed-all','parentId':'root','path':'api/seed-all','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.seed-all-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/app.billing':{'id':'routes/app.billing','parentId':'root','path':'app/billing','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.billing-DSWhSTBp.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Banner-BU17Rzbf.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/InlineGrid-BIw6R_K2.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/returns.$id':{'id':'routes/returns.$id','parentId':'root','path':'returns/:id','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._id-CqyiVj_e.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Tag-C0_xAJFL.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js'],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/analytics':{'id':'routes/analytics','parentId':'root','path':'analytics','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/analytics-gqPt2l69.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js'],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-CwyEXBW7.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Tag-C0_xAJFL.js','/assets/Modal-LjBbTQ5v.js','/assets/Checkbox-o8QdqIDE.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js','/assets/context-ulSF2uG3.js','/assets/CSSTransition-BZID_MIM.js','/assets/InlineGrid-BIw6R_K2.js'],'css':[]},'routes/settings':{'id':'routes/settings','parentId':'root','path':'settings','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/settings-Cxn0Mpmg.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Select-C25pWQee.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/api.mcp':{'id':'routes/api.mcp','parentId':'root','path':'api/mcp','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.mcp-l0sNRNKZ.js','imports':[],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-DkL3cuOy.js','imports':['/assets/components-CdU1FCkv.js','/assets/Link-DitTtWTX.js','/assets/Page-BMJ0XUbE.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/context-DAVpCaJ7.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/Checkbox-o8QdqIDE.js','/assets/CSSTransition-BZID_MIM.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/return':{'id':'routes/return','parentId':'root','path':'return','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/return-D4-bnz9R.js','imports':['/assets/components-CdU1FCkv.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Banner-BU17Rzbf.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/banner-context-0ew862t1.js'],'css':[]}},'url':'/assets/manifest-1afa3f6f.js','version':'1afa3f6f'};
 
 /**
        * `mode` is only relevant for the old Remix compiler but

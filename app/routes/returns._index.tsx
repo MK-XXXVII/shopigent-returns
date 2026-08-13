@@ -9,11 +9,10 @@ import {
   Banner,
   IndexTable,
   Badge,
-  useIndexResourceState,
   Link,
-  EmptyState,
   Button,
   InlineStack,
+  EmptyState,
 } from "@shopify/polaris";
 import { useState } from "react";
 import shopify from "../shopify.server";
@@ -66,10 +65,6 @@ export default function ReturnsPage() {
   const { returns, counts, currentStatus } = useLoaderData<typeof loader>();
   const navigate = useNavigate();
 
-  const resourceName = { singular: "return", plural: "returns" };
-  const { selectedResources, allResourcesSelected, handleSelectionChange } =
-    useIndexResourceState(returns);
-
   const totalCount = Object.values(counts).reduce((a, b) => a + b, 0);
 
   const rowMarkup = returns.map(
@@ -80,7 +75,6 @@ export default function ReturnsPage() {
         <IndexTable.Row
           id={id}
           key={id}
-          selected={selectedResources.includes(id)}
           position={index}
           onClick={() => navigate(`/returns/${id}`)}
         >
@@ -175,12 +169,8 @@ export default function ReturnsPage() {
                 </EmptyState>
               ) : (
                 <IndexTable
-                  resourceName={resourceName}
+                  resourceName={{ singular: "return", plural: "returns" }}
                   itemCount={returns.length}
-                  selectedItemsCount={
-                    allResourcesSelected ? "All" : selectedResources.length
-                  }
-                  onSelectionChange={handleSelectionChange}
                   headings={[
                     { title: "Order" },
                     { title: "Customer" },
