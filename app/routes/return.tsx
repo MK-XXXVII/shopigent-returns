@@ -486,7 +486,7 @@ export default function ReturnPortal() {
                               max={item.quantity}
                               style={{ width: 50, padding: "4px 8px", borderRadius: 4, border: "1px solid #ccc", fontSize: 13 }}
                             />
-                            <span style={{ color: "#666", fontSize: 13 }}>${item.price}</span>
+                            <span style={{ color: "#666", fontSize: 13 }}>${parseFloat(item.price).toFixed(2)} × {item.quantity} = <strong>$${(parseFloat(item.price) * item.quantity).toFixed(2)}</strong></span>
                           </div>
                         ))}
                       </BlockStack>

@@ -39,7 +39,7 @@ export async function createShopifyReturn(
   }`;
 
   const orderResult = await shopifyAdminQuery(shop, accessToken, orderQuery);
-  console.log(`[shopify-return] Order query:`, JSON.stringify(orderResult?.data?.order).slice(0, 2000));
+  console.log(`[shopify-return] Order query result:`, JSON.stringify(orderResult).slice(0, 2000));
 
   const order = orderResult?.data?.order;
   if (!order) {
