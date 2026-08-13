@@ -148,7 +148,7 @@ const route0 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   loader: loader$f
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const action$b = async ({ request }) => {
+const action$c = async ({ request }) => {
   const authHeader = request.headers.get("authorization");
   const key = authHeader?.slice(7);
   const hash = crypto.createHash("sha256").update(key || "").digest("hex");
@@ -171,7 +171,7 @@ const action$b = async ({ request }) => {
 
 const route1 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
-  action: action$b
+  action: action$c
 }, Symbol.toStringTag, { value: 'Module' }));
 
 const loader$e = async ({ request }) => {
@@ -206,7 +206,7 @@ const route2 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   loader: loader$e
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const action$a = async ({ request }) => {
+const action$b = async ({ request }) => {
   const authHeader = request.headers.get("authorization");
   const key = authHeader?.slice(7);
   const hash = crypto.createHash("sha256").update(key || "").digest("hex");
@@ -236,13 +236,13 @@ const action$a = async ({ request }) => {
 
 const route3 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
-  action: action$a
+  action: action$b
 }, Symbol.toStringTag, { value: 'Module' }));
 
 const loader$d = async ({ request }) => {
   return json({ message: "Send POST to upgrade" });
 };
-const action$9 = async ({ request }) => {
+const action$a = async ({ request }) => {
   const authHeader = request.headers.get("authorization");
   const key = authHeader?.slice(7);
   const hash = crypto.createHash("sha256").update(key || "").digest("hex");
@@ -262,7 +262,7 @@ const action$9 = async ({ request }) => {
 
 const route4 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
-  action: action$9,
+  action: action$a,
   loader: loader$d
 }, Symbol.toStringTag, { value: 'Module' }));
 
@@ -416,7 +416,7 @@ const loader$c = async ({ request }) => {
   };
   return json({ rules });
 };
-const action$8 = async ({ request }) => {
+const action$9 = async ({ request }) => {
   const { session } = await shopify.authenticate.admin(request);
   const formData = await request.formData();
   const _action = formData.get("_action");
@@ -666,7 +666,7 @@ function FraudRulesPage() {
 
 const route5 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
-  action: action$8,
+  action: action$9,
   default: FraudRulesPage,
   loader: loader$c
 }, Symbol.toStringTag, { value: 'Module' }));
@@ -1067,7 +1067,7 @@ const loader$a = async ({ request }) => {
   });
   return json({ exchanges, counts: countMap });
 };
-const action$7 = async ({ request }) => {
+const action$8 = async ({ request }) => {
   const { session } = await authenticate.admin(request);
   const formData = await request.formData();
   const intent = String(formData.get("intent") || "");
@@ -1283,9 +1283,81 @@ function ExchangesPage() {
 
 const route7 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
-  action: action$7,
+  action: action$8,
   default: ExchangesPage,
   loader: loader$a
+}, Symbol.toStringTag, { value: 'Module' }));
+
+const action$7 = async ({ request }) => {
+  const authHeader = request.headers.get("authorization");
+  const key = authHeader?.slice(7);
+  const hash = crypto.createHash("sha256").update(key || "").digest("hex");
+  const authedShop = await prisma$1.shop.findFirst({ where: { mcpApiKeyHash: hash } });
+  if (!authedShop) return json({ error: "Invalid API key" }, { status: 401 });
+  const url = new URL(request.url);
+  const targetShop = url.searchParams.get("shop") || authedShop.shop;
+  const results = {};
+  const policyCount = await prisma$1.policy.count({ where: { shop: targetShop } });
+  if (policyCount === 0) {
+    const policies = [
+      { name: "Standard 30-Day Return", description: "Auto-approved for items under $200. 0% restocking fee.", priority: 1, isActive: true, conditions: [{ field: "maxDays", operator: "lte", value: 30 }, { field: "maxAmount", operator: "lte", value: 200 }, { field: "autoApprove", operator: "eq", value: true }, { field: "restockingFee", operator: "eq", value: 0 }] },
+      { name: "High-Value Review", description: "Items over $200 flagged for manual review. 10% restocking fee.", priority: 2, isActive: true, conditions: [{ field: "maxDays", operator: "lte", value: 30 }, { field: "minAmount", operator: "gt", value: 200 }, { field: "autoApprove", operator: "eq", value: false }, { field: "restockingFee", operator: "eq", value: 10 }] },
+      { name: "Final Sale - Electronics", description: "Electronics, clearance, and custom items are non-returnable.", priority: 3, isActive: true, conditions: [{ field: "maxDays", operator: "lte", value: 0 }, { field: "autoApprove", operator: "eq", value: false }, { field: "restockingFee", operator: "eq", value: 0 }] }
+    ];
+    for (const p of policies) {
+      await prisma$1.policy.create({ data: { ...p, shop: targetShop } });
+    }
+    results.policies = "✅ 3 policies created";
+  } else {
+    results.policies = `✅ ${policyCount} policies already exist`;
+  }
+  const returnCount = await prisma$1.returnRequest.count({ where: { shop: targetShop } });
+  if (returnCount === 0) {
+    const dummyReturns = [
+      { orderName: "#1001", customerName: "Emma Wilson", customerEmail: "emma@example.com", status: "PENDING", reason: "Too small", items: [{ variantId: "gid://shopify/ProductVariant/1", title: "Classic Leather Jacket", quantity: 1, price: "299.99", sku: "LJ-001" }], createdAt: /* @__PURE__ */ new Date("2026-08-10") },
+      { orderName: "#1002", customerName: "James Chen", customerEmail: "james@example.com", status: "PENDING", reason: "Changed mind", items: [{ variantId: "gid://shopify/ProductVariant/2", title: "Wool Blend Scarf", quantity: 2, price: "45.00", sku: "SC-002" }, { variantId: "gid://shopify/ProductVariant/3", title: "Cashmere Beanie", quantity: 1, price: "35.00", sku: "BN-001" }], createdAt: /* @__PURE__ */ new Date("2026-08-11") },
+      { orderName: "#1003", customerName: "Sofia Rodriguez", customerEmail: "sofia@example.com", status: "PENDING", reason: "Defective stitching", items: [{ variantId: "gid://shopify/ProductVariant/4", title: "Linen Summer Dress", quantity: 1, price: "89.00", sku: "DR-003" }], createdAt: /* @__PURE__ */ new Date("2026-08-12") },
+      { orderName: "#1004", customerName: "Liam O'Brien", customerEmail: "liam@example.com", status: "APPROVED", reason: "Wrong size ordered", items: [{ variantId: "gid://shopify/ProductVariant/5", title: "Slim Fit Chinos", quantity: 1, price: "79.99", sku: "CH-004" }], decidedBy: "agent", decidedAt: /* @__PURE__ */ new Date("2026-08-11"), refundAmount: 79.99, createdAt: /* @__PURE__ */ new Date("2026-08-09") },
+      { orderName: "#1005", customerName: "Anna Kowalski", customerEmail: "anna@example.com", status: "REFUNDED", reason: "Arrived damaged", items: [{ variantId: "gid://shopify/ProductVariant/6", title: "Ceramic Mug Set", quantity: 1, price: "34.99", sku: "MG-005" }], decidedBy: "agent", decidedAt: /* @__PURE__ */ new Date("2026-08-10"), refundAmount: 34.99, refundId: "txn_001", createdAt: /* @__PURE__ */ new Date("2026-08-08") },
+      { orderName: "#1006", customerName: "Marcus Johnson", customerEmail: "marcus@example.com", status: "DENIED", reason: "Return window exceeded", items: [{ variantId: "gid://shopify/ProductVariant/7", title: "Wool Winter Coat", quantity: 1, price: "450.00", sku: "CT-006" }], decidedBy: "agent", decidedAt: /* @__PURE__ */ new Date("2026-08-11"), notes: "Return window exceeded (45 days, policy max 30)", createdAt: /* @__PURE__ */ new Date("2026-08-05") },
+      { orderName: "#1007", customerName: "Yuki Tanaka", customerEmail: "yuki@example.com", status: "EXCHANGE", reason: "Want different color", items: [{ variantId: "gid://shopify/ProductVariant/8", title: "Merino Wool Sweater", quantity: 1, price: "129.00", sku: "SW-007" }], decidedBy: "agent", decidedAt: /* @__PURE__ */ new Date("2026-08-12"), createdAt: /* @__PURE__ */ new Date("2026-08-10") }
+    ];
+    for (const r of dummyReturns) {
+      const created = await prisma$1.returnRequest.create({
+        data: { ...r, shop: targetShop, orderId: r.orderName, items: r.items, refundAmount: r.refundAmount, refundId: r.refundId, decidedBy: r.decidedBy, decidedAt: r.decidedAt, notes: r.notes }
+      });
+      if (r.status !== "PENDING") {
+        await prisma$1.decisionLog.create({
+          data: {
+            returnId: created.id,
+            actor: "agent",
+            action: r.status === "DENIED" ? "deny" : r.status === "EXCHANGE" ? "exchange" : "approve",
+            details: { status: r.status, reason: r.reason, refundAmount: r.refundAmount }
+          }
+        });
+      }
+      if (r.customerName === "Marcus Johnson") {
+        await prisma$1.fraudSignal.create({
+          data: { returnId: created.id, signal: "return_window_exceeded", risk: "high", details: { daysSinceOrder: 45, policyMax: 30 } }
+        });
+      }
+      if (r.customerName === "Emma Wilson") {
+        await prisma$1.fraudSignal.create({
+          data: { returnId: created.id, signal: "high_value_return", risk: "medium", details: { amount: 299.99, threshold: 200 } }
+        });
+      }
+    }
+    results.returns = "✅ 7 returns created (3 PENDING, 1 APPROVED, 1 REFUNDED, 1 DENIED, 1 EXCHANGE)";
+  } else {
+    results.returns = `✅ ${returnCount} returns already exist`;
+  }
+  results.shop = targetShop;
+  return json({ ok: true, ...results });
+};
+
+const route8 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+  __proto__: null,
+  action: action$7
 }, Symbol.toStringTag, { value: 'Module' }));
 
 const action$6 = async ({ request }) => {
@@ -1351,7 +1423,7 @@ const action$6 = async ({ request }) => {
   }
 };
 
-const route8 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route9 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action: action$6
 }, Symbol.toStringTag, { value: 'Module' }));
@@ -1487,7 +1559,7 @@ function BillingPage() {
   ] });
 }
 
-const route9 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route10 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action: action$5,
   default: BillingPage,
@@ -1604,7 +1676,7 @@ function ReturnDetailPage() {
   );
 }
 
-const route10 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route11 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   default: ReturnDetailPage,
   loader: loader$8
@@ -1620,7 +1692,7 @@ const loader$7 = async ({ request }) => {
   return null;
 };
 
-const route11 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route12 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   loader: loader$7
 }, Symbol.toStringTag, { value: 'Module' }));
@@ -1833,7 +1905,7 @@ function AnalyticsPage() {
   ] }) }) }) });
 }
 
-const route12 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route13 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   default: AnalyticsPage,
   loader: loader$6
@@ -2055,7 +2127,7 @@ function PoliciesPage() {
   );
 }
 
-const route13 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route14 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action: action$4,
   default: PoliciesPage,
@@ -2233,7 +2305,7 @@ function SettingsPage() {
   ] }) }) });
 }
 
-const route14 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route15 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action: action$3,
   default: SettingsPage,
@@ -3403,7 +3475,7 @@ const loader$3 = async () => {
   });
 };
 
-const route15 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route16 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action: action$2,
   loader: loader$3
@@ -3416,7 +3488,7 @@ const action$1 = () => {
   return json({ ok: true, service: "shopigent-returns", status: "healthy" });
 };
 
-const route16 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route17 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action: action$1,
   loader: loader$2
@@ -3537,7 +3609,7 @@ function Dashboard() {
   ] });
 }
 
-const route17 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route18 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   default: Dashboard,
   loader: loader$1
@@ -3851,14 +3923,14 @@ function ReturnPortal() {
   ] }) }) });
 }
 
-const route18 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route19 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action,
   default: ReturnPortal,
   loader
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','imports':['/assets/components-DncgAStS.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-BfxDhPMr.js','imports':['/assets/components-DncgAStS.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/context-D_7evObr.js'],'css':[]},'routes/api.refresh-session':{'id':'routes/api.refresh-session','parentId':'root','path':'api/refresh-session','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.refresh-session-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.check-session':{'id':'routes/api.check-session','parentId':'root','path':'api/check-session','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.check-session-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.seed-policies':{'id':'routes/api.seed-policies','parentId':'root','path':'api/seed-policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.seed-policies-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.upgrade-pro':{'id':'routes/api.upgrade-pro','parentId':'root','path':'api/upgrade-pro','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.upgrade-pro-l0sNRNKZ.js','imports':[],'css':[]},'routes/app.fraud-rules':{'id':'routes/app.fraud-rules','parentId':'root','path':'app/fraud-rules','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.fraud-rules-DkrG_FWt.js','imports':['/assets/components-DncgAStS.js','/assets/Page-CAJLY0O6.js','/assets/Layout-C13JKOf2.js','/assets/Banner-DGNxOIFU.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/Checkbox-DcQgWFe6.js','/assets/Tag-DdolXHyk.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/returns._index':{'id':'routes/returns._index','parentId':'root','path':'returns','index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._index-QL6eQetC.js','imports':['/assets/components-DncgAStS.js','/assets/Link-C9rT3U0_.js','/assets/Page-CAJLY0O6.js','/assets/Layout-C13JKOf2.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/EmptyState-CZyETyrk.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-DcQgWFe6.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/app.exchanges':{'id':'routes/app.exchanges','parentId':'root','path':'app/exchanges','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.exchanges-BkRckrdC.js','imports':['/assets/components-DncgAStS.js','/assets/Link-C9rT3U0_.js','/assets/Page-CAJLY0O6.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Layout-C13JKOf2.js','/assets/Banner-DGNxOIFU.js','/assets/EmptyState-CZyETyrk.js','/assets/Modal-Bc17I9P_.js','/assets/Select-CVI6jjHk.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-DcQgWFe6.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js','/assets/context-D_7evObr.js','/assets/InlineGrid-Ba7mGhzc.js'],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/app.billing':{'id':'routes/app.billing','parentId':'root','path':'app/billing','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.billing-YGzPe1nt.js','imports':['/assets/components-DncgAStS.js','/assets/Page-CAJLY0O6.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Banner-DGNxOIFU.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/InlineGrid-Ba7mGhzc.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/returns.$id':{'id':'routes/returns.$id','parentId':'root','path':'returns/:id','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._id-BcrZlCyv.js','imports':['/assets/components-DncgAStS.js','/assets/Page-CAJLY0O6.js','/assets/Layout-C13JKOf2.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/Tag-DdolXHyk.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js'],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/analytics':{'id':'routes/analytics','parentId':'root','path':'analytics','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/analytics-BhodOGcm.js','imports':['/assets/components-DncgAStS.js','/assets/Page-CAJLY0O6.js','/assets/Layout-C13JKOf2.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js'],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-Dg-dS-cJ.js','imports':['/assets/components-DncgAStS.js','/assets/Page-CAJLY0O6.js','/assets/Layout-C13JKOf2.js','/assets/Banner-DGNxOIFU.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/Tag-DdolXHyk.js','/assets/Modal-Bc17I9P_.js','/assets/Checkbox-DcQgWFe6.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/banner-context-DEryxoPe.js','/assets/context-D_7evObr.js','/assets/CSSTransition-CYBGIXjC.js','/assets/InlineGrid-Ba7mGhzc.js'],'css':[]},'routes/settings':{'id':'routes/settings','parentId':'root','path':'settings','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/settings-CeikpiMS.js','imports':['/assets/components-DncgAStS.js','/assets/Page-CAJLY0O6.js','/assets/Layout-C13JKOf2.js','/assets/Banner-DGNxOIFU.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/Select-CVI6jjHk.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/api.mcp':{'id':'routes/api.mcp','parentId':'root','path':'api/mcp','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.mcp-l0sNRNKZ.js','imports':[],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-Cy-sRJSX.js','imports':['/assets/components-DncgAStS.js','/assets/Link-C9rT3U0_.js','/assets/Page-CAJLY0O6.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Layout-C13JKOf2.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/Banner-DGNxOIFU.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-DcQgWFe6.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/return':{'id':'routes/return','parentId':'root','path':'return','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/return-DyOEkchd.js','imports':['/assets/components-DncgAStS.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/Banner-DGNxOIFU.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/banner-context-DEryxoPe.js'],'css':[]}},'url':'/assets/manifest-40416208.js','version':'40416208'};
+const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','imports':['/assets/components-DncgAStS.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-BfxDhPMr.js','imports':['/assets/components-DncgAStS.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/context-D_7evObr.js'],'css':[]},'routes/api.refresh-session':{'id':'routes/api.refresh-session','parentId':'root','path':'api/refresh-session','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.refresh-session-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.check-session':{'id':'routes/api.check-session','parentId':'root','path':'api/check-session','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.check-session-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.seed-policies':{'id':'routes/api.seed-policies','parentId':'root','path':'api/seed-policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.seed-policies-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.upgrade-pro':{'id':'routes/api.upgrade-pro','parentId':'root','path':'api/upgrade-pro','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.upgrade-pro-l0sNRNKZ.js','imports':[],'css':[]},'routes/app.fraud-rules':{'id':'routes/app.fraud-rules','parentId':'root','path':'app/fraud-rules','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.fraud-rules-DkrG_FWt.js','imports':['/assets/components-DncgAStS.js','/assets/Page-CAJLY0O6.js','/assets/Layout-C13JKOf2.js','/assets/Banner-DGNxOIFU.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/Checkbox-DcQgWFe6.js','/assets/Tag-DdolXHyk.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/returns._index':{'id':'routes/returns._index','parentId':'root','path':'returns','index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._index-QL6eQetC.js','imports':['/assets/components-DncgAStS.js','/assets/Link-C9rT3U0_.js','/assets/Page-CAJLY0O6.js','/assets/Layout-C13JKOf2.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/EmptyState-CZyETyrk.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-DcQgWFe6.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/app.exchanges':{'id':'routes/app.exchanges','parentId':'root','path':'app/exchanges','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.exchanges-BkRckrdC.js','imports':['/assets/components-DncgAStS.js','/assets/Link-C9rT3U0_.js','/assets/Page-CAJLY0O6.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Layout-C13JKOf2.js','/assets/Banner-DGNxOIFU.js','/assets/EmptyState-CZyETyrk.js','/assets/Modal-Bc17I9P_.js','/assets/Select-CVI6jjHk.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-DcQgWFe6.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js','/assets/context-D_7evObr.js','/assets/InlineGrid-Ba7mGhzc.js'],'css':[]},'routes/api.seed-all':{'id':'routes/api.seed-all','parentId':'root','path':'api/seed-all','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.seed-all-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/app.billing':{'id':'routes/app.billing','parentId':'root','path':'app/billing','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.billing-YGzPe1nt.js','imports':['/assets/components-DncgAStS.js','/assets/Page-CAJLY0O6.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Banner-DGNxOIFU.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/InlineGrid-Ba7mGhzc.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/returns.$id':{'id':'routes/returns.$id','parentId':'root','path':'returns/:id','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._id-BcrZlCyv.js','imports':['/assets/components-DncgAStS.js','/assets/Page-CAJLY0O6.js','/assets/Layout-C13JKOf2.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/Tag-DdolXHyk.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js'],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/analytics':{'id':'routes/analytics','parentId':'root','path':'analytics','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/analytics-BhodOGcm.js','imports':['/assets/components-DncgAStS.js','/assets/Page-CAJLY0O6.js','/assets/Layout-C13JKOf2.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js'],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-Dg-dS-cJ.js','imports':['/assets/components-DncgAStS.js','/assets/Page-CAJLY0O6.js','/assets/Layout-C13JKOf2.js','/assets/Banner-DGNxOIFU.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/Tag-DdolXHyk.js','/assets/Modal-Bc17I9P_.js','/assets/Checkbox-DcQgWFe6.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/banner-context-DEryxoPe.js','/assets/context-D_7evObr.js','/assets/CSSTransition-CYBGIXjC.js','/assets/InlineGrid-Ba7mGhzc.js'],'css':[]},'routes/settings':{'id':'routes/settings','parentId':'root','path':'settings','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/settings-CeikpiMS.js','imports':['/assets/components-DncgAStS.js','/assets/Page-CAJLY0O6.js','/assets/Layout-C13JKOf2.js','/assets/Banner-DGNxOIFU.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/Select-CVI6jjHk.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/context-BKzuUC7w.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/api.mcp':{'id':'routes/api.mcp','parentId':'root','path':'api/mcp','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.mcp-l0sNRNKZ.js','imports':[],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-Cy-sRJSX.js','imports':['/assets/components-DncgAStS.js','/assets/Link-C9rT3U0_.js','/assets/Page-CAJLY0O6.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Layout-C13JKOf2.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/Banner-DGNxOIFU.js','/assets/context-BKzuUC7w.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/Checkbox-DcQgWFe6.js','/assets/CSSTransition-CYBGIXjC.js','/assets/banner-context-DEryxoPe.js'],'css':[]},'routes/return':{'id':'routes/return','parentId':'root','path':'return','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/return-DyOEkchd.js','imports':['/assets/components-DncgAStS.js','/assets/ButtonGroup-CPPOhfD3.js','/assets/Banner-DGNxOIFU.js','/assets/use-is-after-initial-mount-B-sttIaC.js','/assets/banner-context-DEryxoPe.js'],'css':[]}},'url':'/assets/manifest-3f6dd1d8.js','version':'3f6dd1d8'};
 
 /**
        * `mode` is only relevant for the old Remix compiler but
@@ -3936,13 +4008,21 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           caseSensitive: undefined,
           module: route7
         },
+  "routes/api.seed-all": {
+          id: "routes/api.seed-all",
+          parentId: "root",
+          path: "api/seed-all",
+          index: undefined,
+          caseSensitive: undefined,
+          module: route8
+        },
   "routes/api.webhooks": {
           id: "routes/api.webhooks",
           parentId: "root",
           path: "api/webhooks",
           index: undefined,
           caseSensitive: undefined,
-          module: route8
+          module: route9
         },
   "routes/app.billing": {
           id: "routes/app.billing",
@@ -3950,7 +4030,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           path: "app/billing",
           index: undefined,
           caseSensitive: undefined,
-          module: route9
+          module: route10
         },
   "routes/returns.$id": {
           id: "routes/returns.$id",
@@ -3958,7 +4038,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           path: "returns/:id",
           index: undefined,
           caseSensitive: undefined,
-          module: route10
+          module: route11
         },
   "routes/api.auth.$": {
           id: "routes/api.auth.$",
@@ -3966,7 +4046,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           path: "api/auth/*",
           index: undefined,
           caseSensitive: undefined,
-          module: route11
+          module: route12
         },
   "routes/analytics": {
           id: "routes/analytics",
@@ -3974,7 +4054,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           path: "analytics",
           index: undefined,
           caseSensitive: undefined,
-          module: route12
+          module: route13
         },
   "routes/policies": {
           id: "routes/policies",
@@ -3982,7 +4062,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           path: "policies",
           index: undefined,
           caseSensitive: undefined,
-          module: route13
+          module: route14
         },
   "routes/settings": {
           id: "routes/settings",
@@ -3990,7 +4070,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           path: "settings",
           index: undefined,
           caseSensitive: undefined,
-          module: route14
+          module: route15
         },
   "routes/api.mcp": {
           id: "routes/api.mcp",
@@ -3998,7 +4078,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           path: "api/mcp",
           index: undefined,
           caseSensitive: undefined,
-          module: route15
+          module: route16
         },
   "routes/healthz": {
           id: "routes/healthz",
@@ -4006,7 +4086,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           path: "healthz",
           index: undefined,
           caseSensitive: undefined,
-          module: route16
+          module: route17
         },
   "routes/_index": {
           id: "routes/_index",
@@ -4014,7 +4094,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           path: undefined,
           index: true,
           caseSensitive: undefined,
-          module: route17
+          module: route18
         },
   "routes/return": {
           id: "routes/return",
@@ -4022,7 +4102,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-EuybElju.js','im
           path: "return",
           index: undefined,
           caseSensitive: undefined,
-          module: route18
+          module: route19
         }
       };
 
