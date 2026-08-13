@@ -1921,13 +1921,21 @@ const action$5 = async ({ request, params }) => {
       });
       if (claim.count === 0) return json({ error: "Already processed" });
       const amount = returnReq.items.reduce((s, i) => s + parseFloat(i.price || "0") * (i.quantity || 0), 0);
-      const sess = await prisma$1.session.findFirst({ where: { shop, isOnline: false } });
+      let sess = await prisma$1.session.findFirst({ where: { shop, isOnline: false } });
+      if (!sess?.accessToken) {
+        sess = await prisma$1.session.findFirst({ where: { shop } });
+      }
       if (sess?.accessToken) {
         try {
-          await executeRefund(shop, sess.accessToken, returnReq.orderId, amount, true);
-          console.log(`[admin] Refund executed for ${returnReq.orderId}`);
+          console.log(`[admin] Attempting refund for ${returnReq.orderId} (${returnReq.orderName}) — amount: $${amount}`);
+          const result = await executeRefund(shop, sess.accessToken, returnReq.orderId, amount, true);
+          console.log(`[admin] Refund executed: ${result?.id || "no ID"}`);
+          await prisma$1.returnRequest.update({
+            where: { id: returnId },
+            data: { status: "REFUNDED", refundAmount: amount, refundId: result?.id || null }
+          });
         } catch (err) {
-          console.error(`[admin] Refund failed for ${returnReq.orderId}:`, err.message);
+          console.error(`[admin] Refund failed: ${err.message}`);
         }
       }
       await prisma$1.decisionLog.create({ data: { returnId, actor: "admin", action: "approve", details: { source: "detail_page" } } });
