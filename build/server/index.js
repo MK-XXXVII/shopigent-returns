@@ -1336,7 +1336,8 @@ const action$6 = async ({ request }) => {
         break;
       }
       case "CUSTOMERS_DATA_REQUEST":
-      case "PRIVACY_REDACT": {
+      case "CUSTOMERS_REDACT":
+      case "SHOP_REDACT": {
         console.log(`[webhook] GDPR ${topic} for ${shop}`);
         break;
       }

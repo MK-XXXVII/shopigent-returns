@@ -64,7 +64,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       }
 
       case "CUSTOMERS_DATA_REQUEST":
-      case "PRIVACY_REDACT": {
+      case "CUSTOMERS_REDACT":
+      case "SHOP_REDACT": {
         // GDPR compliance — log and acknowledge
         console.log(`[webhook] GDPR ${topic} for ${shop}`);
         break;
