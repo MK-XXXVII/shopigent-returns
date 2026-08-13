@@ -1296,63 +1296,44 @@ const action$7 = async ({ request }) => {
   if (!authedShop) return json({ error: "Invalid API key" }, { status: 401 });
   const url = new URL(request.url);
   const targetShop = url.searchParams.get("shop") || authedShop.shop;
-  const results = {};
-  const policyCount = await prisma$1.policy.count({ where: { shop: targetShop } });
-  if (policyCount === 0) {
-    const policies = [
-      { name: "Standard 30-Day Return", description: "Auto-approved for items under $200. 0% restocking fee.", priority: 1, isActive: true, conditions: [{ field: "maxDays", operator: "lte", value: 30 }, { field: "maxAmount", operator: "lte", value: 200 }, { field: "autoApprove", operator: "eq", value: true }, { field: "restockingFee", operator: "eq", value: 0 }] },
-      { name: "High-Value Review", description: "Items over $200 flagged for manual review. 10% restocking fee.", priority: 2, isActive: true, conditions: [{ field: "maxDays", operator: "lte", value: 30 }, { field: "minAmount", operator: "gt", value: 200 }, { field: "autoApprove", operator: "eq", value: false }, { field: "restockingFee", operator: "eq", value: 10 }] },
-      { name: "Final Sale - Electronics", description: "Electronics, clearance, and custom items are non-returnable.", priority: 3, isActive: true, conditions: [{ field: "maxDays", operator: "lte", value: 0 }, { field: "autoApprove", operator: "eq", value: false }, { field: "restockingFee", operator: "eq", value: 0 }] }
-    ];
-    for (const p of policies) {
-      await prisma$1.policy.create({ data: { ...p, shop: targetShop } });
-    }
-    results.policies = "✅ 3 policies created";
-  } else {
-    results.policies = `✅ ${policyCount} policies already exist`;
+  await prisma$1.decisionLog.deleteMany({ where: { return: { shop: targetShop } } });
+  await prisma$1.fraudSignal.deleteMany({ where: { return: { shop: targetShop } } });
+  await prisma$1.returnRequest.deleteMany({ where: { shop: targetShop } });
+  await prisma$1.policy.deleteMany({ where: { shop: targetShop } });
+  const policies = [
+    { name: "Standard 30-Day Return", description: "Auto-approved for items under $200. 0% restocking fee.", priority: 1, isActive: true, conditions: [{ field: "maxDays", operator: "lte", value: 30 }, { field: "maxAmount", operator: "lte", value: 200 }, { field: "autoApprove", operator: "eq", value: true }, { field: "restockingFee", operator: "eq", value: 0 }] },
+    { name: "High-Value Review", description: "Items over $200 flagged for manual review. 10% restocking fee.", priority: 2, isActive: true, conditions: [{ field: "maxDays", operator: "lte", value: 30 }, { field: "minAmount", operator: "gt", value: 200 }, { field: "autoApprove", operator: "eq", value: false }, { field: "restockingFee", operator: "eq", value: 10 }] },
+    { name: "Final Sale - Electronics", description: "Electronics, clearance, and custom items are non-returnable.", priority: 3, isActive: true, conditions: [{ field: "maxDays", operator: "lte", value: 0 }, { field: "autoApprove", operator: "eq", value: false }, { field: "restockingFee", operator: "eq", value: 0 }] }
+  ];
+  for (const p of policies) {
+    await prisma$1.policy.create({ data: { ...p, shop: targetShop } });
   }
-  const returnCount = await prisma$1.returnRequest.count({ where: { shop: targetShop } });
-  if (returnCount === 0) {
-    const dummyReturns = [
-      { orderName: "#1001", customerName: "Emma Wilson", customerEmail: "emma@example.com", status: "PENDING", reason: "Too small", items: [{ variantId: "gid://shopify/ProductVariant/1", title: "Classic Leather Jacket", quantity: 1, price: "299.99", sku: "LJ-001" }], createdAt: /* @__PURE__ */ new Date("2026-08-10") },
-      { orderName: "#1002", customerName: "James Chen", customerEmail: "james@example.com", status: "PENDING", reason: "Changed mind", items: [{ variantId: "gid://shopify/ProductVariant/2", title: "Wool Blend Scarf", quantity: 2, price: "45.00", sku: "SC-002" }, { variantId: "gid://shopify/ProductVariant/3", title: "Cashmere Beanie", quantity: 1, price: "35.00", sku: "BN-001" }], createdAt: /* @__PURE__ */ new Date("2026-08-11") },
-      { orderName: "#1003", customerName: "Sofia Rodriguez", customerEmail: "sofia@example.com", status: "PENDING", reason: "Defective stitching", items: [{ variantId: "gid://shopify/ProductVariant/4", title: "Linen Summer Dress", quantity: 1, price: "89.00", sku: "DR-003" }], createdAt: /* @__PURE__ */ new Date("2026-08-12") },
-      { orderName: "#1004", customerName: "Liam O'Brien", customerEmail: "liam@example.com", status: "APPROVED", reason: "Wrong size ordered", items: [{ variantId: "gid://shopify/ProductVariant/5", title: "Slim Fit Chinos", quantity: 1, price: "79.99", sku: "CH-004" }], decidedBy: "agent", decidedAt: /* @__PURE__ */ new Date("2026-08-11"), refundAmount: 79.99, createdAt: /* @__PURE__ */ new Date("2026-08-09") },
-      { orderName: "#1005", customerName: "Anna Kowalski", customerEmail: "anna@example.com", status: "REFUNDED", reason: "Arrived damaged", items: [{ variantId: "gid://shopify/ProductVariant/6", title: "Ceramic Mug Set", quantity: 1, price: "34.99", sku: "MG-005" }], decidedBy: "agent", decidedAt: /* @__PURE__ */ new Date("2026-08-10"), refundAmount: 34.99, refundId: "txn_001", createdAt: /* @__PURE__ */ new Date("2026-08-08") },
-      { orderName: "#1006", customerName: "Marcus Johnson", customerEmail: "marcus@example.com", status: "DENIED", reason: "Return window exceeded", items: [{ variantId: "gid://shopify/ProductVariant/7", title: "Wool Winter Coat", quantity: 1, price: "450.00", sku: "CT-006" }], decidedBy: "agent", decidedAt: /* @__PURE__ */ new Date("2026-08-11"), notes: "Return window exceeded (45 days, policy max 30)", createdAt: /* @__PURE__ */ new Date("2026-08-05") },
-      { orderName: "#1007", customerName: "Yuki Tanaka", customerEmail: "yuki@example.com", status: "EXCHANGE", reason: "Want different color", items: [{ variantId: "gid://shopify/ProductVariant/8", title: "Merino Wool Sweater", quantity: 1, price: "129.00", sku: "SW-007" }], decidedBy: "agent", decidedAt: /* @__PURE__ */ new Date("2026-08-12"), createdAt: /* @__PURE__ */ new Date("2026-08-10") }
-    ];
-    for (const r of dummyReturns) {
-      const created = await prisma$1.returnRequest.create({
-        data: { ...r, shop: targetShop, orderId: r.orderName, items: r.items, refundAmount: r.refundAmount, refundId: r.refundId, decidedBy: r.decidedBy, decidedAt: r.decidedAt, notes: r.notes }
+  const dummyReturns = [
+    { orderName: "#1001", customerName: "Emma Wilson", customerEmail: "emma@example.com", status: "PENDING", reason: "Too small", items: [{ variantId: "gid://shopify/ProductVariant/1", title: "Classic Leather Jacket", quantity: 1, price: "299.99", sku: "LJ-001" }], createdAt: /* @__PURE__ */ new Date("2026-08-10") },
+    { orderName: "#1002", customerName: "James Chen", customerEmail: "james@example.com", status: "PENDING", reason: "Changed mind", items: [{ variantId: "gid://shopify/ProductVariant/2", title: "Wool Blend Scarf", quantity: 2, price: "45.00", sku: "SC-002" }, { variantId: "gid://shopify/ProductVariant/3", title: "Cashmere Beanie", quantity: 1, price: "35.00", sku: "BN-001" }], createdAt: /* @__PURE__ */ new Date("2026-08-11") },
+    { orderName: "#1003", customerName: "Sofia Rodriguez", customerEmail: "sofia@example.com", status: "PENDING", reason: "Defective stitching", items: [{ variantId: "gid://shopify/ProductVariant/4", title: "Linen Summer Dress", quantity: 1, price: "89.00", sku: "DR-003" }], createdAt: /* @__PURE__ */ new Date("2026-08-12") },
+    { orderName: "#1004", customerName: "Liam O'Brien", customerEmail: "liam@example.com", status: "APPROVED", reason: "Wrong size ordered", items: [{ variantId: "gid://shopify/ProductVariant/5", title: "Slim Fit Chinos", quantity: 1, price: "79.99", sku: "CH-004" }], decidedBy: "agent", decidedAt: /* @__PURE__ */ new Date("2026-08-11"), refundAmount: 79.99, createdAt: /* @__PURE__ */ new Date("2026-08-09") },
+    { orderName: "#1005", customerName: "Anna Kowalski", customerEmail: "anna@example.com", status: "REFUNDED", reason: "Arrived damaged", items: [{ variantId: "gid://shopify/ProductVariant/6", title: "Ceramic Mug Set", quantity: 1, price: "34.99", sku: "MG-005" }], decidedBy: "agent", decidedAt: /* @__PURE__ */ new Date("2026-08-10"), refundAmount: 34.99, refundId: "txn_001", createdAt: /* @__PURE__ */ new Date("2026-08-08") },
+    { orderName: "#1006", customerName: "Marcus Johnson", customerEmail: "marcus@example.com", status: "DENIED", reason: "Return window exceeded", items: [{ variantId: "gid://shopify/ProductVariant/7", title: "Wool Winter Coat", quantity: 1, price: "450.00", sku: "CT-006" }], decidedBy: "agent", decidedAt: /* @__PURE__ */ new Date("2026-08-11"), notes: "Return window exceeded (45 days, policy max 30)", createdAt: /* @__PURE__ */ new Date("2026-08-05") },
+    { orderName: "#1007", customerName: "Yuki Tanaka", customerEmail: "yuki@example.com", status: "EXCHANGE", reason: "Want different color", items: [{ variantId: "gid://shopify/ProductVariant/8", title: "Merino Wool Sweater", quantity: 1, price: "129.00", sku: "SW-007" }], decidedBy: "agent", decidedAt: /* @__PURE__ */ new Date("2026-08-12"), createdAt: /* @__PURE__ */ new Date("2026-08-10") }
+  ];
+  for (const r of dummyReturns) {
+    const created = await prisma$1.returnRequest.create({
+      data: { ...r, shop: targetShop, orderId: r.orderName, items: r.items, refundAmount: r.refundAmount, refundId: r.refundId, decidedBy: r.decidedBy, decidedAt: r.decidedAt, notes: r.notes }
+    });
+    if (r.status !== "PENDING") {
+      await prisma$1.decisionLog.create({
+        data: { returnId: created.id, actor: "agent", action: r.status === "DENIED" ? "deny" : r.status === "EXCHANGE" ? "exchange" : "approve", details: { status: r.status, reason: r.reason, refundAmount: r.refundAmount } }
       });
-      if (r.status !== "PENDING") {
-        await prisma$1.decisionLog.create({
-          data: {
-            returnId: created.id,
-            actor: "agent",
-            action: r.status === "DENIED" ? "deny" : r.status === "EXCHANGE" ? "exchange" : "approve",
-            details: { status: r.status, reason: r.reason, refundAmount: r.refundAmount }
-          }
-        });
-      }
-      if (r.customerName === "Marcus Johnson") {
-        await prisma$1.fraudSignal.create({
-          data: { returnId: created.id, signal: "return_window_exceeded", risk: "high", details: { daysSinceOrder: 45, policyMax: 30 } }
-        });
-      }
-      if (r.customerName === "Emma Wilson") {
-        await prisma$1.fraudSignal.create({
-          data: { returnId: created.id, signal: "high_value_return", risk: "medium", details: { amount: 299.99, threshold: 200 } }
-        });
-      }
     }
-    results.returns = "✅ 7 returns created (3 PENDING, 1 APPROVED, 1 REFUNDED, 1 DENIED, 1 EXCHANGE)";
-  } else {
-    results.returns = `✅ ${returnCount} returns already exist`;
+    if (r.customerName === "Marcus Johnson") {
+      await prisma$1.fraudSignal.create({ data: { returnId: created.id, signal: "return_window_exceeded", score: 0.8, details: { daysSinceOrder: 45, policyMax: 30 } } });
+    }
+    if (r.customerName === "Emma Wilson") {
+      await prisma$1.fraudSignal.create({ data: { returnId: created.id, signal: "high_value_return", score: 0.5, details: { amount: 299.99, threshold: 200 } } });
+    }
   }
-  results.shop = targetShop;
-  return json({ ok: true, ...results });
+  return json({ ok: true, shop: targetShop, policies: 3, returns: dummyReturns.length });
 };
 
 const route8 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
