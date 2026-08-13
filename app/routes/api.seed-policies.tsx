@@ -20,11 +20,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   let created = 0, updated = 0;
   for (const p of policies) {
     const existing = await prisma.policy.findFirst({ where: { shop: shop.shop, name: p.name } });
+    const data = { name: p.name, description: p.description, priority: p.priority, isActive: p.isActive, conditions: p.conditions, shop: shop.shop };
     if (existing) {
-      await prisma.policy.update({ where: { id: existing.id }, data: { ...p, shop: shop.shop } });
+      await prisma.policy.update({ where: { id: existing.id }, data });
       updated++;
     } else {
-      await prisma.policy.create({ data: { ...p, shop: shop.shop } });
+      await prisma.policy.create({ data });
       created++;
     }
   }
