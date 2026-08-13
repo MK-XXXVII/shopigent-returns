@@ -117,43 +117,29 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     // ─── Look up orders by email via Shopify API ──────────────
     try {
-      const customerResult = await getOrdersByEmail(shop, session.accessToken, email);
-      const customers = customerResult?.customers || [];
+      const orderResult = await getOrdersByEmail(shop, session.accessToken, email);
+      const allOrders = (orderResult?.orders || []).map((o: any) => ({
+        id: String(o.id),
+        name: o.name,
+        createdAt: o.created_at,
+        total: o.total_price || o.total_price_set?.shop_money?.amount || "0",
+        currency: o.currency || "USD",
+        fulfilled: o.fulfillment_status === "fulfilled",
+        items: (o.line_items || []).map((li: any) => ({
+          id: String(li.id),
+          variantId: `gid://shopify/ProductVariant/${li.variant_id}`,
+          title: li.title,
+          quantity: li.quantity,
+          price: li.price || "0",
+          sku: li.sku || "",
+        })),
+      }));
 
-      if (customers.length === 0) {
-        return json({
-          verified: true,
-          customer: { name: email.split("@")[0] },
-          email,
-          orders: [],
-          noOrders: true,
-          message: "No orders found for this email address.",
-        });
-      }
-
-      // Flatten all orders from all matching customers
-      const allOrders = customers.flatMap((c: any) =>
-        (c.orders || []).map((o: any) => ({
-          id: String(o.id),
-          name: o.name,
-          createdAt: o.created_at,
-          total: o.total_price || o.total_price_set?.shop_money?.amount || "0",
-          currency: o.currency || "USD",
-          fulfilled: o.fulfillment_status === "fulfilled",
-          items: (o.line_items || []).map((li: any) => ({
-            id: String(li.id),
-            variantId: `gid://shopify/ProductVariant/${li.variant_id}`,
-            title: li.title,
-            quantity: li.quantity,
-            price: li.price || "0",
-            sku: li.sku || "",
-          })),
-        }))
-      );
+      const customerName = allOrders.length > 0 ? (allOrders[0].customerName || email.split("@")[0]) : email.split("@")[0];
 
       return json({
         verified: true,
-        customer: { name: customers[0]?.first_name || email.split("@")[0] },
+        customer: { name: customerName },
         email,
         orders: allOrders,
         message: `Found ${allOrders.length} order(s). Select the items you want to return.`,
@@ -215,22 +201,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     let selectedItems: any[] = [];
 
     if (selectedItemIds.length > 0) {
-      const customerResult = await getOrdersByEmail(shop, session.accessToken, customerEmail);
-      const customers = customerResult?.customers || [];
-      for (const c of customers) {
-        for (const o of (c.orders || [])) {
-          if (String(o.id) === orderId) {
-            selectedItems = (o.line_items || [])
-              .filter((li: any) => selectedItemIds.includes(String(li.id)))
-              .map((li: any) => ({
-                id: String(li.id),
-                variantId: `gid://shopify/ProductVariant/${li.variant_id}`,
-                title: li.title,
-                quantity: li.quantity,
-                price: li.price || "0",
-                sku: li.sku || "",
-              }));
-          }
+      const orderResult = await getOrdersByEmail(shop, session.accessToken, customerEmail);
+      for (const o of (orderResult?.orders || [])) {
+        if (String(o.id) === orderId) {
+          selectedItems = (o.line_items || [])
+            .filter((li: any) => selectedItemIds.includes(String(li.id)))
+            .map((li: any) => ({
+              id: String(li.id),
+              variantId: `gid://shopify/ProductVariant/${li.variant_id}`,
+              title: li.title,
+              quantity: li.quantity,
+              price: li.price || "0",
+              sku: li.sku || "",
+            }));
         }
       }
     }

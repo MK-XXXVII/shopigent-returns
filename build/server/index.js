@@ -878,7 +878,7 @@ async function tryRefreshToken(shop) {
   }
 }
 async function getOrdersByEmail(shop, accessToken, email) {
-  const url = `https://${shop}/admin/api/${API_VERSION}/customers/search.json?query=email:${encodeURIComponent(email)}`;
+  const url = `https://${shop}/admin/api/${API_VERSION}/orders.json?email=${encodeURIComponent(email)}&status=any&limit=50`;
   const response = await fetch(url, {
     headers: { "X-Shopify-Access-Token": accessToken }
   });
@@ -3695,39 +3695,27 @@ const action = async ({ request }) => {
       data: { used: true }
     });
     try {
-      const customerResult = await getOrdersByEmail(shop, session.accessToken, email);
-      const customers = customerResult?.customers || [];
-      if (customers.length === 0) {
-        return json({
-          verified: true,
-          customer: { name: email.split("@")[0] },
-          email,
-          orders: [],
-          noOrders: true,
-          message: "No orders found for this email address."
-        });
-      }
-      const allOrders = customers.flatMap(
-        (c) => (c.orders || []).map((o) => ({
-          id: String(o.id),
-          name: o.name,
-          createdAt: o.created_at,
-          total: o.total_price || o.total_price_set?.shop_money?.amount || "0",
-          currency: o.currency || "USD",
-          fulfilled: o.fulfillment_status === "fulfilled",
-          items: (o.line_items || []).map((li) => ({
-            id: String(li.id),
-            variantId: `gid://shopify/ProductVariant/${li.variant_id}`,
-            title: li.title,
-            quantity: li.quantity,
-            price: li.price || "0",
-            sku: li.sku || ""
-          }))
+      const orderResult = await getOrdersByEmail(shop, session.accessToken, email);
+      const allOrders = (orderResult?.orders || []).map((o) => ({
+        id: String(o.id),
+        name: o.name,
+        createdAt: o.created_at,
+        total: o.total_price || o.total_price_set?.shop_money?.amount || "0",
+        currency: o.currency || "USD",
+        fulfilled: o.fulfillment_status === "fulfilled",
+        items: (o.line_items || []).map((li) => ({
+          id: String(li.id),
+          variantId: `gid://shopify/ProductVariant/${li.variant_id}`,
+          title: li.title,
+          quantity: li.quantity,
+          price: li.price || "0",
+          sku: li.sku || ""
         }))
-      );
+      }));
+      const customerName = allOrders.length > 0 ? allOrders[0].customerName || email.split("@")[0] : email.split("@")[0];
       return json({
         verified: true,
-        customer: { name: customers[0]?.first_name || email.split("@")[0] },
+        customer: { name: customerName },
         email,
         orders: allOrders,
         message: `Found ${allOrders.length} order(s). Select the items you want to return.`
@@ -3772,20 +3760,17 @@ const action = async ({ request }) => {
     const selectedItemIds = formData.getAll("selectedItemIds");
     let selectedItems = [];
     if (selectedItemIds.length > 0) {
-      const customerResult = await getOrdersByEmail(shop, session.accessToken, customerEmail);
-      const customers = customerResult?.customers || [];
-      for (const c of customers) {
-        for (const o of c.orders || []) {
-          if (String(o.id) === orderId) {
-            selectedItems = (o.line_items || []).filter((li) => selectedItemIds.includes(String(li.id))).map((li) => ({
-              id: String(li.id),
-              variantId: `gid://shopify/ProductVariant/${li.variant_id}`,
-              title: li.title,
-              quantity: li.quantity,
-              price: li.price || "0",
-              sku: li.sku || ""
-            }));
-          }
+      const orderResult = await getOrdersByEmail(shop, session.accessToken, customerEmail);
+      for (const o of orderResult?.orders || []) {
+        if (String(o.id) === orderId) {
+          selectedItems = (o.line_items || []).filter((li) => selectedItemIds.includes(String(li.id))).map((li) => ({
+            id: String(li.id),
+            variantId: `gid://shopify/ProductVariant/${li.variant_id}`,
+            title: li.title,
+            quantity: li.quantity,
+            price: li.price || "0",
+            sku: li.sku || ""
+          }));
         }
       }
     }

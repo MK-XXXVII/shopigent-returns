@@ -120,9 +120,9 @@ export async function tryRefreshToken(shop: string): Promise<string | null> {
   }
 }
 
-// Look up a customer's orders by email using REST
+// Look up a customer's orders by email using REST orders endpoint
 export async function getOrdersByEmail(shop: string, accessToken: string, email: string) {
-  const url = `https://${shop}/admin/api/${API_VERSION}/customers/search.json?query=email:${encodeURIComponent(email)}`;
+  const url = `https://${shop}/admin/api/${API_VERSION}/orders.json?email=${encodeURIComponent(email)}&status=any&limit=50`;
   const response = await fetch(url, {
     headers: { "X-Shopify-Access-Token": accessToken },
   });
