@@ -2833,14 +2833,25 @@ async function handleMcpRequest(body, shop) {
           });
         }
         case "approve_return": {
+          const claim = await prisma$1.returnRequest.updateMany({
+            where: { id: args.returnId, status: "PENDING" },
+            data: {
+              status: "APPROVED",
+              decidedBy: "agent",
+              decidedAt: /* @__PURE__ */ new Date(),
+              notes: args.notes || null
+            }
+          });
+          if (claim.count === 0) {
+            const existing = await prisma$1.returnRequest.findUnique({ where: { id: args.returnId } });
+            if (!existing) return jsonRpcError(id, -32602, "Return not found");
+            return jsonRpcError(id, -32e3, `Return is already ${existing.status}. Only PENDING returns can be approved.`);
+          }
+          const secret = process.env.CONFIRMATION_TOKEN_SECRET;
           const returnReq = await prisma$1.returnRequest.findUnique({
             where: { id: args.returnId }
           });
           if (!returnReq) return jsonRpcError(id, -32602, "Return not found");
-          if (returnReq.status !== "PENDING") {
-            return jsonRpcError(id, -32e3, `Return is already ${returnReq.status}. Only PENDING returns can be approved.`);
-          }
-          const secret = process.env.CONFIRMATION_TOKEN_SECRET;
           if (secret) {
             const check = verifyConfirmationToken(
               args.confirmationToken || "",

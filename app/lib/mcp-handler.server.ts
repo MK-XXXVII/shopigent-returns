@@ -141,18 +141,30 @@ export async function handleMcpRequest(body: any, shop?: string) {
         }
 
         case "approve_return": {
-          const returnReq = await prisma.returnRequest.findUnique({
-            where: { id: args.returnId },
+          // Atomic state transition: claim the return atomically
+          // Only proceeds if status is still PENDING — prevents double-approve
+          const claim = await prisma.returnRequest.updateMany({
+            where: { id: args.returnId, status: "PENDING" },
+            data: {
+              status: "APPROVED",
+              decidedBy: "agent",
+              decidedAt: new Date(),
+              notes: args.notes || null,
+            },
           });
-          if (!returnReq) return jsonRpcError(id, -32602, "Return not found");
 
-          // Prevent double-approval / replay attacks
-          if (returnReq.status !== "PENDING") {
-            return jsonRpcError(id, -32000, `Return is already ${returnReq.status}. Only PENDING returns can be approved.`);
+          if (claim.count === 0) {
+            const existing = await prisma.returnRequest.findUnique({ where: { id: args.returnId } });
+            if (!existing) return jsonRpcError(id, -32602, "Return not found");
+            return jsonRpcError(id, -32000, `Return is already ${existing.status}. Only PENDING returns can be approved.`);
           }
 
           // Verify confirmation token
           const secret = process.env.CONFIRMATION_TOKEN_SECRET;
+          const returnReq = await prisma.returnRequest.findUnique({
+            where: { id: args.returnId },
+          });
+          if (!returnReq) return jsonRpcError(id, -32602, "Return not found");
           if (secret) {
             const check = verifyConfirmationToken(
               args.confirmationToken || "",
