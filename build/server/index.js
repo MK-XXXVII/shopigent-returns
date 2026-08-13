@@ -3864,61 +3864,87 @@ async function createShopifyReturn(shop, accessToken, orderId, items) {
   const orderQuery = `{
     order(id: "${orderGid}") {
       id
+      displayFulfillmentStatus
       lineItems(first: 50) {
         nodes {
           id
           variant { id }
           quantity
-          fulfillmentLineItems(first: 10) {
-            nodes { id }
+          fulfillableQuantity
+          totalQuantity
+        }
+      }
+      fulfillments(first: 10) {
+        id
+        status
+        lineItems(first: 50) {
+          nodes {
+            id
+            lineItem { id variant { id } }
+            quantity
           }
         }
       }
     }
   }`;
   const orderResult = await shopifyAdminQuery(shop, accessToken, orderQuery);
-  const lineItems = orderResult?.data?.order?.lineItems?.nodes || [];
+  console.log(`[shopify-return] Order query:`, JSON.stringify(orderResult?.data?.order).slice(0, 2e3));
+  const order = orderResult?.data?.order;
+  if (!order) {
+    return { error: "Order not found or inaccessible" };
+  }
   const returnLineItems = [];
   for (const reqItem of items) {
-    const matching = lineItems.find(
-      (li) => li.variant?.id === reqItem.variantId || li.variant?.id?.replace("ProductVariant/", "Variant/") === reqItem.variantId
-    );
-    if (matching) {
-      const fulfillmentLineItem = matching.fulfillmentLineItems?.nodes?.[0];
-      returnLineItems.push({
-        fulfillmentLineItemId: fulfillmentLineItem?.id || matching.id,
-        quantity: reqItem.quantity
-      });
+    let fulfillmentLineItemId = null;
+    for (const fulfillment of order.fulfillments || []) {
+      for (const fli of fulfillment.lineItems?.nodes || []) {
+        if (fli.lineItem?.variant?.id === reqItem.variantId) {
+          fulfillmentLineItemId = fli.id;
+          break;
+        }
+      }
+      if (fulfillmentLineItemId) break;
     }
+    if (!fulfillmentLineItemId) {
+      const lineItem = (order.lineItems?.nodes || []).find(
+        (li) => li.variant?.id === reqItem.variantId
+      );
+      if (lineItem) {
+        return { error: `Item "${reqItem.variantId}" needs to be fulfilled first. Please create a fulfillment in Shopify admin.` };
+      }
+      return { error: `Item variant ${reqItem.variantId} not found in order` };
+    }
+    returnLineItems.push({
+      fulfillmentLineItemId,
+      quantity: reqItem.quantity
+    });
   }
   if (returnLineItems.length === 0) {
-    return { error: "No matching line items found in order" };
+    return { error: "No matching items found in order fulfillments" };
   }
-  const mutation = `mutation returnCreate($returnInput: ReturnInput!) {
-    returnCreate(returnInput: $returnInput) {
+  const mutation = `mutation returnRequest($input: ReturnRequestInput!) {
+    returnRequest(input: $input) {
       return { id status }
       userErrors { field message }
     }
   }`;
   const result = await shopifyAdminQuery(shop, accessToken, mutation, {
-    returnInput: {
+    input: {
       orderId: orderGid,
       returnLineItems
     }
   });
-  console.log(`[shopify-return] Request:`, JSON.stringify(returnLineItems));
-  console.log(`[shopify-return] Response:`, JSON.stringify(result).slice(0, 2e3));
+  console.log(`[shopify-return] Create result:`, JSON.stringify(result).slice(0, 2e3));
   if (result?.errors?.length) {
-    const msgs = result.errors.map((e) => e.message).join(", ");
-    return { error: msgs };
+    return { error: result.errors.map((e) => e.message).join(", ") };
   }
-  const errors = result?.data?.returnCreate?.userErrors;
+  const errors = result?.data?.returnRequest?.userErrors;
   if (errors?.length > 0) {
     return { error: errors.map((e) => e.message).join(", ") };
   }
-  const returnObj = result?.data?.returnCreate?.return;
+  const returnObj = result?.data?.returnRequest?.return;
   if (!returnObj) {
-    return { error: "Failed to create return: no return object in response" };
+    return { error: "Failed to create return" };
   }
   return { returnId: returnObj.id };
 }
