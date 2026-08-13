@@ -64,26 +64,30 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       data: { shop, email, code, expiresAt },
     });
 
-    // Send OTP via email
-    const sent = await sendEmail({
-      to: email,
-      subject: `Your verification code — Shopigent Returns`,
-      html: `<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:20px">
+    // Send OTP via email — skip entirely for dev bypass emails
+    const isBypass = shouldBypassOtp(email);
+    let sent = false;
+    if (!isBypass) {
+      sent = await sendEmail({
+        to: email,
+        subject: `Your verification code — Shopigent Returns`,
+        html: `<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:20px">
         <h2 style="color:#7C3AED">Shopigent Returns</h2>
         <p>Your verification code is:</p>
         <div style="font-size:32px;font-weight:bold;letter-spacing:6px;text-align:center;padding:16px;background:#f3f0ff;border-radius:8px;margin:16px 0;color:#7C3AED">${code}</div>
         <p>This code expires in <strong>10 minutes</strong>.</p>
         <hr><p style="color:#666;font-size:12px">Shopigent Returns — AI-powered return management</p>
       </div>`,
-    });
+      });
+    }
 
-    if (!sent && !shouldBypassOtp(email)) {
+    if (!sent && !isBypass) {
       return json({ error: "Failed to send verification email. Please try again." });
     }
 
     // Dev bypass: return the OTP code so the tester can use it
-    if (shouldBypassOtp(email)) {
-      return json({ otpSent: true, email, devOtp: code, devMessage: "DEV MODE: Use this code to verify" });
+    if (isBypass) {
+      return json({ otpSent: true, email, devOtp: code, devMessage: "DEV MODE: Use code 123456 to verify" });
     }
 
     return json({ otpSent: true, email });
