@@ -5,7 +5,8 @@ import { useState } from "react";
 import prisma from "../lib/db.server";
 import { sendEmail, storeCreditProcessedEmail } from "../lib/email.server";
 import { shouldBypassOtp, generateDevOtp } from "../lib/otp-dev.server";
-import { shopifyAdminQuery, getOrdersByEmail, executeRefund } from "../lib/shopify-admin.server";
+import { shopifyAdminQuery, getOrdersByEmail } from "../lib/shopify-admin.server";
+import { createShopifyReturn } from "../lib/shopify-return.server";
 
 // Customer Portal — public-facing, no Shopify auth required
 // Uses the store's stored offline access token to query the Admin API
@@ -281,23 +282,33 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           await prisma.decisionLog.create({
             data: { returnId: returnRec.id, actor: "auto", action: "approve", details: { source: "auto_policy", policy: policy.name, amount: totalAmount } },
           });
-          // Try to execute refund in Shopify
+          // Try to create Shopify Return on the order
           try {
-            const sess = await prisma.session.findFirst({ where: { shop, isOnline: false } });
+            let sess = await prisma.session.findFirst({ where: { shop, isOnline: false } });
+            if (!sess?.accessToken) {
+              sess = await prisma.session.findFirst({ where: { shop } });
+            }
             if (sess?.accessToken) {
-              const result = await executeRefund(shop, sess.accessToken, orderId, totalAmount, true);
-              if (result?.id) {
+              const variantItems = selectedItems.map((i: any) => ({
+                variantId: i.variantId,
+                quantity: i.quantity,
+              }));
+              const shopifyReturn = await createShopifyReturn(shop, sess.accessToken, orderId, variantItems);
+              if (shopifyReturn.returnId) {
                 await prisma.returnRequest.update({
                   where: { id: returnRec.id },
-                  data: { status: "REFUNDED", refundAmount: totalAmount, refundId: result.id },
+                  data: { status: "APPROVED", shopifyReturnId: shopifyReturn.returnId },
                 });
                 await prisma.decisionLog.create({
-                  data: { returnId: returnRec.id, actor: "auto", action: "refund", details: { refundId: result.id, amount: totalAmount } },
+                  data: { returnId: returnRec.id, actor: "auto", action: "shopify_return", details: { returnId: shopifyReturn.returnId } },
                 });
+              }
+              if (shopifyReturn.error) {
+                console.error(`[portal] Shopify return failed: ${shopifyReturn.error}`);
               }
             }
           } catch (err: any) {
-            console.error(`[portal] Auto-approve refund failed: ${err.message}`);
+            console.error(`[portal] Shopify return error: ${err.message}`);
           }
           break;
         }

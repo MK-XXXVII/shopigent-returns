@@ -3859,6 +3859,34 @@ function generateDevOtp() {
   return "123456";
 }
 
+async function createShopifyReturn(shop, accessToken, orderId, items) {
+  const orderGid = orderId.startsWith("gid://") ? orderId : `gid://shopify/Order/${orderId}`;
+  const mutation = `mutation returnCreate($input: ReturnInput!) {
+    returnCreate(input: $input) {
+      return { id status }
+      userErrors { field message }
+    }
+  }`;
+  const result = await shopifyAdminQuery(shop, accessToken, mutation, {
+    input: {
+      orderId: orderGid,
+      returnLineItems: items.map((item) => ({
+        variantId: item.variantId,
+        quantity: item.quantity
+      }))
+    }
+  });
+  const errors = result?.data?.returnCreate?.userErrors;
+  if (errors?.length > 0) {
+    return { error: errors.map((e) => e.message).join(", ") };
+  }
+  const returnObj = result?.data?.returnCreate?.return;
+  if (!returnObj) {
+    return { error: "Failed to create return" };
+  }
+  return { returnId: returnObj.id };
+}
+
 const loader = async ({ request }) => {
   const url = new URL(request.url);
   const shop = url.searchParams.get("shop") || "";
@@ -4063,21 +4091,31 @@ const action = async ({ request }) => {
             data: { returnId: returnRec.id, actor: "auto", action: "approve", details: { source: "auto_policy", policy: policy.name, amount: totalAmount } }
           });
           try {
-            const sess = await prisma$1.session.findFirst({ where: { shop, isOnline: false } });
+            let sess = await prisma$1.session.findFirst({ where: { shop, isOnline: false } });
+            if (!sess?.accessToken) {
+              sess = await prisma$1.session.findFirst({ where: { shop } });
+            }
             if (sess?.accessToken) {
-              const result = await executeRefund(shop, sess.accessToken, orderId, totalAmount, true);
-              if (result?.id) {
+              const variantItems = selectedItems.map((i) => ({
+                variantId: i.variantId,
+                quantity: i.quantity
+              }));
+              const shopifyReturn = await createShopifyReturn(shop, sess.accessToken, orderId, variantItems);
+              if (shopifyReturn.returnId) {
                 await prisma$1.returnRequest.update({
                   where: { id: returnRec.id },
-                  data: { status: "REFUNDED", refundAmount: totalAmount, refundId: result.id }
+                  data: { status: "APPROVED", shopifyReturnId: shopifyReturn.returnId }
                 });
                 await prisma$1.decisionLog.create({
-                  data: { returnId: returnRec.id, actor: "auto", action: "refund", details: { refundId: result.id, amount: totalAmount } }
+                  data: { returnId: returnRec.id, actor: "auto", action: "shopify_return", details: { returnId: shopifyReturn.returnId } }
                 });
+              }
+              if (shopifyReturn.error) {
+                console.error(`[portal] Shopify return failed: ${shopifyReturn.error}`);
               }
             }
           } catch (err) {
-            console.error(`[portal] Auto-approve refund failed: ${err.message}`);
+            console.error(`[portal] Shopify return error: ${err.message}`);
           }
           break;
         }
