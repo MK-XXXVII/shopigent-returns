@@ -27,6 +27,16 @@ export async function createShopifyReturn(
     },
   });
 
+  console.log(`[shopify-return] Request for ${orderGid}:`, JSON.stringify(items));
+  console.log(`[shopify-return] Response:`, JSON.stringify(result).slice(0, 2000));
+
+  // Check top-level GraphQL errors
+  if (result?.errors?.length) {
+    const msgs = result.errors.map((e: any) => e.message).join(", ");
+    console.error(`[shopify-return] GraphQL errors: ${msgs}`);
+    return { error: msgs };
+  }
+
   const errors = result?.data?.returnCreate?.userErrors;
   if (errors?.length > 0) {
     return { error: errors.map((e: any) => e.message).join(", ") };

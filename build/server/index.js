@@ -3876,6 +3876,13 @@ async function createShopifyReturn(shop, accessToken, orderId, items) {
       }))
     }
   });
+  console.log(`[shopify-return] Request for ${orderGid}:`, JSON.stringify(items));
+  console.log(`[shopify-return] Response:`, JSON.stringify(result).slice(0, 2e3));
+  if (result?.errors?.length) {
+    const msgs = result.errors.map((e) => e.message).join(", ");
+    console.error(`[shopify-return] GraphQL errors: ${msgs}`);
+    return { error: msgs };
+  }
   const errors = result?.data?.returnCreate?.userErrors;
   if (errors?.length > 0) {
     return { error: errors.map((e) => e.message).join(", ") };
