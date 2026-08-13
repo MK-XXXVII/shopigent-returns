@@ -148,7 +148,7 @@ const route0 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   loader: loader$f
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const action$c = async ({ request }) => {
+const action$e = async ({ request }) => {
   const authHeader = request.headers.get("authorization");
   const key = authHeader?.slice(7);
   const hash = crypto.createHash("sha256").update(key || "").digest("hex");
@@ -171,7 +171,7 @@ const action$c = async ({ request }) => {
 
 const route1 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
-  action: action$c
+  action: action$e
 }, Symbol.toStringTag, { value: 'Module' }));
 
 const loader$e = async ({ request }) => {
@@ -206,7 +206,7 @@ const route2 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   loader: loader$e
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const action$b = async ({ request }) => {
+const action$d = async ({ request }) => {
   const authHeader = request.headers.get("authorization");
   const key = authHeader?.slice(7);
   const hash = crypto.createHash("sha256").update(key || "").digest("hex");
@@ -236,580 +236,78 @@ const action$b = async ({ request }) => {
 
 const route3 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
-  action: action$b
+  action: action$d
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const loader$d = async ({ request }) => {
-  return json({ message: "Send POST to upgrade" });
-};
-const action$a = async ({ request }) => {
-  const authHeader = request.headers.get("authorization");
-  const key = authHeader?.slice(7);
-  const hash = crypto.createHash("sha256").update(key || "").digest("hex");
-  const authedShop = await prisma$1.shop.findFirst({ where: { mcpApiKeyHash: hash } });
-  if (!authedShop) {
-    return json({ error: "Invalid API key" }, { status: 401 });
-  }
-  const url = new URL(request.url);
-  const targetShop = url.searchParams.get("shop") || authedShop.shop;
-  await prisma$1.shop.upsert({
-    where: { shop: targetShop },
-    update: { planName: "pro" },
-    create: { id: targetShop, shop: targetShop, planName: "pro" }
-  });
-  return json({ ok: true, shop: targetShop, plan: "pro", upgradedBy: authedShop.shop });
-};
-
-const route4 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
-  __proto__: null,
-  action: action$a,
-  loader: loader$d
-}, Symbol.toStringTag, { value: 'Module' }));
-
-const DEFAULT_FRAUD_RULES = {
-  maxReturnsPerCustomer: 3,
-  maxReturnsWindowDays: 30,
-  maxValuePerReturn: 5e3,
-  blockedCountries: [],
-  suspiciousEmailDomains: [
-    "mailinator.com",
-    "guerrillamail.com",
-    "10minutemail.com",
-    "tempmail.com",
-    "throwaway.email",
-    "sharklasers.com",
-    "yopmail.com",
-    "trashmail.com"
-  ],
-  enabled: true
-};
-const COMMON_COUNTRY_NAMES = {
-  "US": "US",
-  "USA": "US",
-  "UNITED STATES": "US",
-  "AMERICA": "US",
-  "GB": "GB",
-  "UK": "GB",
-  "UNITED KINGDOM": "GB",
-  "CA": "CA",
-  "CANADA": "CA",
-  "AU": "AU",
-  "AUSTRALIA": "AU",
-  "DE": "DE",
-  "GERMANY": "DE",
-  "FR": "FR",
-  "FRANCE": "FR",
-  "NL": "NL",
-  "NETHERLANDS": "NL",
-  "RU": "RU",
-  "RUSSIA": "RU",
-  "RUSSIAN FEDERATION": "RU",
-  "CN": "CN",
-  "CHINA": "CN",
-  "IN": "IN",
-  "INDIA": "IN"
-};
-function normalizeCountry(country) {
-  const upper = country.trim().toUpperCase();
-  return COMMON_COUNTRY_NAMES[upper] || upper;
-}
-function extractEmailDomain(email) {
-  const atIndex = email.indexOf("@");
-  if (atIndex === -1) return null;
-  return email.slice(atIndex + 1).toLowerCase().trim();
-}
-function loadFraudRules(shopConfig) {
-  const raw = shopConfig?.fraudRules;
-  if (!raw || typeof raw !== "object") {
-    return { ...DEFAULT_FRAUD_RULES };
-  }
-  return {
-    maxReturnsPerCustomer: typeof raw.maxReturnsPerCustomer === "number" && raw.maxReturnsPerCustomer > 0 ? raw.maxReturnsPerCustomer : DEFAULT_FRAUD_RULES.maxReturnsPerCustomer,
-    maxReturnsWindowDays: typeof raw.maxReturnsWindowDays === "number" && raw.maxReturnsWindowDays > 0 ? raw.maxReturnsWindowDays : DEFAULT_FRAUD_RULES.maxReturnsWindowDays,
-    maxValuePerReturn: typeof raw.maxValuePerReturn === "number" && raw.maxValuePerReturn > 0 ? raw.maxValuePerReturn : DEFAULT_FRAUD_RULES.maxValuePerReturn,
-    blockedCountries: Array.isArray(raw.blockedCountries) ? raw.blockedCountries : DEFAULT_FRAUD_RULES.blockedCountries,
-    suspiciousEmailDomains: Array.isArray(raw.suspiciousEmailDomains) ? raw.suspiciousEmailDomains : DEFAULT_FRAUD_RULES.suspiciousEmailDomains,
-    enabled: raw.enabled !== false
+const TTL_MS = 5 * 60 * 1e3;
+function issueConfirmationToken(secret, shop, action, returnId, args) {
+  const argsHash = crypto.createHash("sha256").update(JSON.stringify(args)).digest("hex").slice(0, 16);
+  const payload = {
+    shop,
+    action,
+    returnId,
+    argsHash,
+    issuedAt: Date.now()
   };
+  const data = JSON.stringify(payload);
+  const signature = crypto.createHmac("sha256", secret).update(data).digest("hex");
+  return Buffer.from(JSON.stringify({ data, signature })).toString("base64");
 }
-function validateFraudRules(raw) {
-  const errors = [];
-  if (raw.maxReturnsPerCustomer !== void 0 && (typeof raw.maxReturnsPerCustomer !== "number" || raw.maxReturnsPerCustomer < 1)) {
-    errors.push("Max returns per customer must be a positive number");
-  }
-  if (raw.maxReturnsWindowDays !== void 0 && (typeof raw.maxReturnsWindowDays !== "number" || raw.maxReturnsWindowDays < 1)) {
-    errors.push("Returns window must be a positive number of days");
-  }
-  if (raw.maxValuePerReturn !== void 0 && (typeof raw.maxValuePerReturn !== "number" || raw.maxValuePerReturn < 0)) {
-    errors.push("Max value per return must be a non-negative number");
-  }
-  if (raw.blockedCountries !== void 0 && !Array.isArray(raw.blockedCountries)) {
-    errors.push("Blocked countries must be a list");
-  }
-  if (raw.suspiciousEmailDomains !== void 0 && !Array.isArray(raw.suspiciousEmailDomains)) {
-    errors.push("Suspicious email domains must be a list");
-  }
-  return errors;
-}
-function evaluateFraudRules(params, rules, recentReturnCount) {
-  if (!rules.enabled) {
-    return { passed: true, triggeredRules: [], maxScore: 0 };
-  }
-  const triggered = [];
-  if (params.totalAmount > rules.maxValuePerReturn) {
-    triggered.push({
-      triggered: true,
-      rule: "max_value_per_return",
-      details: `Return value $${params.totalAmount.toFixed(2)} exceeds max $${rules.maxValuePerReturn.toFixed(2)}`,
-      score: 0.6
-    });
-  }
-  if (recentReturnCount !== null && recentReturnCount >= rules.maxReturnsPerCustomer) {
-    triggered.push({
-      triggered: true,
-      rule: "max_returns_per_customer",
-      details: `Customer has ${recentReturnCount} returns in last ${rules.maxReturnsWindowDays} days (max ${rules.maxReturnsPerCustomer})`,
-      score: 0.7
-    });
-  }
-  if (params.customerEmail && rules.suspiciousEmailDomains.length > 0) {
-    const domain = extractEmailDomain(params.customerEmail);
-    if (domain && rules.suspiciousEmailDomains.includes(domain)) {
-      triggered.push({
-        triggered: true,
-        rule: "suspicious_email_domain",
-        details: `Email domain "${domain}" is flagged as suspicious`,
-        score: 0.8
-      });
+function verifyConfirmationToken(token, secret, expectedShop, expectedAction, expectedReturnId, expectedArgs) {
+  try {
+    const decoded = JSON.parse(Buffer.from(token, "base64").toString("utf-8"));
+    const { data, signature } = decoded;
+    const expectedSig = crypto.createHmac("sha256", secret).update(data).digest("hex");
+    if (signature !== expectedSig) {
+      return { valid: false, reason: "Invalid signature" };
     }
-  }
-  if (params.customerCountry && rules.blockedCountries.length > 0) {
-    const normalized = normalizeCountry(params.customerCountry);
-    if (rules.blockedCountries.includes(normalized)) {
-      triggered.push({
-        triggered: true,
-        rule: "blocked_country",
-        details: `Country "${params.customerCountry}" is blocked`,
-        score: 1
-      });
+    const payload = JSON.parse(data);
+    if (Date.now() - payload.issuedAt > TTL_MS) {
+      return { valid: false, reason: "Token expired" };
     }
-  }
-  const maxScore = triggered.length > 0 ? Math.max(...triggered.map((t) => t.score)) : 0;
-  return {
-    passed: triggered.length === 0,
-    triggeredRules: triggered,
-    maxScore
-  };
-}
-
-const loader$c = async ({ request }) => {
-  const { session } = await shopify.authenticate.admin(request);
-  const shop = await prisma$1.shop.findUnique({ where: { shop: session.shop } });
-  const config = shop?.config || {};
-  const rules = {
-    maxReturnsPerCustomer: config.fraudRules?.maxReturnsPerCustomer ?? DEFAULT_FRAUD_RULES.maxReturnsPerCustomer,
-    maxReturnsWindowDays: config.fraudRules?.maxReturnsWindowDays ?? DEFAULT_FRAUD_RULES.maxReturnsWindowDays,
-    maxValuePerReturn: config.fraudRules?.maxValuePerReturn ?? DEFAULT_FRAUD_RULES.maxValuePerReturn,
-    blockedCountries: config.fraudRules?.blockedCountries ?? DEFAULT_FRAUD_RULES.blockedCountries,
-    suspiciousEmailDomains: config.fraudRules?.suspiciousEmailDomains ?? DEFAULT_FRAUD_RULES.suspiciousEmailDomains,
-    enabled: config.fraudRules?.enabled !== false
-  };
-  return json({ rules });
-};
-const action$9 = async ({ request }) => {
-  const { session } = await shopify.authenticate.admin(request);
-  const formData = await request.formData();
-  const _action = formData.get("_action");
-  if (_action === "save_rules") {
-    const raw = {};
-    const maxReturns = parseInt(formData.get("maxReturnsPerCustomer"), 10);
-    const windowDays = parseInt(formData.get("maxReturnsWindowDays"), 10);
-    const maxValue = parseFloat(formData.get("maxValuePerReturn"));
-    raw.maxReturnsPerCustomer = isNaN(maxReturns) ? DEFAULT_FRAUD_RULES.maxReturnsPerCustomer : maxReturns;
-    raw.maxReturnsWindowDays = isNaN(windowDays) ? DEFAULT_FRAUD_RULES.maxReturnsWindowDays : windowDays;
-    raw.maxValuePerReturn = isNaN(maxValue) ? DEFAULT_FRAUD_RULES.maxValuePerReturn : maxValue;
-    const countriesRaw = (formData.get("blockedCountries") || "").trim();
-    raw.blockedCountries = countriesRaw ? countriesRaw.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean) : [];
-    const domainsRaw = (formData.get("suspiciousEmailDomains") || "").trim();
-    raw.suspiciousEmailDomains = domainsRaw ? domainsRaw.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean) : [];
-    raw.enabled = formData.get("enabled") === "true";
-    const errors = validateFraudRules(raw);
-    if (errors.length > 0) {
-      return json({ error: errors.join("; ") }, { status: 400 });
+    if (payload.shop !== expectedShop) {
+      return { valid: false, reason: "Shop mismatch" };
     }
-    const shopRec = await prisma$1.shop.findUnique({ where: { shop: session.shop } });
-    const currentConfig = shopRec?.config || {};
-    await prisma$1.shop.update({
-      where: { shop: session.shop },
-      data: {
-        config: {
-          ...currentConfig,
-          fraudRules: raw
-        }
-      }
-    });
-    return json({ saved: true });
-  }
-  if (_action === "reset_defaults") {
-    const shopRec = await prisma$1.shop.findUnique({ where: { shop: session.shop } });
-    const currentConfig = shopRec?.config || {};
-    const { fraudRules: _, ...rest } = currentConfig;
-    await prisma$1.shop.update({
-      where: { shop: session.shop },
-      data: { config: rest }
-    });
-    return json({ reset: true });
-  }
-  return json({ ok: true });
-};
-function countriesList(rules) {
-  return (rules.blockedCountries || []).join(", ");
-}
-function domainsList(rules) {
-  return (rules.suspiciousEmailDomains || []).join(", ");
-}
-function FraudRulesPage() {
-  const { rules: initialRules } = useLoaderData();
-  const fetcher = useFetcher();
-  const [maxReturns, setMaxReturns] = useState(String(initialRules.maxReturnsPerCustomer));
-  const [windowDays, setWindowDays] = useState(String(initialRules.maxReturnsWindowDays));
-  const [maxValue, setMaxValue] = useState(String(initialRules.maxValuePerReturn));
-  const [countries, setCountries] = useState(countriesList(initialRules));
-  const [domains, setDomains] = useState(domainsList(initialRules));
-  const [enabled, setEnabled] = useState(initialRules.enabled);
-  const [countryInput, setCountryInput] = useState("");
-  const [domainInput, setDomainInput] = useState("");
-  const saved = fetcher.data?.saved === true;
-  const reset = fetcher.data?.reset === true;
-  const error = fetcher.data?.error;
-  const isSaving = fetcher.state === "submitting";
-  const countryTags = countries ? countries.split(",").map((s) => s.trim()).filter(Boolean) : [];
-  const domainTags = domains ? domains.split(",").map((s) => s.trim()).filter(Boolean) : [];
-  const addCountryTag = useCallback(() => {
-    const val = countryInput.trim().toUpperCase();
-    if (!val) return;
-    const existing = countries ? countries.split(",").map((s) => s.trim().toUpperCase()) : [];
-    if (existing.includes(val)) return;
-    const next = [...existing, val].join(", ");
-    setCountries(next);
-    setCountryInput("");
-  }, [countryInput, countries]);
-  const removeCountryTag = useCallback((tag) => {
-    const existing = countries ? countries.split(",").map((s) => s.trim()).filter(Boolean) : [];
-    const next = existing.filter((t) => t.toUpperCase() !== tag.toUpperCase()).join(", ");
-    setCountries(next);
-  }, [countries]);
-  const addDomainTag = useCallback(() => {
-    const val = domainInput.trim().toLowerCase();
-    if (!val) return;
-    const existing = domains ? domains.split(",").map((s) => s.trim().toLowerCase()) : [];
-    if (existing.includes(val)) return;
-    const next = [...existing, val].join(", ");
-    setDomains(next);
-    setDomainInput("");
-  }, [domainInput, domains]);
-  const removeDomainTag = useCallback((tag) => {
-    const existing = domains ? domains.split(",").map((s) => s.trim()).filter(Boolean) : [];
-    const next = existing.filter((t) => t.toLowerCase() !== tag.toLowerCase()).join(", ");
-    setDomains(next);
-  }, [domains]);
-  return /* @__PURE__ */ jsx(Page, { title: "Fraud Rules", children: /* @__PURE__ */ jsx(Layout, { children: /* @__PURE__ */ jsxs(Layout.Section, { children: [
-    saved && /* @__PURE__ */ jsx(Banner, { tone: "success", children: /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", children: "Fraud rules saved successfully!" }) }),
-    reset && /* @__PURE__ */ jsx(Banner, { tone: "success", children: /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", children: "Fraud rules reset to defaults." }) }),
-    error && /* @__PURE__ */ jsx(Banner, { tone: "critical", children: /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", children: error }) }),
-    /* @__PURE__ */ jsx(Card, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "400", children: [
-      /* @__PURE__ */ jsx(Text, { variant: "headingMd", as: "h2", fontWeight: "bold", children: "Custom Fraud Rules" }),
-      /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", tone: "subdued", children: "Configure advanced fraud detection rules for the AI agent. These rules are evaluated alongside built-in checks when the agent analyzes a return request. Rules that trigger will increase the risk score and may flag the return for manual review." }),
-      /* @__PURE__ */ jsxs(fetcher.Form, { method: "post", children: [
-        /* @__PURE__ */ jsx("input", { type: "hidden", name: "_action", value: "save_rules" }),
-        /* @__PURE__ */ jsx("input", { type: "hidden", name: "enabled", value: String(enabled) }),
-        /* @__PURE__ */ jsx("input", { type: "hidden", name: "blockedCountries", value: countries }),
-        /* @__PURE__ */ jsx("input", { type: "hidden", name: "suspiciousEmailDomains", value: domains }),
-        /* @__PURE__ */ jsxs(BlockStack, { gap: "400", children: [
-          /* @__PURE__ */ jsx(
-            Checkbox,
-            {
-              label: "Enable custom fraud rules",
-              checked: enabled,
-              onChange: (v) => setEnabled(v)
-            }
-          ),
-          /* @__PURE__ */ jsxs(BlockStack, { gap: "200", children: [
-            /* @__PURE__ */ jsx(Text, { variant: "headingSm", as: "h3", fontWeight: "semibold", children: "Max Returns Per Customer" }),
-            /* @__PURE__ */ jsxs(InlineStack, { gap: "200", wrap: false, children: [
-              /* @__PURE__ */ jsx("div", { style: { flex: 1 }, children: /* @__PURE__ */ jsx(
-                TextField,
-                {
-                  label: "Max returns",
-                  type: "number",
-                  name: "maxReturnsPerCustomer",
-                  value: maxReturns,
-                  onChange: setMaxReturns,
-                  autoComplete: "off",
-                  placeholder: "3"
-                }
-              ) }),
-              /* @__PURE__ */ jsx("div", { style: { flex: 1 }, children: /* @__PURE__ */ jsx(
-                TextField,
-                {
-                  label: "Within (days)",
-                  type: "number",
-                  name: "maxReturnsWindowDays",
-                  value: windowDays,
-                  onChange: setWindowDays,
-                  autoComplete: "off",
-                  placeholder: "30"
-                }
-              ) })
-            ] }),
-            /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "p", tone: "subdued", children: "Flags a customer who exceeds this many return requests within the given window." })
-          ] }),
-          /* @__PURE__ */ jsxs(BlockStack, { gap: "200", children: [
-            /* @__PURE__ */ jsx(Text, { variant: "headingSm", as: "h3", fontWeight: "semibold", children: "Max Value Per Return" }),
-            /* @__PURE__ */ jsx(
-              TextField,
-              {
-                label: "Maximum return value ($)",
-                type: "number",
-                name: "maxValuePerReturn",
-                value: maxValue,
-                onChange: setMaxValue,
-                autoComplete: "off",
-                prefix: "$",
-                placeholder: "5000"
-              }
-            ),
-            /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "p", tone: "subdued", children: "Flags a return whose total item value exceeds this amount." })
-          ] }),
-          /* @__PURE__ */ jsxs(BlockStack, { gap: "200", children: [
-            /* @__PURE__ */ jsx(Text, { variant: "headingSm", as: "h3", fontWeight: "semibold", children: "Blocked Countries" }),
-            /* @__PURE__ */ jsx(InlineStack, { gap: "200", wrap: false, children: /* @__PURE__ */ jsx("div", { style: { flex: 1 }, children: /* @__PURE__ */ jsx(
-              TextField,
-              {
-                label: "Add country code",
-                value: countryInput,
-                onChange: setCountryInput,
-                placeholder: "e.g. RU",
-                autoComplete: "off",
-                connectedRight: /* @__PURE__ */ jsx(Button, { onClick: addCountryTag, children: "Add" })
-              }
-            ) }) }),
-            /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "p", tone: "subdued", children: "Use ISO 3166-1 alpha-2 country codes (e.g. RU, KP, IR). Returns from blocked countries receive the highest risk score." }),
-            countryTags.length > 0 && /* @__PURE__ */ jsxs(BlockStack, { gap: "100", children: [
-              /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "p", tone: "subdued", children: "Blocked countries:" }),
-              /* @__PURE__ */ jsx("div", { style: { display: "flex", flexWrap: "wrap", gap: 4 }, children: countryTags.map((tag) => /* @__PURE__ */ jsx(Tag, { onRemove: () => removeCountryTag(tag), children: tag }, tag)) })
-            ] })
-          ] }),
-          /* @__PURE__ */ jsxs(BlockStack, { gap: "200", children: [
-            /* @__PURE__ */ jsx(Text, { variant: "headingSm", as: "h3", fontWeight: "semibold", children: "Suspicious Email Domains" }),
-            /* @__PURE__ */ jsx(InlineStack, { gap: "200", wrap: false, children: /* @__PURE__ */ jsx("div", { style: { flex: 1 }, children: /* @__PURE__ */ jsx(
-              TextField,
-              {
-                label: "Add domain",
-                value: domainInput,
-                onChange: setDomainInput,
-                placeholder: "e.g. tempmail.com",
-                autoComplete: "off",
-                connectedRight: /* @__PURE__ */ jsx(Button, { onClick: addDomainTag, children: "Add" })
-              }
-            ) }) }),
-            /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "p", tone: "subdued", children: "Disposable or temporary email domains. Returns using these domains get a high risk score." }),
-            domainTags.length > 0 && /* @__PURE__ */ jsxs(BlockStack, { gap: "100", children: [
-              /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "p", tone: "subdued", children: "Flagged domains:" }),
-              /* @__PURE__ */ jsx("div", { style: { display: "flex", flexWrap: "wrap", gap: 4 }, children: domainTags.map((tag) => /* @__PURE__ */ jsx(Tag, { onRemove: () => removeDomainTag(tag), children: tag }, tag)) })
-            ] })
-          ] }),
-          /* @__PURE__ */ jsxs(InlineStack, { gap: "200", children: [
-            /* @__PURE__ */ jsx(Button, { submit: true, variant: "primary", loading: isSaving, disabled: isSaving, children: "Save Rules" }),
-            /* @__PURE__ */ jsx(
-              Button,
-              {
-                variant: "secondary",
-                onClick: () => {
-                  if (window.confirm("Reset all fraud rules to defaults? This cannot be undone.")) {
-                    fetcher.submit({ _action: "reset_defaults" }, { method: "post" });
-                  }
-                },
-                children: "Reset to Defaults"
-              }
-            )
-          ] })
-        ] })
-      ] })
-    ] }) }),
-    /* @__PURE__ */ jsx(Card, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "200", children: [
-      /* @__PURE__ */ jsx(Text, { variant: "headingMd", as: "h2", fontWeight: "bold", children: "How Fraud Rules Work" }),
-      /* @__PURE__ */ jsxs(Text, { variant: "bodyMd", as: "p", children: [
-        "When the AI agent runs ",
-        /* @__PURE__ */ jsx("code", { children: "check_fraud" }),
-        " on a return request, these custom rules are evaluated alongside the built-in checks (high-value anomaly, frequent returner pattern)."
-      ] }),
-      /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", children: "Each rule contributes a risk score (0–1). The highest score among all triggered rules determines the overall risk level:" }),
-      /* @__PURE__ */ jsxs(BlockStack, { gap: "100", children: [
-        /* @__PURE__ */ jsxs(Text, { variant: "bodySm", as: "p", children: [
-          /* @__PURE__ */ jsx("strong", { children: "≤ 0.2" }),
-          " → Low risk (auto-approved by default)"
-        ] }),
-        /* @__PURE__ */ jsxs(Text, { variant: "bodySm", as: "p", children: [
-          /* @__PURE__ */ jsx("strong", { children: "0.2 – 0.5" }),
-          " → Medium risk (flagged for review)"
-        ] }),
-        /* @__PURE__ */ jsxs(Text, { variant: "bodySm", as: "p", children: [
-          /* @__PURE__ */ jsx("strong", { children: "> 0.5" }),
-          " → High risk (flagged for review)"
-        ] })
-      ] }),
-      /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "p", tone: "subdued", children: "Default blocked countries and suspicious domains are pre-populated when no custom configuration exists. Customizing overrides the defaults." })
-    ] }) })
-  ] }) }) });
-}
-
-const route5 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
-  __proto__: null,
-  action: action$9,
-  default: FraudRulesPage,
-  loader: loader$c
-}, Symbol.toStringTag, { value: 'Module' }));
-
-const STATUS_COLORS$2 = {
-  PENDING: "warning",
-  APPROVED: "success",
-  DENIED: "critical",
-  EXCHANGE: "info",
-  SHIPPED: "info",
-  REFUNDED: "success",
-  CLOSED: "new"
-};
-const loader$b = async ({ request }) => {
-  const { session } = await shopify.authenticate.admin(request);
-  const url = new URL(request.url);
-  const status = url.searchParams.get("status") || void 0;
-  const where = { shop: session.shop };
-  if (status) where.status = status;
-  const returns = await prisma$1.returnRequest.findMany({
-    where,
-    orderBy: { createdAt: "desc" },
-    take: 50
-  });
-  const counts = await prisma$1.returnRequest.groupBy({
-    by: ["status"],
-    where: { shop: session.shop },
-    _count: true
-  });
-  const countMap = {};
-  counts.forEach((c) => {
-    countMap[c.status] = c._count;
-  });
-  return json({ returns, counts: countMap, currentStatus: status || "all" });
-};
-function statusBadge$2(status) {
-  return {
-    children: status.charAt(0) + status.slice(1).toLowerCase(),
-    tone: STATUS_COLORS$2[status] || "info"
-  };
-}
-function ReturnsPage() {
-  const { returns, counts, currentStatus } = useLoaderData();
-  const navigate = useNavigate();
-  const totalCount = Object.values(counts).reduce((a, b) => a + b, 0);
-  const rowMarkup = returns.map(
-    ({ id, orderName, customerName, status, createdAt }, index) => {
-      const badge = statusBadge$2(status);
-      const isPending = status === "PENDING";
-      return /* @__PURE__ */ jsxs(
-        IndexTable.Row,
-        {
-          id,
-          position: index,
-          onClick: () => navigate(`/returns/${id}`),
-          children: [
-            /* @__PURE__ */ jsx(IndexTable.Cell, { children: /* @__PURE__ */ jsx(Link$1, { url: `/returns/${id}`, onClick: (e) => {
-              e.stopPropagation();
-              navigate(`/returns/${id}`);
-            }, children: orderName || "—" }) }),
-            /* @__PURE__ */ jsx(IndexTable.Cell, { children: customerName || "—" }),
-            /* @__PURE__ */ jsx(IndexTable.Cell, { children: /* @__PURE__ */ jsx(Badge, { tone: badge.tone, children: badge.children }) }),
-            /* @__PURE__ */ jsx(IndexTable.Cell, { children: new Date(createdAt).toLocaleDateString() }),
-            /* @__PURE__ */ jsx(IndexTable.Cell, { children: /* @__PURE__ */ jsxs(InlineStack, { gap: "100", children: [
-              /* @__PURE__ */ jsx(Button, { size: "micro", onClick: (e) => {
-                e.stopPropagation();
-                navigate(`/returns/${id}`);
-              }, children: "View" }),
-              isPending && /* @__PURE__ */ jsxs(Fragment, { children: [
-                /* @__PURE__ */ jsx(Button, { size: "micro", variant: "primary", tone: "success", onClick: (e) => {
-                  e.stopPropagation();
-                  navigate(`/returns/${id}`);
-                }, children: "Approve" }),
-                /* @__PURE__ */ jsx(Button, { size: "micro", tone: "critical", onClick: (e) => {
-                  e.stopPropagation();
-                  navigate(`/returns/${id}`);
-                }, children: "Deny" })
-              ] })
-            ] }) })
-          ]
-        },
-        id
-      );
+    if (payload.action !== expectedAction) {
+      return { valid: false, reason: "Action mismatch" };
     }
-  );
-  return /* @__PURE__ */ jsx(Page, { title: "Returns", children: /* @__PURE__ */ jsx(Layout, { children: /* @__PURE__ */ jsx(Layout.Section, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "400", children: [
-    /* @__PURE__ */ jsx("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 12 }, children: [
-      { label: "All", count: totalCount, key: "all", color: "#5c6ac4" },
-      { label: "Pending", count: counts.PENDING || 0, key: "PENDING", color: "#ecc134" },
-      { label: "Approved", count: counts.APPROVED || 0, key: "APPROVED", color: "#50b83c" },
-      { label: "Denied", count: counts.DENIED || 0, key: "DENIED", color: "#de3617" },
-      { label: "Refunded", count: counts.REFUNDED || 0, key: "REFUNDED", color: "#47c1bf" }
-    ].map(({ label, count, key, color }) => /* @__PURE__ */ jsx(Card, { children: /* @__PURE__ */ jsxs(
-      "div",
-      {
-        style: {
-          cursor: "pointer",
-          borderLeft: `3px solid ${color}`,
-          paddingLeft: 8,
-          opacity: currentStatus === key ? 1 : 0.7
-        },
-        onClick: () => {
-          const params = new URLSearchParams(window.location.search);
-          if (key === "all") params.delete("status");
-          else params.set("status", key);
-          window.location.search = params.toString();
-        },
-        children: [
-          /* @__PURE__ */ jsx(Text, { variant: "headingXl", as: "p", fontWeight: "bold", children: count }),
-          /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "span", tone: "subdued", children: label })
-        ]
-      }
-    ) }, key)) }),
-    /* @__PURE__ */ jsx(Card, { children: returns.length === 0 ? /* @__PURE__ */ jsx(
-      EmptyState,
-      {
-        heading: "No returns yet",
-        image: "",
-        children: /* @__PURE__ */ jsx("p", { children: "Returns will appear here when customers submit them or when orders are fulfilled." })
-      }
-    ) : /* @__PURE__ */ jsx(
-      IndexTable,
-      {
-        resourceName: { singular: "return", plural: "returns" },
-        itemCount: returns.length,
-        headings: [
-          { title: "Order" },
-          { title: "Customer" },
-          { title: "Status" },
-          { title: "Date" },
-          { title: "Actions" }
-        ],
-        children: rowMarkup
-      }
-    ) })
-  ] }) }) }) });
+    if (payload.returnId !== expectedReturnId) {
+      return { valid: false, reason: "Return ID mismatch" };
+    }
+    const cleanArgs = { ...expectedArgs };
+    delete cleanArgs.confirmationToken;
+    const argsHash = crypto.createHash("sha256").update(JSON.stringify(cleanArgs)).digest("hex").slice(0, 16);
+    if (payload.argsHash !== argsHash) {
+      return { valid: false, reason: "Arguments mismatch" };
+    }
+    return { valid: true };
+  } catch {
+    return { valid: false, reason: "Invalid token format" };
+  }
 }
-
-const route6 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
-  __proto__: null,
-  default: ReturnsPage,
-  loader: loader$b
-}, Symbol.toStringTag, { value: 'Module' }));
+const CONFIRMATION_TOOL = {
+  name: "issue_confirmation_token",
+  description: "Issue a confirmation token for a destructive operation (approve/deny return). The agent must first call this tool, then include the returned token in the actual approve_return or deny_return call. Token expires in 5 minutes.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      action: {
+        type: "string",
+        enum: ["approve_return", "deny_return"],
+        description: "The action to confirm"
+      },
+      returnId: {
+        type: "string",
+        description: "The return request UUID"
+      },
+      args: {
+        type: "object",
+        description: "The arguments that will be passed to the action"
+      }
+    },
+    required: ["action", "returnId", "args"]
+  }
+};
 
 const API_VERSION = process.env.SHOPIFY_API_VERSION || "2024-10";
 async function shopifyAdminQuery(shop, accessToken, query, variables, idempotencyKey) {
@@ -1071,6 +569,760 @@ async function createStoreCredit(shop, accessToken, amount, customerEmail, reaso
   return { discountCode, discountId: discountNode?.id || null };
 }
 
+const RELAY_URL = process.env.MAIL_RELAY_URL || "http://localhost:8787/send";
+const RELAY_KEY = process.env.MAIL_RELAY_KEY || "";
+process.env.EMAIL_FROM || "Shopigent Returns <returns@shopigent.com>";
+async function sendEmail(payload) {
+  if (!RELAY_KEY) {
+    console.log("[email] No MAIL_RELAY_KEY configured, skipping");
+    return false;
+  }
+  try {
+    const response = await fetch(RELAY_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-relay-key": RELAY_KEY
+      },
+      body: JSON.stringify({
+        to: payload.to,
+        subject: payload.subject,
+        text: payload.html.replace(/<[^>]*>/g, ""),
+        // strip HTML for plain text fallback
+        html: payload.html
+      }),
+      signal: AbortSignal.timeout(15e3)
+    });
+    if (!response.ok) {
+      console.error(`[email] Relay failed: ${response.status}`);
+      return false;
+    }
+    console.log(`[email] Sent to ${payload.to}: ${payload.subject}`);
+    return true;
+  } catch (err) {
+    console.error(`[email] Error: ${err.message}`);
+    return false;
+  }
+}
+function returnApprovedEmail(customerName, orderName, refundAmount) {
+  const refundLine = refundAmount ? `<p>Refund amount: <strong>$${refundAmount.toFixed(2)}</strong></p>` : "";
+  return {
+    to: "",
+    subject: `Return Approved — ${orderName}`,
+    html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
+      <h2 style="color:#50b83c">✅ Return Approved</h2>
+      <p>Hi ${customerName},</p>
+      <p>Your return for order <strong>${orderName}</strong> has been approved!</p>
+      ${refundLine}
+      <p>Your refund will be processed within 3-5 business days.</p>
+      <hr><p style="color:#666;font-size:12px">Shopigent Returns — AI-powered return management</p>
+    </div>`
+  };
+}
+function returnDeniedEmail(customerName, orderName, reason) {
+  return {
+    to: "",
+    subject: `Return Update — ${orderName}`,
+    html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
+      <h2 style="color:#de3617">Return Update</h2>
+      <p>Hi ${customerName},</p>
+      <p>After reviewing your return request for order <strong>${orderName}</strong>, we're unable to approve it.</p>
+      <p><strong>Reason:</strong> ${reason}</p>
+      <p>If you have questions, please contact support.</p>
+      <hr><p style="color:#666;font-size:12px">Shopigent Returns — AI-powered return management</p>
+    </div>`
+  };
+}
+function storeCreditProcessedEmail(customerName, orderName, amount, discountCode) {
+  return {
+    to: "",
+    subject: `Store Credit Issued — ${orderName}`,
+    html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
+      <h2 style="color:#47c1bf">🎉 Store Credit Issued</h2>
+      <p>Hi ${customerName},</p>
+      <p>Your store credit of <strong>$${amount.toFixed(2)}</strong> for order <strong>${orderName}</strong> has been issued.</p>
+      <p>Use code <strong>${discountCode}</strong> on your next purchase.</p>
+      <p>The code expires in 1 year.</p>
+      <hr><p style="color:#666;font-size:12px">Shopigent Returns — AI-powered return management</p>
+    </div>`
+  };
+}
+function refundProcessedEmail(customerName, orderName, amount) {
+  return {
+    to: "",
+    subject: `Refund Processed — ${orderName}`,
+    html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
+      <h2 style="color:#47c1bf">💰 Refund Processed</h2>
+      <p>Hi ${customerName},</p>
+      <p>Your refund of <strong>$${amount.toFixed(2)}</strong> for order <strong>${orderName}</strong> has been processed.</p>
+      <p>The refund will appear on your payment method within 3-5 business days.</p>
+      <hr><p style="color:#666;font-size:12px">Shopigent Returns — AI-powered return management</p>
+    </div>`
+  };
+}
+
+const action$c = async ({ request }) => {
+  const authHeader = request.headers.get("authorization");
+  const body = await request.json().catch(() => ({}));
+  let shop = null;
+  if (authHeader?.startsWith("Bearer ")) {
+    const key = authHeader.slice(7);
+    const hash = crypto.createHash("sha256").update(key).digest("hex");
+    const shopRec = await prisma$1.shop.findFirst({ where: { mcpApiKeyHash: hash } });
+    if (!shopRec) return json({ error: "Unauthorized" }, { status: 401 });
+    shop = shopRec.shop;
+  } else {
+    try {
+      const { session } = await requireShopifyAuth(request);
+      shop = session.shop;
+    } catch {
+      return json({ error: "Unauthorized" }, { status: 401 });
+    }
+  }
+  const { action: action2, returnId, confirmationToken } = body;
+  if (!action2 || !returnId) {
+    return json({ error: "Missing action or returnId" }, { status: 400 });
+  }
+  const returnReq = await prisma$1.returnRequest.findFirst({
+    where: { id: returnId, shop }
+  });
+  if (!returnReq) return json({ error: "Return not found" }, { status: 404 });
+  if (returnReq.status !== "PENDING") {
+    return json({ error: `Return is already ${returnReq.status}` }, { status: 400 });
+  }
+  if (action2 === "issue_token") {
+    const secret = process.env.CONFIRMATION_TOKEN_SECRET;
+    if (!secret) return json({ error: "Confirmation not configured" }, { status: 500 });
+    const token = issueConfirmationToken(secret, shop, body.targetAction || "approve_return", returnId, { returnId });
+    return json({ token, expiresInMs: 3e5 });
+  }
+  if (action2 === "approve") {
+    const secret = process.env.CONFIRMATION_TOKEN_SECRET;
+    if (!secret) return json({ error: "Confirmation not configured" }, { status: 500 });
+    if (!confirmationToken) return json({ error: "Use issue_token first, then approve with the token" }, { status: 400 });
+    const check = verifyConfirmationToken(confirmationToken, secret, shop, "approve_return", returnId, { returnId });
+    if (!check.valid) return json({ error: `Confirmation failed: ${check.reason}` }, { status: 400 });
+    const claim = await prisma$1.returnRequest.updateMany({
+      where: { id: returnId, status: "PENDING" },
+      data: { status: "APPROVED", decidedBy: "admin", decidedAt: /* @__PURE__ */ new Date() }
+    });
+    if (claim.count === 0) return json({ error: "Return already processed" }, { status: 400 });
+    const session = await prisma$1.session.findFirst({ where: { shop, isOnline: false } });
+    if (session?.accessToken) {
+      try {
+        const items = returnReq.items;
+        const total = items.reduce((s, i) => s + parseFloat(i.price || "0") * (i.quantity || 0), 0);
+        await executeRefund(shop, session.accessToken, returnReq.orderId, total, true);
+      } catch {
+      }
+    }
+    await prisma$1.decisionLog.create({
+      data: { returnId, actor: "admin", action: "approve", details: { source: "list_button" } }
+    });
+    if (returnReq.customerEmail && returnReq.customerName) {
+      sendEmail({ ...returnApprovedEmail(returnReq.customerName, returnReq.orderName || ""), to: returnReq.customerEmail });
+    }
+    return json({ success: true, message: "Return approved" });
+  }
+  if (action2 === "deny") {
+    const secret = process.env.CONFIRMATION_TOKEN_SECRET;
+    if (!secret) return json({ error: "Confirmation not configured" }, { status: 500 });
+    if (!confirmationToken) return json({ error: "Use issue_token first, then deny with the token" }, { status: 400 });
+    const check = verifyConfirmationToken(confirmationToken, secret, shop, "deny_return", returnId, { returnId });
+    if (!check.valid) return json({ error: `Confirmation failed: ${check.reason}` }, { status: 400 });
+    const claim = await prisma$1.returnRequest.updateMany({
+      where: { id: returnId, status: "PENDING" },
+      data: { status: "DENIED", decidedBy: "admin", decidedAt: /* @__PURE__ */ new Date(), notes: "Denied by store admin" }
+    });
+    if (claim.count === 0) return json({ error: "Return already processed" }, { status: 400 });
+    await prisma$1.decisionLog.create({
+      data: { returnId, actor: "admin", action: "deny", details: { source: "list_button" } }
+    });
+    if (returnReq.customerEmail && returnReq.customerName) {
+      sendEmail({ ...returnDeniedEmail(returnReq.customerName, returnReq.orderName || "", "Denied by store admin"), to: returnReq.customerEmail });
+    }
+    return json({ success: true, message: "Return denied" });
+  }
+  return json({ error: "Unknown action" }, { status: 400 });
+};
+
+const route4 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+  __proto__: null,
+  action: action$c
+}, Symbol.toStringTag, { value: 'Module' }));
+
+const loader$d = async ({ request }) => {
+  return json({ message: "Send POST to upgrade" });
+};
+const action$b = async ({ request }) => {
+  const authHeader = request.headers.get("authorization");
+  const key = authHeader?.slice(7);
+  const hash = crypto.createHash("sha256").update(key || "").digest("hex");
+  const authedShop = await prisma$1.shop.findFirst({ where: { mcpApiKeyHash: hash } });
+  if (!authedShop) {
+    return json({ error: "Invalid API key" }, { status: 401 });
+  }
+  const url = new URL(request.url);
+  const targetShop = url.searchParams.get("shop") || authedShop.shop;
+  await prisma$1.shop.upsert({
+    where: { shop: targetShop },
+    update: { planName: "pro" },
+    create: { id: targetShop, shop: targetShop, planName: "pro" }
+  });
+  return json({ ok: true, shop: targetShop, plan: "pro", upgradedBy: authedShop.shop });
+};
+
+const route5 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+  __proto__: null,
+  action: action$b,
+  loader: loader$d
+}, Symbol.toStringTag, { value: 'Module' }));
+
+const DEFAULT_FRAUD_RULES = {
+  maxReturnsPerCustomer: 3,
+  maxReturnsWindowDays: 30,
+  maxValuePerReturn: 5e3,
+  blockedCountries: [],
+  suspiciousEmailDomains: [
+    "mailinator.com",
+    "guerrillamail.com",
+    "10minutemail.com",
+    "tempmail.com",
+    "throwaway.email",
+    "sharklasers.com",
+    "yopmail.com",
+    "trashmail.com"
+  ],
+  enabled: true
+};
+const COMMON_COUNTRY_NAMES = {
+  "US": "US",
+  "USA": "US",
+  "UNITED STATES": "US",
+  "AMERICA": "US",
+  "GB": "GB",
+  "UK": "GB",
+  "UNITED KINGDOM": "GB",
+  "CA": "CA",
+  "CANADA": "CA",
+  "AU": "AU",
+  "AUSTRALIA": "AU",
+  "DE": "DE",
+  "GERMANY": "DE",
+  "FR": "FR",
+  "FRANCE": "FR",
+  "NL": "NL",
+  "NETHERLANDS": "NL",
+  "RU": "RU",
+  "RUSSIA": "RU",
+  "RUSSIAN FEDERATION": "RU",
+  "CN": "CN",
+  "CHINA": "CN",
+  "IN": "IN",
+  "INDIA": "IN"
+};
+function normalizeCountry(country) {
+  const upper = country.trim().toUpperCase();
+  return COMMON_COUNTRY_NAMES[upper] || upper;
+}
+function extractEmailDomain(email) {
+  const atIndex = email.indexOf("@");
+  if (atIndex === -1) return null;
+  return email.slice(atIndex + 1).toLowerCase().trim();
+}
+function loadFraudRules(shopConfig) {
+  const raw = shopConfig?.fraudRules;
+  if (!raw || typeof raw !== "object") {
+    return { ...DEFAULT_FRAUD_RULES };
+  }
+  return {
+    maxReturnsPerCustomer: typeof raw.maxReturnsPerCustomer === "number" && raw.maxReturnsPerCustomer > 0 ? raw.maxReturnsPerCustomer : DEFAULT_FRAUD_RULES.maxReturnsPerCustomer,
+    maxReturnsWindowDays: typeof raw.maxReturnsWindowDays === "number" && raw.maxReturnsWindowDays > 0 ? raw.maxReturnsWindowDays : DEFAULT_FRAUD_RULES.maxReturnsWindowDays,
+    maxValuePerReturn: typeof raw.maxValuePerReturn === "number" && raw.maxValuePerReturn > 0 ? raw.maxValuePerReturn : DEFAULT_FRAUD_RULES.maxValuePerReturn,
+    blockedCountries: Array.isArray(raw.blockedCountries) ? raw.blockedCountries : DEFAULT_FRAUD_RULES.blockedCountries,
+    suspiciousEmailDomains: Array.isArray(raw.suspiciousEmailDomains) ? raw.suspiciousEmailDomains : DEFAULT_FRAUD_RULES.suspiciousEmailDomains,
+    enabled: raw.enabled !== false
+  };
+}
+function validateFraudRules(raw) {
+  const errors = [];
+  if (raw.maxReturnsPerCustomer !== void 0 && (typeof raw.maxReturnsPerCustomer !== "number" || raw.maxReturnsPerCustomer < 1)) {
+    errors.push("Max returns per customer must be a positive number");
+  }
+  if (raw.maxReturnsWindowDays !== void 0 && (typeof raw.maxReturnsWindowDays !== "number" || raw.maxReturnsWindowDays < 1)) {
+    errors.push("Returns window must be a positive number of days");
+  }
+  if (raw.maxValuePerReturn !== void 0 && (typeof raw.maxValuePerReturn !== "number" || raw.maxValuePerReturn < 0)) {
+    errors.push("Max value per return must be a non-negative number");
+  }
+  if (raw.blockedCountries !== void 0 && !Array.isArray(raw.blockedCountries)) {
+    errors.push("Blocked countries must be a list");
+  }
+  if (raw.suspiciousEmailDomains !== void 0 && !Array.isArray(raw.suspiciousEmailDomains)) {
+    errors.push("Suspicious email domains must be a list");
+  }
+  return errors;
+}
+function evaluateFraudRules(params, rules, recentReturnCount) {
+  if (!rules.enabled) {
+    return { passed: true, triggeredRules: [], maxScore: 0 };
+  }
+  const triggered = [];
+  if (params.totalAmount > rules.maxValuePerReturn) {
+    triggered.push({
+      triggered: true,
+      rule: "max_value_per_return",
+      details: `Return value $${params.totalAmount.toFixed(2)} exceeds max $${rules.maxValuePerReturn.toFixed(2)}`,
+      score: 0.6
+    });
+  }
+  if (recentReturnCount !== null && recentReturnCount >= rules.maxReturnsPerCustomer) {
+    triggered.push({
+      triggered: true,
+      rule: "max_returns_per_customer",
+      details: `Customer has ${recentReturnCount} returns in last ${rules.maxReturnsWindowDays} days (max ${rules.maxReturnsPerCustomer})`,
+      score: 0.7
+    });
+  }
+  if (params.customerEmail && rules.suspiciousEmailDomains.length > 0) {
+    const domain = extractEmailDomain(params.customerEmail);
+    if (domain && rules.suspiciousEmailDomains.includes(domain)) {
+      triggered.push({
+        triggered: true,
+        rule: "suspicious_email_domain",
+        details: `Email domain "${domain}" is flagged as suspicious`,
+        score: 0.8
+      });
+    }
+  }
+  if (params.customerCountry && rules.blockedCountries.length > 0) {
+    const normalized = normalizeCountry(params.customerCountry);
+    if (rules.blockedCountries.includes(normalized)) {
+      triggered.push({
+        triggered: true,
+        rule: "blocked_country",
+        details: `Country "${params.customerCountry}" is blocked`,
+        score: 1
+      });
+    }
+  }
+  const maxScore = triggered.length > 0 ? Math.max(...triggered.map((t) => t.score)) : 0;
+  return {
+    passed: triggered.length === 0,
+    triggeredRules: triggered,
+    maxScore
+  };
+}
+
+const loader$c = async ({ request }) => {
+  const { session } = await shopify.authenticate.admin(request);
+  const shop = await prisma$1.shop.findUnique({ where: { shop: session.shop } });
+  const config = shop?.config || {};
+  const rules = {
+    maxReturnsPerCustomer: config.fraudRules?.maxReturnsPerCustomer ?? DEFAULT_FRAUD_RULES.maxReturnsPerCustomer,
+    maxReturnsWindowDays: config.fraudRules?.maxReturnsWindowDays ?? DEFAULT_FRAUD_RULES.maxReturnsWindowDays,
+    maxValuePerReturn: config.fraudRules?.maxValuePerReturn ?? DEFAULT_FRAUD_RULES.maxValuePerReturn,
+    blockedCountries: config.fraudRules?.blockedCountries ?? DEFAULT_FRAUD_RULES.blockedCountries,
+    suspiciousEmailDomains: config.fraudRules?.suspiciousEmailDomains ?? DEFAULT_FRAUD_RULES.suspiciousEmailDomains,
+    enabled: config.fraudRules?.enabled !== false
+  };
+  return json({ rules });
+};
+const action$a = async ({ request }) => {
+  const { session } = await shopify.authenticate.admin(request);
+  const formData = await request.formData();
+  const _action = formData.get("_action");
+  if (_action === "save_rules") {
+    const raw = {};
+    const maxReturns = parseInt(formData.get("maxReturnsPerCustomer"), 10);
+    const windowDays = parseInt(formData.get("maxReturnsWindowDays"), 10);
+    const maxValue = parseFloat(formData.get("maxValuePerReturn"));
+    raw.maxReturnsPerCustomer = isNaN(maxReturns) ? DEFAULT_FRAUD_RULES.maxReturnsPerCustomer : maxReturns;
+    raw.maxReturnsWindowDays = isNaN(windowDays) ? DEFAULT_FRAUD_RULES.maxReturnsWindowDays : windowDays;
+    raw.maxValuePerReturn = isNaN(maxValue) ? DEFAULT_FRAUD_RULES.maxValuePerReturn : maxValue;
+    const countriesRaw = (formData.get("blockedCountries") || "").trim();
+    raw.blockedCountries = countriesRaw ? countriesRaw.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean) : [];
+    const domainsRaw = (formData.get("suspiciousEmailDomains") || "").trim();
+    raw.suspiciousEmailDomains = domainsRaw ? domainsRaw.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean) : [];
+    raw.enabled = formData.get("enabled") === "true";
+    const errors = validateFraudRules(raw);
+    if (errors.length > 0) {
+      return json({ error: errors.join("; ") }, { status: 400 });
+    }
+    const shopRec = await prisma$1.shop.findUnique({ where: { shop: session.shop } });
+    const currentConfig = shopRec?.config || {};
+    await prisma$1.shop.update({
+      where: { shop: session.shop },
+      data: {
+        config: {
+          ...currentConfig,
+          fraudRules: raw
+        }
+      }
+    });
+    return json({ saved: true });
+  }
+  if (_action === "reset_defaults") {
+    const shopRec = await prisma$1.shop.findUnique({ where: { shop: session.shop } });
+    const currentConfig = shopRec?.config || {};
+    const { fraudRules: _, ...rest } = currentConfig;
+    await prisma$1.shop.update({
+      where: { shop: session.shop },
+      data: { config: rest }
+    });
+    return json({ reset: true });
+  }
+  return json({ ok: true });
+};
+function countriesList(rules) {
+  return (rules.blockedCountries || []).join(", ");
+}
+function domainsList(rules) {
+  return (rules.suspiciousEmailDomains || []).join(", ");
+}
+function FraudRulesPage() {
+  const { rules: initialRules } = useLoaderData();
+  const fetcher = useFetcher();
+  const [maxReturns, setMaxReturns] = useState(String(initialRules.maxReturnsPerCustomer));
+  const [windowDays, setWindowDays] = useState(String(initialRules.maxReturnsWindowDays));
+  const [maxValue, setMaxValue] = useState(String(initialRules.maxValuePerReturn));
+  const [countries, setCountries] = useState(countriesList(initialRules));
+  const [domains, setDomains] = useState(domainsList(initialRules));
+  const [enabled, setEnabled] = useState(initialRules.enabled);
+  const [countryInput, setCountryInput] = useState("");
+  const [domainInput, setDomainInput] = useState("");
+  const saved = fetcher.data?.saved === true;
+  const reset = fetcher.data?.reset === true;
+  const error = fetcher.data?.error;
+  const isSaving = fetcher.state === "submitting";
+  const countryTags = countries ? countries.split(",").map((s) => s.trim()).filter(Boolean) : [];
+  const domainTags = domains ? domains.split(",").map((s) => s.trim()).filter(Boolean) : [];
+  const addCountryTag = useCallback(() => {
+    const val = countryInput.trim().toUpperCase();
+    if (!val) return;
+    const existing = countries ? countries.split(",").map((s) => s.trim().toUpperCase()) : [];
+    if (existing.includes(val)) return;
+    const next = [...existing, val].join(", ");
+    setCountries(next);
+    setCountryInput("");
+  }, [countryInput, countries]);
+  const removeCountryTag = useCallback((tag) => {
+    const existing = countries ? countries.split(",").map((s) => s.trim()).filter(Boolean) : [];
+    const next = existing.filter((t) => t.toUpperCase() !== tag.toUpperCase()).join(", ");
+    setCountries(next);
+  }, [countries]);
+  const addDomainTag = useCallback(() => {
+    const val = domainInput.trim().toLowerCase();
+    if (!val) return;
+    const existing = domains ? domains.split(",").map((s) => s.trim().toLowerCase()) : [];
+    if (existing.includes(val)) return;
+    const next = [...existing, val].join(", ");
+    setDomains(next);
+    setDomainInput("");
+  }, [domainInput, domains]);
+  const removeDomainTag = useCallback((tag) => {
+    const existing = domains ? domains.split(",").map((s) => s.trim()).filter(Boolean) : [];
+    const next = existing.filter((t) => t.toLowerCase() !== tag.toLowerCase()).join(", ");
+    setDomains(next);
+  }, [domains]);
+  return /* @__PURE__ */ jsx(Page, { title: "Fraud Rules", children: /* @__PURE__ */ jsx(Layout, { children: /* @__PURE__ */ jsxs(Layout.Section, { children: [
+    saved && /* @__PURE__ */ jsx(Banner, { tone: "success", children: /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", children: "Fraud rules saved successfully!" }) }),
+    reset && /* @__PURE__ */ jsx(Banner, { tone: "success", children: /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", children: "Fraud rules reset to defaults." }) }),
+    error && /* @__PURE__ */ jsx(Banner, { tone: "critical", children: /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", children: error }) }),
+    /* @__PURE__ */ jsx(Card, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "400", children: [
+      /* @__PURE__ */ jsx(Text, { variant: "headingMd", as: "h2", fontWeight: "bold", children: "Custom Fraud Rules" }),
+      /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", tone: "subdued", children: "Configure advanced fraud detection rules for the AI agent. These rules are evaluated alongside built-in checks when the agent analyzes a return request. Rules that trigger will increase the risk score and may flag the return for manual review." }),
+      /* @__PURE__ */ jsxs(fetcher.Form, { method: "post", children: [
+        /* @__PURE__ */ jsx("input", { type: "hidden", name: "_action", value: "save_rules" }),
+        /* @__PURE__ */ jsx("input", { type: "hidden", name: "enabled", value: String(enabled) }),
+        /* @__PURE__ */ jsx("input", { type: "hidden", name: "blockedCountries", value: countries }),
+        /* @__PURE__ */ jsx("input", { type: "hidden", name: "suspiciousEmailDomains", value: domains }),
+        /* @__PURE__ */ jsxs(BlockStack, { gap: "400", children: [
+          /* @__PURE__ */ jsx(
+            Checkbox,
+            {
+              label: "Enable custom fraud rules",
+              checked: enabled,
+              onChange: (v) => setEnabled(v)
+            }
+          ),
+          /* @__PURE__ */ jsxs(BlockStack, { gap: "200", children: [
+            /* @__PURE__ */ jsx(Text, { variant: "headingSm", as: "h3", fontWeight: "semibold", children: "Max Returns Per Customer" }),
+            /* @__PURE__ */ jsxs(InlineStack, { gap: "200", wrap: false, children: [
+              /* @__PURE__ */ jsx("div", { style: { flex: 1 }, children: /* @__PURE__ */ jsx(
+                TextField,
+                {
+                  label: "Max returns",
+                  type: "number",
+                  name: "maxReturnsPerCustomer",
+                  value: maxReturns,
+                  onChange: setMaxReturns,
+                  autoComplete: "off",
+                  placeholder: "3"
+                }
+              ) }),
+              /* @__PURE__ */ jsx("div", { style: { flex: 1 }, children: /* @__PURE__ */ jsx(
+                TextField,
+                {
+                  label: "Within (days)",
+                  type: "number",
+                  name: "maxReturnsWindowDays",
+                  value: windowDays,
+                  onChange: setWindowDays,
+                  autoComplete: "off",
+                  placeholder: "30"
+                }
+              ) })
+            ] }),
+            /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "p", tone: "subdued", children: "Flags a customer who exceeds this many return requests within the given window." })
+          ] }),
+          /* @__PURE__ */ jsxs(BlockStack, { gap: "200", children: [
+            /* @__PURE__ */ jsx(Text, { variant: "headingSm", as: "h3", fontWeight: "semibold", children: "Max Value Per Return" }),
+            /* @__PURE__ */ jsx(
+              TextField,
+              {
+                label: "Maximum return value ($)",
+                type: "number",
+                name: "maxValuePerReturn",
+                value: maxValue,
+                onChange: setMaxValue,
+                autoComplete: "off",
+                prefix: "$",
+                placeholder: "5000"
+              }
+            ),
+            /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "p", tone: "subdued", children: "Flags a return whose total item value exceeds this amount." })
+          ] }),
+          /* @__PURE__ */ jsxs(BlockStack, { gap: "200", children: [
+            /* @__PURE__ */ jsx(Text, { variant: "headingSm", as: "h3", fontWeight: "semibold", children: "Blocked Countries" }),
+            /* @__PURE__ */ jsx(InlineStack, { gap: "200", wrap: false, children: /* @__PURE__ */ jsx("div", { style: { flex: 1 }, children: /* @__PURE__ */ jsx(
+              TextField,
+              {
+                label: "Add country code",
+                value: countryInput,
+                onChange: setCountryInput,
+                placeholder: "e.g. RU",
+                autoComplete: "off",
+                connectedRight: /* @__PURE__ */ jsx(Button, { onClick: addCountryTag, children: "Add" })
+              }
+            ) }) }),
+            /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "p", tone: "subdued", children: "Use ISO 3166-1 alpha-2 country codes (e.g. RU, KP, IR). Returns from blocked countries receive the highest risk score." }),
+            countryTags.length > 0 && /* @__PURE__ */ jsxs(BlockStack, { gap: "100", children: [
+              /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "p", tone: "subdued", children: "Blocked countries:" }),
+              /* @__PURE__ */ jsx("div", { style: { display: "flex", flexWrap: "wrap", gap: 4 }, children: countryTags.map((tag) => /* @__PURE__ */ jsx(Tag, { onRemove: () => removeCountryTag(tag), children: tag }, tag)) })
+            ] })
+          ] }),
+          /* @__PURE__ */ jsxs(BlockStack, { gap: "200", children: [
+            /* @__PURE__ */ jsx(Text, { variant: "headingSm", as: "h3", fontWeight: "semibold", children: "Suspicious Email Domains" }),
+            /* @__PURE__ */ jsx(InlineStack, { gap: "200", wrap: false, children: /* @__PURE__ */ jsx("div", { style: { flex: 1 }, children: /* @__PURE__ */ jsx(
+              TextField,
+              {
+                label: "Add domain",
+                value: domainInput,
+                onChange: setDomainInput,
+                placeholder: "e.g. tempmail.com",
+                autoComplete: "off",
+                connectedRight: /* @__PURE__ */ jsx(Button, { onClick: addDomainTag, children: "Add" })
+              }
+            ) }) }),
+            /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "p", tone: "subdued", children: "Disposable or temporary email domains. Returns using these domains get a high risk score." }),
+            domainTags.length > 0 && /* @__PURE__ */ jsxs(BlockStack, { gap: "100", children: [
+              /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "p", tone: "subdued", children: "Flagged domains:" }),
+              /* @__PURE__ */ jsx("div", { style: { display: "flex", flexWrap: "wrap", gap: 4 }, children: domainTags.map((tag) => /* @__PURE__ */ jsx(Tag, { onRemove: () => removeDomainTag(tag), children: tag }, tag)) })
+            ] })
+          ] }),
+          /* @__PURE__ */ jsxs(InlineStack, { gap: "200", children: [
+            /* @__PURE__ */ jsx(Button, { submit: true, variant: "primary", loading: isSaving, disabled: isSaving, children: "Save Rules" }),
+            /* @__PURE__ */ jsx(
+              Button,
+              {
+                variant: "secondary",
+                onClick: () => {
+                  if (window.confirm("Reset all fraud rules to defaults? This cannot be undone.")) {
+                    fetcher.submit({ _action: "reset_defaults" }, { method: "post" });
+                  }
+                },
+                children: "Reset to Defaults"
+              }
+            )
+          ] })
+        ] })
+      ] })
+    ] }) }),
+    /* @__PURE__ */ jsx(Card, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "200", children: [
+      /* @__PURE__ */ jsx(Text, { variant: "headingMd", as: "h2", fontWeight: "bold", children: "How Fraud Rules Work" }),
+      /* @__PURE__ */ jsxs(Text, { variant: "bodyMd", as: "p", children: [
+        "When the AI agent runs ",
+        /* @__PURE__ */ jsx("code", { children: "check_fraud" }),
+        " on a return request, these custom rules are evaluated alongside the built-in checks (high-value anomaly, frequent returner pattern)."
+      ] }),
+      /* @__PURE__ */ jsx(Text, { variant: "bodyMd", as: "p", children: "Each rule contributes a risk score (0–1). The highest score among all triggered rules determines the overall risk level:" }),
+      /* @__PURE__ */ jsxs(BlockStack, { gap: "100", children: [
+        /* @__PURE__ */ jsxs(Text, { variant: "bodySm", as: "p", children: [
+          /* @__PURE__ */ jsx("strong", { children: "≤ 0.2" }),
+          " → Low risk (auto-approved by default)"
+        ] }),
+        /* @__PURE__ */ jsxs(Text, { variant: "bodySm", as: "p", children: [
+          /* @__PURE__ */ jsx("strong", { children: "0.2 – 0.5" }),
+          " → Medium risk (flagged for review)"
+        ] }),
+        /* @__PURE__ */ jsxs(Text, { variant: "bodySm", as: "p", children: [
+          /* @__PURE__ */ jsx("strong", { children: "> 0.5" }),
+          " → High risk (flagged for review)"
+        ] })
+      ] }),
+      /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "p", tone: "subdued", children: "Default blocked countries and suspicious domains are pre-populated when no custom configuration exists. Customizing overrides the defaults." })
+    ] }) })
+  ] }) }) });
+}
+
+const route6 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+  __proto__: null,
+  action: action$a,
+  default: FraudRulesPage,
+  loader: loader$c
+}, Symbol.toStringTag, { value: 'Module' }));
+
+const STATUS_COLORS$2 = {
+  PENDING: "warning",
+  APPROVED: "success",
+  DENIED: "critical",
+  EXCHANGE: "info",
+  SHIPPED: "info",
+  REFUNDED: "success",
+  CLOSED: "new"
+};
+const loader$b = async ({ request }) => {
+  const { session } = await shopify.authenticate.admin(request);
+  const url = new URL(request.url);
+  const status = url.searchParams.get("status") || void 0;
+  const where = { shop: session.shop };
+  if (status) where.status = status;
+  const returns = await prisma$1.returnRequest.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    take: 50
+  });
+  const counts = await prisma$1.returnRequest.groupBy({
+    by: ["status"],
+    where: { shop: session.shop },
+    _count: true
+  });
+  const countMap = {};
+  counts.forEach((c) => {
+    countMap[c.status] = c._count;
+  });
+  return json({ returns, counts: countMap, currentStatus: status || "all" });
+};
+function statusBadge$2(status) {
+  return {
+    children: status.charAt(0) + status.slice(1).toLowerCase(),
+    tone: STATUS_COLORS$2[status] || "info"
+  };
+}
+function ReturnsPage() {
+  const { returns, counts, currentStatus } = useLoaderData();
+  const navigate = useNavigate();
+  const totalCount = Object.values(counts).reduce((a, b) => a + b, 0);
+  const rowMarkup = returns.map(
+    ({ id, orderName, customerName, status, createdAt }, index) => {
+      const badge = statusBadge$2(status);
+      const isPending = status === "PENDING";
+      return /* @__PURE__ */ jsxs(
+        IndexTable.Row,
+        {
+          id,
+          position: index,
+          onClick: () => navigate(`/returns/${id}`),
+          children: [
+            /* @__PURE__ */ jsx(IndexTable.Cell, { children: /* @__PURE__ */ jsx(Link$1, { url: `/returns/${id}`, onClick: (e) => {
+              e.stopPropagation();
+              navigate(`/returns/${id}`);
+            }, children: orderName || "—" }) }),
+            /* @__PURE__ */ jsx(IndexTable.Cell, { children: customerName || "—" }),
+            /* @__PURE__ */ jsx(IndexTable.Cell, { children: /* @__PURE__ */ jsx(Badge, { tone: badge.tone, children: badge.children }) }),
+            /* @__PURE__ */ jsx(IndexTable.Cell, { children: new Date(createdAt).toLocaleDateString() }),
+            /* @__PURE__ */ jsx(IndexTable.Cell, { children: /* @__PURE__ */ jsxs(InlineStack, { gap: "100", children: [
+              /* @__PURE__ */ jsx(Button, { size: "micro", onClick: (e) => {
+                e.stopPropagation();
+                navigate(`/returns/${id}`);
+              }, children: "View" }),
+              isPending && /* @__PURE__ */ jsxs(Fragment, { children: [
+                /* @__PURE__ */ jsx(Button, { size: "micro", variant: "primary", tone: "success", onClick: (e) => {
+                  e.stopPropagation();
+                  navigate(`/returns/${id}`);
+                }, children: "Approve" }),
+                /* @__PURE__ */ jsx(Button, { size: "micro", tone: "critical", onClick: (e) => {
+                  e.stopPropagation();
+                  navigate(`/returns/${id}`);
+                }, children: "Deny" })
+              ] })
+            ] }) })
+          ]
+        },
+        id
+      );
+    }
+  );
+  return /* @__PURE__ */ jsx(Page, { title: "Returns", children: /* @__PURE__ */ jsx(Layout, { children: /* @__PURE__ */ jsx(Layout.Section, { children: /* @__PURE__ */ jsxs(BlockStack, { gap: "400", children: [
+    /* @__PURE__ */ jsx("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 12 }, children: [
+      { label: "All", count: totalCount, key: "all", color: "#5c6ac4" },
+      { label: "Pending", count: counts.PENDING || 0, key: "PENDING", color: "#ecc134" },
+      { label: "Approved", count: counts.APPROVED || 0, key: "APPROVED", color: "#50b83c" },
+      { label: "Denied", count: counts.DENIED || 0, key: "DENIED", color: "#de3617" },
+      { label: "Refunded", count: counts.REFUNDED || 0, key: "REFUNDED", color: "#47c1bf" }
+    ].map(({ label, count, key, color }) => /* @__PURE__ */ jsx(Card, { children: /* @__PURE__ */ jsxs(
+      "div",
+      {
+        style: {
+          cursor: "pointer",
+          borderLeft: `3px solid ${color}`,
+          paddingLeft: 8,
+          opacity: currentStatus === key ? 1 : 0.7
+        },
+        onClick: () => {
+          const params = new URLSearchParams(window.location.search);
+          if (key === "all") params.delete("status");
+          else params.set("status", key);
+          window.location.search = params.toString();
+        },
+        children: [
+          /* @__PURE__ */ jsx(Text, { variant: "headingXl", as: "p", fontWeight: "bold", children: count }),
+          /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "span", tone: "subdued", children: label })
+        ]
+      }
+    ) }, key)) }),
+    /* @__PURE__ */ jsx(Card, { children: returns.length === 0 ? /* @__PURE__ */ jsx(
+      EmptyState,
+      {
+        heading: "No returns yet",
+        image: "",
+        children: /* @__PURE__ */ jsx("p", { children: "Returns will appear here when customers submit them or when orders are fulfilled." })
+      }
+    ) : /* @__PURE__ */ jsx(
+      IndexTable,
+      {
+        resourceName: { singular: "return", plural: "returns" },
+        itemCount: returns.length,
+        headings: [
+          { title: "Order" },
+          { title: "Customer" },
+          { title: "Status" },
+          { title: "Date" },
+          { title: "Actions" }
+        ],
+        children: rowMarkup
+      }
+    ) })
+  ] }) }) }) });
+}
+
+const route7 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+  __proto__: null,
+  default: ReturnsPage,
+  loader: loader$b
+}, Symbol.toStringTag, { value: 'Module' }));
+
 const STATUS_COLORS$1 = {
   PENDING: "warning",
   APPROVED: "success",
@@ -1101,7 +1353,7 @@ const loader$a = async ({ request }) => {
   });
   return json({ exchanges, counts: countMap });
 };
-const action$8 = async ({ request }) => {
+const action$9 = async ({ request }) => {
   const { session } = await authenticate.admin(request);
   const formData = await request.formData();
   const intent = String(formData.get("intent") || "");
@@ -1315,14 +1567,14 @@ function ExchangesPage() {
   ] });
 }
 
-const route7 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route8 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
-  action: action$8,
+  action: action$9,
   default: ExchangesPage,
   loader: loader$a
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const action$7 = async ({ request }) => {
+const action$8 = async ({ request }) => {
   const authHeader = request.headers.get("authorization");
   const key = authHeader?.slice(7);
   const hash = crypto.createHash("sha256").update(key || "").digest("hex");
@@ -1370,12 +1622,12 @@ const action$7 = async ({ request }) => {
   return json({ ok: true, shop: targetShop, policies: 3, returns: dummyReturns.length });
 };
 
-const route8 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route9 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
-  action: action$7
+  action: action$8
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const action$6 = async ({ request }) => {
+const action$7 = async ({ request }) => {
   try {
     const { topic, shop, session, admin } = await shopify.authenticate.webhook(request);
     const payload = await request.json();
@@ -1438,9 +1690,9 @@ const action$6 = async ({ request }) => {
   }
 };
 
-const route9 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route10 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
-  action: action$6
+  action: action$7
 }, Symbol.toStringTag, { value: 'Module' }));
 
 const PLANS = [
@@ -1502,7 +1754,7 @@ const loader$9 = async ({ request }) => {
   });
   return { currentPlan: shop.planName, planStatus: shop.planStatus };
 };
-const action$5 = async ({ request }) => {
+const action$6 = async ({ request }) => {
   const { admin, billing, session } = await authenticate.admin(request);
   const formData = await request.formData();
   const planKey = String(formData.get("planKey"));
@@ -1574,9 +1826,9 @@ function BillingPage() {
   ] });
 }
 
-const route10 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route11 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
-  action: action$5,
+  action: action$6,
   default: BillingPage,
   loader: loader$9
 }, Symbol.toStringTag, { value: 'Module' }));
@@ -1602,10 +1854,72 @@ const loader$8 = async ({ request, params }) => {
   if (!returnReq) throw new Response("Not found", { status: 404 });
   return json({ return: returnReq });
 };
+const action$5 = async ({ request, params }) => {
+  const { session } = await shopify.authenticate.admin(request);
+  const formData = await request.formData();
+  const action2 = formData.get("_action");
+  const returnId = params.id;
+  const shop = session.shop;
+  const returnReq = await prisma$1.returnRequest.findFirst({
+    where: { id: returnId, shop }
+  });
+  if (!returnReq || returnReq.status !== "PENDING") {
+    return json({ error: "Return not available" }, { status: 400 });
+  }
+  if (action2 === "issue_token") {
+    const secret = process.env.CONFIRMATION_TOKEN_SECRET;
+    if (!secret) return json({ error: "Not configured" }, { status: 500 });
+    const token = issueConfirmationToken(secret, shop, formData.get("target") || "approve_return", returnId, { returnId });
+    return json({ token, expiresInMs: 3e5 });
+  }
+  if (action2 === "approve" || action2 === "deny") {
+    const secret = process.env.CONFIRMATION_TOKEN_SECRET;
+    if (!secret) return json({ error: "Not configured" }, { status: 500 });
+    const token = formData.get("confirmationToken");
+    if (!token) return json({ error: "Confirmation token required. Click Issue Token first." }, { status: 400 });
+    const targetAction = action2 === "approve" ? "approve_return" : "deny_return";
+    const check = verifyConfirmationToken(token, secret, shop, targetAction, returnId, { returnId });
+    if (!check.valid) return json({ error: `Token invalid: ${check.reason}` }, { status: 400 });
+    if (action2 === "approve") {
+      const claim = await prisma$1.returnRequest.updateMany({
+        where: { id: returnId, status: "PENDING" },
+        data: { status: "APPROVED", decidedBy: "admin", decidedAt: /* @__PURE__ */ new Date() }
+      });
+      if (claim.count === 0) return json({ error: "Already processed" });
+      const amount = returnReq.items.reduce((s, i) => s + parseFloat(i.price || "0") * (i.quantity || 0), 0);
+      const sess = await prisma$1.session.findFirst({ where: { shop, isOnline: false } });
+      if (sess?.accessToken) {
+        try {
+          await executeRefund(shop, sess.accessToken, returnReq.orderId, amount, true);
+        } catch {
+        }
+      }
+      await prisma$1.decisionLog.create({ data: { returnId, actor: "admin", action: "approve", details: { source: "detail_page" } } });
+      if (returnReq.customerEmail) sendEmail({ ...returnApprovedEmail(returnReq.customerName || "Customer", returnReq.orderName || ""), to: returnReq.customerEmail });
+      return json({ success: true, message: "✅ Return approved!", newStatus: "APPROVED" });
+    } else {
+      const claim = await prisma$1.returnRequest.updateMany({
+        where: { id: returnId, status: "PENDING" },
+        data: { status: "DENIED", decidedBy: "admin", decidedAt: /* @__PURE__ */ new Date(), notes: "Denied by admin" }
+      });
+      if (claim.count === 0) return json({ error: "Already processed" });
+      await prisma$1.decisionLog.create({ data: { returnId, actor: "admin", action: "deny", details: { source: "detail_page" } } });
+      if (returnReq.customerEmail) sendEmail({ ...returnDeniedEmail(returnReq.customerName || "Customer", returnReq.orderName || "", "Denied by store admin"), to: returnReq.customerEmail });
+      return json({ success: true, message: "❌ Return denied", newStatus: "DENIED" });
+    }
+  }
+  return json({ error: "Unknown action" });
+};
 function ReturnDetailPage() {
   const { return: r } = useLoaderData();
+  const fetcher = useFetcher();
   const items = r.items;
   const logs = r.decisionLogs;
+  r.status === "PENDING";
+  const actionData = fetcher.data;
+  const hasToken = actionData?.token;
+  const isSuccess = actionData?.success;
+  const isError = actionData?.error;
   return /* @__PURE__ */ jsx(
     Page,
     {
@@ -1618,9 +1932,14 @@ function ReturnDetailPage() {
               /* @__PURE__ */ jsx(Text, { variant: "headingMd", as: "h2", fontWeight: "bold", children: "Status" }),
               /* @__PURE__ */ jsx(Badge, { tone: STATUS_COLORS[r.status] || "info", children: r.status })
             ] }),
-            r.status === "PENDING" && /* @__PURE__ */ jsxs(InlineStack, { gap: "200", children: [
-              /* @__PURE__ */ jsx(Button, { tone: "critical", children: "Deny" }),
-              /* @__PURE__ */ jsx(Button, { variant: "primary", tone: "success", children: "Approve" })
+            r.status === "PENDING" && /* @__PURE__ */ jsxs(BlockStack, { gap: "200", children: [
+              /* @__PURE__ */ jsx(InlineStack, { gap: "200", children: hasToken ? /* @__PURE__ */ jsxs(Fragment, { children: [
+                /* @__PURE__ */ jsx(Button, { variant: "primary", tone: "success", onClick: () => fetcher.submit({ _action: "approve", confirmationToken: actionData.token }, { method: "post" }), loading: fetcher.state !== "idle", children: "✅ Confirm Approve" }),
+                /* @__PURE__ */ jsx(Button, { tone: "critical", onClick: () => fetcher.submit({ _action: "deny", confirmationToken: actionData.token }, { method: "post" }), loading: fetcher.state !== "idle", children: "❌ Confirm Deny" })
+              ] }) : /* @__PURE__ */ jsx(Fragment, { children: /* @__PURE__ */ jsx(Button, { onClick: () => fetcher.submit({ _action: "issue_token", target: "approve_return" }, { method: "post" }), loading: fetcher.state !== "idle", children: "🔐 Issue Confirmation Token" }) }) }),
+              isError && /* @__PURE__ */ jsx(Banner, { tone: "critical", children: actionData.error }),
+              isSuccess && /* @__PURE__ */ jsx(Banner, { tone: "success", children: actionData.message }),
+              hasToken && !isSuccess && /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "p", tone: "subdued", children: "Token issued. Click Confirm Approve or Confirm Deny to proceed." })
             ] })
           ] }),
           r.customerName && /* @__PURE__ */ jsxs(Text, { variant: "bodyMd", as: "p", children: [
@@ -1691,8 +2010,9 @@ function ReturnDetailPage() {
   );
 }
 
-const route11 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route12 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
+  action: action$5,
   default: ReturnDetailPage,
   loader: loader$8
 }, Symbol.toStringTag, { value: 'Module' }));
@@ -1707,7 +2027,7 @@ const loader$7 = async ({ request }) => {
   return null;
 };
 
-const route12 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route13 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   loader: loader$7
 }, Symbol.toStringTag, { value: 'Module' }));
@@ -1920,7 +2240,7 @@ function AnalyticsPage() {
   ] }) }) }) });
 }
 
-const route13 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route14 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   default: AnalyticsPage,
   loader: loader$6
@@ -2142,7 +2462,7 @@ function PoliciesPage() {
   );
 }
 
-const route14 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route15 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action: action$4,
   default: PoliciesPage,
@@ -2320,104 +2640,12 @@ function SettingsPage() {
   ] }) }) });
 }
 
-const route15 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route16 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action: action$3,
   default: SettingsPage,
   loader: loader$4
 }, Symbol.toStringTag, { value: 'Module' }));
-
-const RELAY_URL = process.env.MAIL_RELAY_URL || "http://localhost:8787/send";
-const RELAY_KEY = process.env.MAIL_RELAY_KEY || "";
-process.env.EMAIL_FROM || "Shopigent Returns <returns@shopigent.com>";
-async function sendEmail(payload) {
-  if (!RELAY_KEY) {
-    console.log("[email] No MAIL_RELAY_KEY configured, skipping");
-    return false;
-  }
-  try {
-    const response = await fetch(RELAY_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-relay-key": RELAY_KEY
-      },
-      body: JSON.stringify({
-        to: payload.to,
-        subject: payload.subject,
-        text: payload.html.replace(/<[^>]*>/g, ""),
-        // strip HTML for plain text fallback
-        html: payload.html
-      }),
-      signal: AbortSignal.timeout(15e3)
-    });
-    if (!response.ok) {
-      console.error(`[email] Relay failed: ${response.status}`);
-      return false;
-    }
-    console.log(`[email] Sent to ${payload.to}: ${payload.subject}`);
-    return true;
-  } catch (err) {
-    console.error(`[email] Error: ${err.message}`);
-    return false;
-  }
-}
-function returnApprovedEmail(customerName, orderName, refundAmount) {
-  const refundLine = refundAmount ? `<p>Refund amount: <strong>$${refundAmount.toFixed(2)}</strong></p>` : "";
-  return {
-    to: "",
-    subject: `Return Approved — ${orderName}`,
-    html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
-      <h2 style="color:#50b83c">✅ Return Approved</h2>
-      <p>Hi ${customerName},</p>
-      <p>Your return for order <strong>${orderName}</strong> has been approved!</p>
-      ${refundLine}
-      <p>Your refund will be processed within 3-5 business days.</p>
-      <hr><p style="color:#666;font-size:12px">Shopigent Returns — AI-powered return management</p>
-    </div>`
-  };
-}
-function returnDeniedEmail(customerName, orderName, reason) {
-  return {
-    to: "",
-    subject: `Return Update — ${orderName}`,
-    html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
-      <h2 style="color:#de3617">Return Update</h2>
-      <p>Hi ${customerName},</p>
-      <p>After reviewing your return request for order <strong>${orderName}</strong>, we're unable to approve it.</p>
-      <p><strong>Reason:</strong> ${reason}</p>
-      <p>If you have questions, please contact support.</p>
-      <hr><p style="color:#666;font-size:12px">Shopigent Returns — AI-powered return management</p>
-    </div>`
-  };
-}
-function storeCreditProcessedEmail(customerName, orderName, amount, discountCode) {
-  return {
-    to: "",
-    subject: `Store Credit Issued — ${orderName}`,
-    html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
-      <h2 style="color:#47c1bf">🎉 Store Credit Issued</h2>
-      <p>Hi ${customerName},</p>
-      <p>Your store credit of <strong>$${amount.toFixed(2)}</strong> for order <strong>${orderName}</strong> has been issued.</p>
-      <p>Use code <strong>${discountCode}</strong> on your next purchase.</p>
-      <p>The code expires in 1 year.</p>
-      <hr><p style="color:#666;font-size:12px">Shopigent Returns — AI-powered return management</p>
-    </div>`
-  };
-}
-function refundProcessedEmail(customerName, orderName, amount) {
-  return {
-    to: "",
-    subject: `Refund Processed — ${orderName}`,
-    html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
-      <h2 style="color:#47c1bf">💰 Refund Processed</h2>
-      <p>Hi ${customerName},</p>
-      <p>Your refund of <strong>$${amount.toFixed(2)}</strong> for order <strong>${orderName}</strong> has been processed.</p>
-      <p>The refund will appear on your payment method within 3-5 business days.</p>
-      <hr><p style="color:#666;font-size:12px">Shopigent Returns — AI-powered return management</p>
-    </div>`
-  };
-}
 
 async function getLabelConfig(shop) {
   const shopRec = await prisma$1.shop.findUnique({ where: { shop } });
@@ -2647,76 +2875,6 @@ async function createEasyPostLabel(req, apiKey) {
     return { success: false, error: `EasyPost error: ${err.message}` };
   }
 }
-
-const TTL_MS = 5 * 60 * 1e3;
-function issueConfirmationToken(secret, shop, action, returnId, args) {
-  const argsHash = crypto.createHash("sha256").update(JSON.stringify(args)).digest("hex").slice(0, 16);
-  const payload = {
-    shop,
-    action,
-    returnId,
-    argsHash,
-    issuedAt: Date.now()
-  };
-  const data = JSON.stringify(payload);
-  const signature = crypto.createHmac("sha256", secret).update(data).digest("hex");
-  return Buffer.from(JSON.stringify({ data, signature })).toString("base64");
-}
-function verifyConfirmationToken(token, secret, expectedShop, expectedAction, expectedReturnId, expectedArgs) {
-  try {
-    const decoded = JSON.parse(Buffer.from(token, "base64").toString("utf-8"));
-    const { data, signature } = decoded;
-    const expectedSig = crypto.createHmac("sha256", secret).update(data).digest("hex");
-    if (signature !== expectedSig) {
-      return { valid: false, reason: "Invalid signature" };
-    }
-    const payload = JSON.parse(data);
-    if (Date.now() - payload.issuedAt > TTL_MS) {
-      return { valid: false, reason: "Token expired" };
-    }
-    if (payload.shop !== expectedShop) {
-      return { valid: false, reason: "Shop mismatch" };
-    }
-    if (payload.action !== expectedAction) {
-      return { valid: false, reason: "Action mismatch" };
-    }
-    if (payload.returnId !== expectedReturnId) {
-      return { valid: false, reason: "Return ID mismatch" };
-    }
-    const cleanArgs = { ...expectedArgs };
-    delete cleanArgs.confirmationToken;
-    const argsHash = crypto.createHash("sha256").update(JSON.stringify(cleanArgs)).digest("hex").slice(0, 16);
-    if (payload.argsHash !== argsHash) {
-      return { valid: false, reason: "Arguments mismatch" };
-    }
-    return { valid: true };
-  } catch {
-    return { valid: false, reason: "Invalid token format" };
-  }
-}
-const CONFIRMATION_TOOL = {
-  name: "issue_confirmation_token",
-  description: "Issue a confirmation token for a destructive operation (approve/deny return). The agent must first call this tool, then include the returned token in the actual approve_return or deny_return call. Token expires in 5 minutes.",
-  inputSchema: {
-    type: "object",
-    properties: {
-      action: {
-        type: "string",
-        enum: ["approve_return", "deny_return"],
-        description: "The action to confirm"
-      },
-      returnId: {
-        type: "string",
-        description: "The return request UUID"
-      },
-      args: {
-        type: "object",
-        description: "The arguments that will be passed to the action"
-      }
-    },
-    required: ["action", "returnId", "args"]
-  }
-};
 
 function getPlanTier(planName) {
   switch (planName) {
@@ -3490,7 +3648,7 @@ const loader$3 = async () => {
   });
 };
 
-const route16 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route17 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action: action$2,
   loader: loader$3
@@ -3503,7 +3661,7 @@ const action$1 = () => {
   return json({ ok: true, service: "shopigent-returns", status: "healthy" });
 };
 
-const route17 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route18 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action: action$1,
   loader: loader$2
@@ -3642,7 +3800,7 @@ function Dashboard() {
   ] });
 }
 
-const route18 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route19 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   default: Dashboard,
   loader: loader$1
@@ -3987,14 +4145,14 @@ function ReturnPortal() {
   ] }) }) });
 }
 
-const route19 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route20 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action,
   default: ReturnPortal,
   loader
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','imports':['/assets/components-CdU1FCkv.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-CT5gW-Ys.js','imports':['/assets/components-CdU1FCkv.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/context-ulSF2uG3.js'],'css':[]},'routes/api.refresh-session':{'id':'routes/api.refresh-session','parentId':'root','path':'api/refresh-session','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.refresh-session-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.check-session':{'id':'routes/api.check-session','parentId':'root','path':'api/check-session','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.check-session-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.seed-policies':{'id':'routes/api.seed-policies','parentId':'root','path':'api/seed-policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.seed-policies-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.upgrade-pro':{'id':'routes/api.upgrade-pro','parentId':'root','path':'api/upgrade-pro','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.upgrade-pro-l0sNRNKZ.js','imports':[],'css':[]},'routes/app.fraud-rules':{'id':'routes/app.fraud-rules','parentId':'root','path':'app/fraud-rules','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.fraud-rules-BGYrXVm9.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Checkbox-o8QdqIDE.js','/assets/Tag-C0_xAJFL.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/returns._index':{'id':'routes/returns._index','parentId':'root','path':'returns','index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._index-3B22G6fw.js','imports':['/assets/components-CdU1FCkv.js','/assets/Link-DitTtWTX.js','/assets/Page-BMJ0XUbE.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Layout-TqR5M3D9.js','/assets/EmptyState-B47Lu63v.js','/assets/context-DAVpCaJ7.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/Checkbox-o8QdqIDE.js','/assets/CSSTransition-BZID_MIM.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/app.exchanges':{'id':'routes/app.exchanges','parentId':'root','path':'app/exchanges','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.exchanges-CfBv6q4K.js','imports':['/assets/components-CdU1FCkv.js','/assets/Link-DitTtWTX.js','/assets/Page-BMJ0XUbE.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/EmptyState-B47Lu63v.js','/assets/Modal-LjBbTQ5v.js','/assets/Select-C25pWQee.js','/assets/context-DAVpCaJ7.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/Checkbox-o8QdqIDE.js','/assets/CSSTransition-BZID_MIM.js','/assets/banner-context-0ew862t1.js','/assets/context-ulSF2uG3.js','/assets/InlineGrid-BIw6R_K2.js'],'css':[]},'routes/api.seed-all':{'id':'routes/api.seed-all','parentId':'root','path':'api/seed-all','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.seed-all-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/app.billing':{'id':'routes/app.billing','parentId':'root','path':'app/billing','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.billing-DSWhSTBp.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Banner-BU17Rzbf.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/InlineGrid-BIw6R_K2.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/returns.$id':{'id':'routes/returns.$id','parentId':'root','path':'returns/:id','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._id-CqyiVj_e.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Tag-C0_xAJFL.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js'],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/analytics':{'id':'routes/analytics','parentId':'root','path':'analytics','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/analytics-gqPt2l69.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js'],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-CwyEXBW7.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Tag-C0_xAJFL.js','/assets/Modal-LjBbTQ5v.js','/assets/Checkbox-o8QdqIDE.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js','/assets/context-ulSF2uG3.js','/assets/CSSTransition-BZID_MIM.js','/assets/InlineGrid-BIw6R_K2.js'],'css':[]},'routes/settings':{'id':'routes/settings','parentId':'root','path':'settings','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/settings-Cxn0Mpmg.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Select-C25pWQee.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/api.mcp':{'id':'routes/api.mcp','parentId':'root','path':'api/mcp','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.mcp-l0sNRNKZ.js','imports':[],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-DkL3cuOy.js','imports':['/assets/components-CdU1FCkv.js','/assets/Link-DitTtWTX.js','/assets/Page-BMJ0XUbE.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/context-DAVpCaJ7.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/Checkbox-o8QdqIDE.js','/assets/CSSTransition-BZID_MIM.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/return':{'id':'routes/return','parentId':'root','path':'return','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/return-D4-bnz9R.js','imports':['/assets/components-CdU1FCkv.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Banner-BU17Rzbf.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/banner-context-0ew862t1.js'],'css':[]}},'url':'/assets/manifest-1afa3f6f.js','version':'1afa3f6f'};
+const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','imports':['/assets/components-CdU1FCkv.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-CT5gW-Ys.js','imports':['/assets/components-CdU1FCkv.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/context-ulSF2uG3.js'],'css':[]},'routes/api.refresh-session':{'id':'routes/api.refresh-session','parentId':'root','path':'api/refresh-session','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.refresh-session-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.check-session':{'id':'routes/api.check-session','parentId':'root','path':'api/check-session','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.check-session-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.seed-policies':{'id':'routes/api.seed-policies','parentId':'root','path':'api/seed-policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.seed-policies-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.quick-action':{'id':'routes/api.quick-action','parentId':'root','path':'api/quick-action','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.quick-action-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.upgrade-pro':{'id':'routes/api.upgrade-pro','parentId':'root','path':'api/upgrade-pro','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.upgrade-pro-l0sNRNKZ.js','imports':[],'css':[]},'routes/app.fraud-rules':{'id':'routes/app.fraud-rules','parentId':'root','path':'app/fraud-rules','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.fraud-rules-BGYrXVm9.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Checkbox-o8QdqIDE.js','/assets/Tag-C0_xAJFL.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/returns._index':{'id':'routes/returns._index','parentId':'root','path':'returns','index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._index-3B22G6fw.js','imports':['/assets/components-CdU1FCkv.js','/assets/Link-DitTtWTX.js','/assets/Page-BMJ0XUbE.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Layout-TqR5M3D9.js','/assets/EmptyState-B47Lu63v.js','/assets/context-DAVpCaJ7.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/Checkbox-o8QdqIDE.js','/assets/CSSTransition-BZID_MIM.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/app.exchanges':{'id':'routes/app.exchanges','parentId':'root','path':'app/exchanges','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.exchanges-CfBv6q4K.js','imports':['/assets/components-CdU1FCkv.js','/assets/Link-DitTtWTX.js','/assets/Page-BMJ0XUbE.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/EmptyState-B47Lu63v.js','/assets/Modal-LjBbTQ5v.js','/assets/Select-C25pWQee.js','/assets/context-DAVpCaJ7.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/Checkbox-o8QdqIDE.js','/assets/CSSTransition-BZID_MIM.js','/assets/banner-context-0ew862t1.js','/assets/context-ulSF2uG3.js','/assets/InlineGrid-BIw6R_K2.js'],'css':[]},'routes/api.seed-all':{'id':'routes/api.seed-all','parentId':'root','path':'api/seed-all','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.seed-all-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/app.billing':{'id':'routes/app.billing','parentId':'root','path':'app/billing','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.billing-DSWhSTBp.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Banner-BU17Rzbf.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/InlineGrid-BIw6R_K2.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/returns.$id':{'id':'routes/returns.$id','parentId':'root','path':'returns/:id','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._id-DW0V_Tja.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Banner-BU17Rzbf.js','/assets/Tag-C0_xAJFL.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/analytics':{'id':'routes/analytics','parentId':'root','path':'analytics','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/analytics-gqPt2l69.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js'],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-CwyEXBW7.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Tag-C0_xAJFL.js','/assets/Modal-LjBbTQ5v.js','/assets/Checkbox-o8QdqIDE.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js','/assets/context-ulSF2uG3.js','/assets/CSSTransition-BZID_MIM.js','/assets/InlineGrid-BIw6R_K2.js'],'css':[]},'routes/settings':{'id':'routes/settings','parentId':'root','path':'settings','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/settings-Cxn0Mpmg.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Select-C25pWQee.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/api.mcp':{'id':'routes/api.mcp','parentId':'root','path':'api/mcp','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.mcp-l0sNRNKZ.js','imports':[],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-DkL3cuOy.js','imports':['/assets/components-CdU1FCkv.js','/assets/Link-DitTtWTX.js','/assets/Page-BMJ0XUbE.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/context-DAVpCaJ7.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/Checkbox-o8QdqIDE.js','/assets/CSSTransition-BZID_MIM.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/return':{'id':'routes/return','parentId':'root','path':'return','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/return-D4-bnz9R.js','imports':['/assets/components-CdU1FCkv.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Banner-BU17Rzbf.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/banner-context-0ew862t1.js'],'css':[]}},'url':'/assets/manifest-bff7e7ee.js','version':'bff7e7ee'};
 
 /**
        * `mode` is only relevant for the old Remix compiler but
@@ -4040,13 +4198,21 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','im
           caseSensitive: undefined,
           module: route3
         },
+  "routes/api.quick-action": {
+          id: "routes/api.quick-action",
+          parentId: "root",
+          path: "api/quick-action",
+          index: undefined,
+          caseSensitive: undefined,
+          module: route4
+        },
   "routes/api.upgrade-pro": {
           id: "routes/api.upgrade-pro",
           parentId: "root",
           path: "api/upgrade-pro",
           index: undefined,
           caseSensitive: undefined,
-          module: route4
+          module: route5
         },
   "routes/app.fraud-rules": {
           id: "routes/app.fraud-rules",
@@ -4054,7 +4220,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','im
           path: "app/fraud-rules",
           index: undefined,
           caseSensitive: undefined,
-          module: route5
+          module: route6
         },
   "routes/returns._index": {
           id: "routes/returns._index",
@@ -4062,7 +4228,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','im
           path: "returns",
           index: true,
           caseSensitive: undefined,
-          module: route6
+          module: route7
         },
   "routes/app.exchanges": {
           id: "routes/app.exchanges",
@@ -4070,7 +4236,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','im
           path: "app/exchanges",
           index: undefined,
           caseSensitive: undefined,
-          module: route7
+          module: route8
         },
   "routes/api.seed-all": {
           id: "routes/api.seed-all",
@@ -4078,7 +4244,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','im
           path: "api/seed-all",
           index: undefined,
           caseSensitive: undefined,
-          module: route8
+          module: route9
         },
   "routes/api.webhooks": {
           id: "routes/api.webhooks",
@@ -4086,7 +4252,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','im
           path: "api/webhooks",
           index: undefined,
           caseSensitive: undefined,
-          module: route9
+          module: route10
         },
   "routes/app.billing": {
           id: "routes/app.billing",
@@ -4094,7 +4260,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','im
           path: "app/billing",
           index: undefined,
           caseSensitive: undefined,
-          module: route10
+          module: route11
         },
   "routes/returns.$id": {
           id: "routes/returns.$id",
@@ -4102,7 +4268,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','im
           path: "returns/:id",
           index: undefined,
           caseSensitive: undefined,
-          module: route11
+          module: route12
         },
   "routes/api.auth.$": {
           id: "routes/api.auth.$",
@@ -4110,7 +4276,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','im
           path: "api/auth/*",
           index: undefined,
           caseSensitive: undefined,
-          module: route12
+          module: route13
         },
   "routes/analytics": {
           id: "routes/analytics",
@@ -4118,7 +4284,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','im
           path: "analytics",
           index: undefined,
           caseSensitive: undefined,
-          module: route13
+          module: route14
         },
   "routes/policies": {
           id: "routes/policies",
@@ -4126,7 +4292,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','im
           path: "policies",
           index: undefined,
           caseSensitive: undefined,
-          module: route14
+          module: route15
         },
   "routes/settings": {
           id: "routes/settings",
@@ -4134,7 +4300,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','im
           path: "settings",
           index: undefined,
           caseSensitive: undefined,
-          module: route15
+          module: route16
         },
   "routes/api.mcp": {
           id: "routes/api.mcp",
@@ -4142,7 +4308,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','im
           path: "api/mcp",
           index: undefined,
           caseSensitive: undefined,
-          module: route16
+          module: route17
         },
   "routes/healthz": {
           id: "routes/healthz",
@@ -4150,7 +4316,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','im
           path: "healthz",
           index: undefined,
           caseSensitive: undefined,
-          module: route17
+          module: route18
         },
   "routes/_index": {
           id: "routes/_index",
@@ -4158,7 +4324,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','im
           path: undefined,
           index: true,
           caseSensitive: undefined,
-          module: route18
+          module: route19
         },
   "routes/return": {
           id: "routes/return",
@@ -4166,7 +4332,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','im
           path: "return",
           index: undefined,
           caseSensitive: undefined,
-          module: route19
+          module: route20
         }
       };
 
