@@ -198,17 +198,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const orderIds = formData.getAll("orderId") as string[];
     const orderNames = formData.getAll("orderName2") as string[];
 
-    // Group selected item IDs by order
-    const orderData = new Map<string, { orderName: string; itemIds: string[] }>();
+    // Group selected item IDs by order, with quantities
+    const orderData = new Map<string, { orderName: string; items: { itemId: string; qty: number }[] }>();
     for (let i = 0; i < orderIds.length; i++) {
-      orderData.set(orderIds[i], { orderName: orderNames[i] || orderIds[i], itemIds: [] });
+      orderData.set(orderIds[i], { orderName: orderNames[i] || orderIds[i], items: [] });
     }
-    for (const itemId of selectedItemIds) {
-      // Each itemId is submitted as "orderId:itemId" format from the UI
-      const [orderId, ...rest] = itemId.split(":");
+    for (const fullItemId of selectedItemIds) {
+      const [orderId, ...rest] = fullItemId.split(":");
       const realItemId = rest.join(":");
       if (orderData.has(orderId)) {
-        orderData.get(orderId)!.itemIds.push(realItemId);
+        // Get the quantity for this item
+        const qtyKey = `returnQty:${orderId}:${realItemId}`;
+        const qty = parseInt(formData.get(qtyKey) as string) || 1;
+        orderData.get(orderId)!.items.push({ itemId: realItemId, qty });
       }
     }
 
@@ -223,21 +225,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     let createdCount = 0;
     let anyAutoApproved = false;
     for (const [orderId, data] of orderData) {
-      if (data.itemIds.length === 0) continue;
+      if (data.items.length === 0) continue;
 
       // Find matching items from Shopify API
       const shopifyOrder = shopifyOrders.find((o: any) => String(o.id) === orderId);
       const selectedItems = shopifyOrder
-        ? (shopifyOrder.line_items || [])
-            .filter((li: any) => data.itemIds.includes(String(li.id)))
-            .map((li: any) => ({
+        ? data.items.map((req: { itemId: string; qty: number }) => {
+            const li = (shopifyOrder.line_items || []).find((l: any) => String(l.id) === req.itemId);
+            return li ? {
               id: String(li.id),
               variantId: `gid://shopify/ProductVariant/${li.variant_id}`,
               title: li.title,
-              quantity: li.quantity,
+              quantity: req.qty,
               price: li.price || "0",
               sku: li.sku || "",
-            }))
+            } : null;
+          }).filter(Boolean)
         : [];
 
       if (selectedItems.length === 0) continue;
@@ -465,7 +468,7 @@ export default function ReturnPortal() {
                         <input type="hidden" name="orderName2" value={order.name} />
                         <Text variant="bodySm" as="p" fontWeight="bold">Select items to return:</Text>
                         {order.items.map((item: any) => (
-                          <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}>
+                          <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: "1px solid #eee" }}>
                             <input
                               type="checkbox"
                               name="selectedItemIds"
@@ -473,8 +476,16 @@ export default function ReturnPortal() {
                               defaultChecked={false}
                               style={{ width: 18, height: 18 }}
                             />
-                            <span style={{ flex: 1 }}>{item.title}</span>
-                            <span style={{ color: "#666", fontSize: 13 }}>×{item.quantity}</span>
+                            <span style={{ flex: 1, fontSize: 14 }}>{item.title}</span>
+                            <span style={{ color: "#666", fontSize: 13, marginRight: 8 }}>Qty: {item.quantity}</span>
+                            <input
+                              type="number"
+                              name={`returnQty:${order.id}:${item.id}`}
+                              defaultValue={item.quantity}
+                              min="1"
+                              max={item.quantity}
+                              style={{ width: 50, padding: "4px 8px", borderRadius: 4, border: "1px solid #ccc", fontSize: 13 }}
+                            />
                             <span style={{ color: "#666", fontSize: 13 }}>${item.price}</span>
                           </div>
                         ))}

@@ -1,7 +1,7 @@
 import { shopifyAdminQuery } from "./shopify-admin.server";
 
 // Create a Shopify Return via the Admin API
-// This makes the return visible in the Shopify order admin
+// Uses fulfillmentLineItemId from the order's line items
 export async function createShopifyReturn(
   shop: string,
   accessToken: string,
@@ -10,6 +10,47 @@ export async function createShopifyReturn(
 ): Promise<{ returnId?: string; error?: string }> {
   const orderGid = orderId.startsWith("gid://") ? orderId : `gid://shopify/Order/${orderId}`;
 
+  // Step 1: Get order line items to find fulfillmentLineItemIds
+  const orderQuery = `{
+    order(id: "${orderGid}") {
+      id
+      lineItems(first: 50) {
+        nodes {
+          id
+          variant { id }
+          quantity
+          fulfillmentLineItems(first: 10) {
+            nodes { id }
+          }
+        }
+      }
+    }
+  }`;
+
+  const orderResult = await shopifyAdminQuery(shop, accessToken, orderQuery);
+  const lineItems = orderResult?.data?.order?.lineItems?.nodes || [];
+
+  // Build return line items with fulfillmentLineItemId
+  const returnLineItems: any[] = [];
+  for (const reqItem of items) {
+    const matching = lineItems.find((li: any) =>
+      li.variant?.id === reqItem.variantId || li.variant?.id?.replace("ProductVariant/", "Variant/") === reqItem.variantId
+    );
+    if (matching) {
+      // Use fulfillmentLineItemId if available, otherwise use the line item ID
+      const fulfillmentLineItem = matching.fulfillmentLineItems?.nodes?.[0];
+      returnLineItems.push({
+        fulfillmentLineItemId: fulfillmentLineItem?.id || matching.id,
+        quantity: reqItem.quantity,
+      });
+    }
+  }
+
+  if (returnLineItems.length === 0) {
+    return { error: "No matching line items found in order" };
+  }
+
+  // Step 2: Create the return
   const mutation = `mutation returnCreate($returnInput: ReturnInput!) {
     returnCreate(returnInput: $returnInput) {
       return { id status }
@@ -20,20 +61,15 @@ export async function createShopifyReturn(
   const result = await shopifyAdminQuery(shop, accessToken, mutation, {
     returnInput: {
       orderId: orderGid,
-      returnLineItems: items.map((item) => ({
-        variantId: item.variantId,
-        quantity: item.quantity,
-      })),
+      returnLineItems,
     },
   });
 
-  console.log(`[shopify-return] Request for ${orderGid}:`, JSON.stringify(items));
+  console.log(`[shopify-return] Request:`, JSON.stringify(returnLineItems));
   console.log(`[shopify-return] Response:`, JSON.stringify(result).slice(0, 2000));
 
-  // Check top-level GraphQL errors
   if (result?.errors?.length) {
     const msgs = result.errors.map((e: any) => e.message).join(", ");
-    console.error(`[shopify-return] GraphQL errors: ${msgs}`);
     return { error: msgs };
   }
 
@@ -44,7 +80,7 @@ export async function createShopifyReturn(
 
   const returnObj = result?.data?.returnCreate?.return;
   if (!returnObj) {
-    return { error: "Failed to create return" };
+    return { error: "Failed to create return: no return object in response" };
   }
 
   return { returnId: returnObj.id };

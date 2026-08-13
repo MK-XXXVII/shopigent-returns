@@ -3861,6 +3861,39 @@ function generateDevOtp() {
 
 async function createShopifyReturn(shop, accessToken, orderId, items) {
   const orderGid = orderId.startsWith("gid://") ? orderId : `gid://shopify/Order/${orderId}`;
+  const orderQuery = `{
+    order(id: "${orderGid}") {
+      id
+      lineItems(first: 50) {
+        nodes {
+          id
+          variant { id }
+          quantity
+          fulfillmentLineItems(first: 10) {
+            nodes { id }
+          }
+        }
+      }
+    }
+  }`;
+  const orderResult = await shopifyAdminQuery(shop, accessToken, orderQuery);
+  const lineItems = orderResult?.data?.order?.lineItems?.nodes || [];
+  const returnLineItems = [];
+  for (const reqItem of items) {
+    const matching = lineItems.find(
+      (li) => li.variant?.id === reqItem.variantId || li.variant?.id?.replace("ProductVariant/", "Variant/") === reqItem.variantId
+    );
+    if (matching) {
+      const fulfillmentLineItem = matching.fulfillmentLineItems?.nodes?.[0];
+      returnLineItems.push({
+        fulfillmentLineItemId: fulfillmentLineItem?.id || matching.id,
+        quantity: reqItem.quantity
+      });
+    }
+  }
+  if (returnLineItems.length === 0) {
+    return { error: "No matching line items found in order" };
+  }
   const mutation = `mutation returnCreate($returnInput: ReturnInput!) {
     returnCreate(returnInput: $returnInput) {
       return { id status }
@@ -3870,17 +3903,13 @@ async function createShopifyReturn(shop, accessToken, orderId, items) {
   const result = await shopifyAdminQuery(shop, accessToken, mutation, {
     returnInput: {
       orderId: orderGid,
-      returnLineItems: items.map((item) => ({
-        variantId: item.variantId,
-        quantity: item.quantity
-      }))
+      returnLineItems
     }
   });
-  console.log(`[shopify-return] Request for ${orderGid}:`, JSON.stringify(items));
+  console.log(`[shopify-return] Request:`, JSON.stringify(returnLineItems));
   console.log(`[shopify-return] Response:`, JSON.stringify(result).slice(0, 2e3));
   if (result?.errors?.length) {
     const msgs = result.errors.map((e) => e.message).join(", ");
-    console.error(`[shopify-return] GraphQL errors: ${msgs}`);
     return { error: msgs };
   }
   const errors = result?.data?.returnCreate?.userErrors;
@@ -3889,7 +3918,7 @@ async function createShopifyReturn(shop, accessToken, orderId, items) {
   }
   const returnObj = result?.data?.returnCreate?.return;
   if (!returnObj) {
-    return { error: "Failed to create return" };
+    return { error: "Failed to create return: no return object in response" };
   }
   return { returnId: returnObj.id };
 }
@@ -4033,13 +4062,15 @@ const action = async ({ request }) => {
     const orderNames = formData.getAll("orderName2");
     const orderData = /* @__PURE__ */ new Map();
     for (let i = 0; i < orderIds.length; i++) {
-      orderData.set(orderIds[i], { orderName: orderNames[i] || orderIds[i], itemIds: [] });
+      orderData.set(orderIds[i], { orderName: orderNames[i] || orderIds[i], items: [] });
     }
-    for (const itemId of selectedItemIds) {
-      const [orderId, ...rest] = itemId.split(":");
+    for (const fullItemId of selectedItemIds) {
+      const [orderId, ...rest] = fullItemId.split(":");
       const realItemId = rest.join(":");
       if (orderData.has(orderId)) {
-        orderData.get(orderId).itemIds.push(realItemId);
+        const qtyKey = `returnQty:${orderId}:${realItemId}`;
+        const qty = parseInt(formData.get(qtyKey)) || 1;
+        orderData.get(orderId).items.push({ itemId: realItemId, qty });
       }
     }
     if (orderData.size === 0) {
@@ -4050,16 +4081,19 @@ const action = async ({ request }) => {
     let createdCount = 0;
     let anyAutoApproved = false;
     for (const [orderId, data] of orderData) {
-      if (data.itemIds.length === 0) continue;
+      if (data.items.length === 0) continue;
       const shopifyOrder = shopifyOrders.find((o) => String(o.id) === orderId);
-      const selectedItems = shopifyOrder ? (shopifyOrder.line_items || []).filter((li) => data.itemIds.includes(String(li.id))).map((li) => ({
-        id: String(li.id),
-        variantId: `gid://shopify/ProductVariant/${li.variant_id}`,
-        title: li.title,
-        quantity: li.quantity,
-        price: li.price || "0",
-        sku: li.sku || ""
-      })) : [];
+      const selectedItems = shopifyOrder ? data.items.map((req) => {
+        const li = (shopifyOrder.line_items || []).find((l) => String(l.id) === req.itemId);
+        return li ? {
+          id: String(li.id),
+          variantId: `gid://shopify/ProductVariant/${li.variant_id}`,
+          title: li.title,
+          quantity: req.qty,
+          price: li.price || "0",
+          sku: li.sku || ""
+        } : null;
+      }).filter(Boolean) : [];
       if (selectedItems.length === 0) continue;
       const returnRec = await prisma$1.returnRequest.create({
         data: {
@@ -4238,7 +4272,7 @@ function ReturnPortal() {
             /* @__PURE__ */ jsx("input", { type: "hidden", name: "orderId", value: order.id }),
             /* @__PURE__ */ jsx("input", { type: "hidden", name: "orderName2", value: order.name }),
             /* @__PURE__ */ jsx(Text, { variant: "bodySm", as: "p", fontWeight: "bold", children: "Select items to return:" }),
-            order.items.map((item) => /* @__PURE__ */ jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }, children: [
+            order.items.map((item) => /* @__PURE__ */ jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: "1px solid #eee" }, children: [
               /* @__PURE__ */ jsx(
                 "input",
                 {
@@ -4249,11 +4283,22 @@ function ReturnPortal() {
                   style: { width: 18, height: 18 }
                 }
               ),
-              /* @__PURE__ */ jsx("span", { style: { flex: 1 }, children: item.title }),
-              /* @__PURE__ */ jsxs("span", { style: { color: "#666", fontSize: 13 }, children: [
-                "×",
+              /* @__PURE__ */ jsx("span", { style: { flex: 1, fontSize: 14 }, children: item.title }),
+              /* @__PURE__ */ jsxs("span", { style: { color: "#666", fontSize: 13, marginRight: 8 }, children: [
+                "Qty: ",
                 item.quantity
               ] }),
+              /* @__PURE__ */ jsx(
+                "input",
+                {
+                  type: "number",
+                  name: `returnQty:${order.id}:${item.id}`,
+                  defaultValue: item.quantity,
+                  min: "1",
+                  max: item.quantity,
+                  style: { width: 50, padding: "4px 8px", borderRadius: 4, border: "1px solid #ccc", fontSize: 13 }
+                }
+              ),
               /* @__PURE__ */ jsxs("span", { style: { color: "#666", fontSize: 13 }, children: [
                 "$",
                 item.price
@@ -4286,7 +4331,7 @@ const route21 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   loader
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','imports':['/assets/components-CdU1FCkv.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-CT5gW-Ys.js','imports':['/assets/components-CdU1FCkv.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/context-ulSF2uG3.js'],'css':[]},'routes/api.refresh-session':{'id':'routes/api.refresh-session','parentId':'root','path':'api/refresh-session','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.refresh-session-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.check-session':{'id':'routes/api.check-session','parentId':'root','path':'api/check-session','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.check-session-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.seed-policies':{'id':'routes/api.seed-policies','parentId':'root','path':'api/seed-policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.seed-policies-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.quick-action':{'id':'routes/api.quick-action','parentId':'root','path':'api/quick-action','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.quick-action-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.test-refund':{'id':'routes/api.test-refund','parentId':'root','path':'api/test-refund','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.test-refund-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.upgrade-pro':{'id':'routes/api.upgrade-pro','parentId':'root','path':'api/upgrade-pro','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.upgrade-pro-l0sNRNKZ.js','imports':[],'css':[]},'routes/app.fraud-rules':{'id':'routes/app.fraud-rules','parentId':'root','path':'app/fraud-rules','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.fraud-rules-BGYrXVm9.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Checkbox-o8QdqIDE.js','/assets/Tag-C0_xAJFL.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/returns._index':{'id':'routes/returns._index','parentId':'root','path':'returns','index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._index-3B22G6fw.js','imports':['/assets/components-CdU1FCkv.js','/assets/Link-DitTtWTX.js','/assets/Page-BMJ0XUbE.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Layout-TqR5M3D9.js','/assets/EmptyState-B47Lu63v.js','/assets/context-DAVpCaJ7.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/Checkbox-o8QdqIDE.js','/assets/CSSTransition-BZID_MIM.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/app.exchanges':{'id':'routes/app.exchanges','parentId':'root','path':'app/exchanges','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.exchanges-CfBv6q4K.js','imports':['/assets/components-CdU1FCkv.js','/assets/Link-DitTtWTX.js','/assets/Page-BMJ0XUbE.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/EmptyState-B47Lu63v.js','/assets/Modal-LjBbTQ5v.js','/assets/Select-C25pWQee.js','/assets/context-DAVpCaJ7.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/Checkbox-o8QdqIDE.js','/assets/CSSTransition-BZID_MIM.js','/assets/banner-context-0ew862t1.js','/assets/context-ulSF2uG3.js','/assets/InlineGrid-BIw6R_K2.js'],'css':[]},'routes/api.seed-all':{'id':'routes/api.seed-all','parentId':'root','path':'api/seed-all','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.seed-all-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/app.billing':{'id':'routes/app.billing','parentId':'root','path':'app/billing','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.billing-DSWhSTBp.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Banner-BU17Rzbf.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/InlineGrid-BIw6R_K2.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/returns.$id':{'id':'routes/returns.$id','parentId':'root','path':'returns/:id','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._id-DW0V_Tja.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Banner-BU17Rzbf.js','/assets/Tag-C0_xAJFL.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/analytics':{'id':'routes/analytics','parentId':'root','path':'analytics','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/analytics-gqPt2l69.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js'],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-CwyEXBW7.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Tag-C0_xAJFL.js','/assets/Modal-LjBbTQ5v.js','/assets/Checkbox-o8QdqIDE.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js','/assets/context-ulSF2uG3.js','/assets/CSSTransition-BZID_MIM.js','/assets/InlineGrid-BIw6R_K2.js'],'css':[]},'routes/settings':{'id':'routes/settings','parentId':'root','path':'settings','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/settings-Cxn0Mpmg.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Select-C25pWQee.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/api.mcp':{'id':'routes/api.mcp','parentId':'root','path':'api/mcp','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.mcp-l0sNRNKZ.js','imports':[],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-DkL3cuOy.js','imports':['/assets/components-CdU1FCkv.js','/assets/Link-DitTtWTX.js','/assets/Page-BMJ0XUbE.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/context-DAVpCaJ7.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/Checkbox-o8QdqIDE.js','/assets/CSSTransition-BZID_MIM.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/return':{'id':'routes/return','parentId':'root','path':'return','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/return-D4-bnz9R.js','imports':['/assets/components-CdU1FCkv.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Banner-BU17Rzbf.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/banner-context-0ew862t1.js'],'css':[]}},'url':'/assets/manifest-ecfd3649.js','version':'ecfd3649'};
+const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','imports':['/assets/components-CdU1FCkv.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-CT5gW-Ys.js','imports':['/assets/components-CdU1FCkv.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/context-ulSF2uG3.js'],'css':[]},'routes/api.refresh-session':{'id':'routes/api.refresh-session','parentId':'root','path':'api/refresh-session','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.refresh-session-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.check-session':{'id':'routes/api.check-session','parentId':'root','path':'api/check-session','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.check-session-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.seed-policies':{'id':'routes/api.seed-policies','parentId':'root','path':'api/seed-policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.seed-policies-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.quick-action':{'id':'routes/api.quick-action','parentId':'root','path':'api/quick-action','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.quick-action-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.test-refund':{'id':'routes/api.test-refund','parentId':'root','path':'api/test-refund','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.test-refund-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.upgrade-pro':{'id':'routes/api.upgrade-pro','parentId':'root','path':'api/upgrade-pro','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.upgrade-pro-l0sNRNKZ.js','imports':[],'css':[]},'routes/app.fraud-rules':{'id':'routes/app.fraud-rules','parentId':'root','path':'app/fraud-rules','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.fraud-rules-BGYrXVm9.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Checkbox-o8QdqIDE.js','/assets/Tag-C0_xAJFL.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/returns._index':{'id':'routes/returns._index','parentId':'root','path':'returns','index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._index-3B22G6fw.js','imports':['/assets/components-CdU1FCkv.js','/assets/Link-DitTtWTX.js','/assets/Page-BMJ0XUbE.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Layout-TqR5M3D9.js','/assets/EmptyState-B47Lu63v.js','/assets/context-DAVpCaJ7.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/Checkbox-o8QdqIDE.js','/assets/CSSTransition-BZID_MIM.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/app.exchanges':{'id':'routes/app.exchanges','parentId':'root','path':'app/exchanges','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.exchanges-CfBv6q4K.js','imports':['/assets/components-CdU1FCkv.js','/assets/Link-DitTtWTX.js','/assets/Page-BMJ0XUbE.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/EmptyState-B47Lu63v.js','/assets/Modal-LjBbTQ5v.js','/assets/Select-C25pWQee.js','/assets/context-DAVpCaJ7.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/Checkbox-o8QdqIDE.js','/assets/CSSTransition-BZID_MIM.js','/assets/banner-context-0ew862t1.js','/assets/context-ulSF2uG3.js','/assets/InlineGrid-BIw6R_K2.js'],'css':[]},'routes/api.seed-all':{'id':'routes/api.seed-all','parentId':'root','path':'api/seed-all','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.seed-all-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/app.billing':{'id':'routes/app.billing','parentId':'root','path':'app/billing','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.billing-DSWhSTBp.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Banner-BU17Rzbf.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/InlineGrid-BIw6R_K2.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/returns.$id':{'id':'routes/returns.$id','parentId':'root','path':'returns/:id','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._id-DW0V_Tja.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Banner-BU17Rzbf.js','/assets/Tag-C0_xAJFL.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/analytics':{'id':'routes/analytics','parentId':'root','path':'analytics','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/analytics-gqPt2l69.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js'],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-CwyEXBW7.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Tag-C0_xAJFL.js','/assets/Modal-LjBbTQ5v.js','/assets/Checkbox-o8QdqIDE.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js','/assets/context-ulSF2uG3.js','/assets/CSSTransition-BZID_MIM.js','/assets/InlineGrid-BIw6R_K2.js'],'css':[]},'routes/settings':{'id':'routes/settings','parentId':'root','path':'settings','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/settings-Cxn0Mpmg.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Select-C25pWQee.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/api.mcp':{'id':'routes/api.mcp','parentId':'root','path':'api/mcp','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.mcp-l0sNRNKZ.js','imports':[],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-DkL3cuOy.js','imports':['/assets/components-CdU1FCkv.js','/assets/Link-DitTtWTX.js','/assets/Page-BMJ0XUbE.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/context-DAVpCaJ7.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/Checkbox-o8QdqIDE.js','/assets/CSSTransition-BZID_MIM.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/return':{'id':'routes/return','parentId':'root','path':'return','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/return-C_mrz7pH.js','imports':['/assets/components-CdU1FCkv.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Banner-BU17Rzbf.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/banner-context-0ew862t1.js'],'css':[]}},'url':'/assets/manifest-5d0f101d.js','version':'5d0f101d'};
 
 /**
        * `mode` is only relevant for the old Remix compiler but
