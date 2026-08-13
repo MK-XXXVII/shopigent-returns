@@ -148,7 +148,7 @@ const route0 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   loader: loader$f
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const action$e = async ({ request }) => {
+const action$f = async ({ request }) => {
   const authHeader = request.headers.get("authorization");
   const key = authHeader?.slice(7);
   const hash = crypto.createHash("sha256").update(key || "").digest("hex");
@@ -171,7 +171,7 @@ const action$e = async ({ request }) => {
 
 const route1 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
-  action: action$e
+  action: action$f
 }, Symbol.toStringTag, { value: 'Module' }));
 
 const loader$e = async ({ request }) => {
@@ -206,7 +206,7 @@ const route2 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   loader: loader$e
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const action$d = async ({ request }) => {
+const action$e = async ({ request }) => {
   const authHeader = request.headers.get("authorization");
   const key = authHeader?.slice(7);
   const hash = crypto.createHash("sha256").update(key || "").digest("hex");
@@ -236,7 +236,7 @@ const action$d = async ({ request }) => {
 
 const route3 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
-  action: action$d
+  action: action$e
 }, Symbol.toStringTag, { value: 'Module' }));
 
 const TTL_MS = 5 * 60 * 1e3;
@@ -661,7 +661,7 @@ function refundProcessedEmail(customerName, orderName, amount) {
   };
 }
 
-const action$c = async ({ request }) => {
+const action$d = async ({ request }) => {
   const authHeader = request.headers.get("authorization");
   const body = await request.json().catch(() => ({}));
   let shop = null;
@@ -748,6 +748,40 @@ const action$c = async ({ request }) => {
 
 const route4 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
+  action: action$d
+}, Symbol.toStringTag, { value: 'Module' }));
+
+const action$c = async ({ request }) => {
+  const { session } = await shopify.authenticate.admin(request);
+  const formData = await request.json().catch(() => ({}));
+  const returnId = formData.returnId;
+  const shop = session.shop;
+  const returnReq = await prisma$1.returnRequest.findFirst({
+    where: { id: returnId, shop }
+  });
+  if (!returnReq) return json({ error: "Not found" }, { status: 404 });
+  if (returnReq.status !== "APPROVED") return json({ error: "Return must be APPROVED" });
+  const sess = await prisma$1.session.findFirst({ where: { shop, isOnline: false } });
+  if (!sess?.accessToken) return json({ error: "No access token" });
+  const items = returnReq.items;
+  const amount = items.reduce((s, i) => s + parseFloat(i.price || "0") * (i.quantity || 0), 0);
+  const orderId = returnReq.orderId;
+  try {
+    const result = await executeRefund(shop, sess.accessToken, orderId, amount, true);
+    await prisma$1.returnRequest.update({
+      where: { id: returnId },
+      data: { status: "REFUNDED", refundAmount: amount, refundId: result?.id || null }
+    });
+    await prisma$1.decisionLog.create({ data: { returnId, actor: "admin", action: "refund", details: { refundId: result?.id } } });
+    if (returnReq.customerEmail) sendEmail({ ...refundProcessedEmail(returnReq.customerName || "Customer", returnReq.orderName || "", amount), to: returnReq.customerEmail });
+    return json({ success: true, refundId: result?.id });
+  } catch (err) {
+    return json({ error: err.message, details: err.stack }, { status: 500 });
+  }
+};
+
+const route5 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+  __proto__: null,
   action: action$c
 }, Symbol.toStringTag, { value: 'Module' }));
 
@@ -772,7 +806,7 @@ const action$b = async ({ request }) => {
   return json({ ok: true, shop: targetShop, plan: "pro", upgradedBy: authedShop.shop });
 };
 
-const route5 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route6 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action: action$b,
   loader: loader$d
@@ -1176,7 +1210,7 @@ function FraudRulesPage() {
   ] }) }) });
 }
 
-const route6 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route7 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action: action$a,
   default: FraudRulesPage,
@@ -1317,7 +1351,7 @@ function ReturnsPage() {
   ] }) }) }) });
 }
 
-const route7 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route8 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   default: ReturnsPage,
   loader: loader$b
@@ -1567,7 +1601,7 @@ function ExchangesPage() {
   ] });
 }
 
-const route8 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route9 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action: action$9,
   default: ExchangesPage,
@@ -1622,7 +1656,7 @@ const action$8 = async ({ request }) => {
   return json({ ok: true, shop: targetShop, policies: 3, returns: dummyReturns.length });
 };
 
-const route9 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route10 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action: action$8
 }, Symbol.toStringTag, { value: 'Module' }));
@@ -1690,7 +1724,7 @@ const action$7 = async ({ request }) => {
   }
 };
 
-const route10 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route11 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action: action$7
 }, Symbol.toStringTag, { value: 'Module' }));
@@ -1826,7 +1860,7 @@ function BillingPage() {
   ] });
 }
 
-const route11 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route12 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action: action$6,
   default: BillingPage,
@@ -2012,7 +2046,7 @@ function ReturnDetailPage() {
   );
 }
 
-const route12 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route13 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action: action$5,
   default: ReturnDetailPage,
@@ -2029,7 +2063,7 @@ const loader$7 = async ({ request }) => {
   return null;
 };
 
-const route13 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route14 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   loader: loader$7
 }, Symbol.toStringTag, { value: 'Module' }));
@@ -2242,7 +2276,7 @@ function AnalyticsPage() {
   ] }) }) }) });
 }
 
-const route14 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route15 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   default: AnalyticsPage,
   loader: loader$6
@@ -2464,7 +2498,7 @@ function PoliciesPage() {
   );
 }
 
-const route15 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route16 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action: action$4,
   default: PoliciesPage,
@@ -2642,7 +2676,7 @@ function SettingsPage() {
   ] }) }) });
 }
 
-const route16 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route17 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action: action$3,
   default: SettingsPage,
@@ -3650,7 +3684,7 @@ const loader$3 = async () => {
   });
 };
 
-const route17 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route18 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action: action$2,
   loader: loader$3
@@ -3663,7 +3697,7 @@ const action$1 = () => {
   return json({ ok: true, service: "shopigent-returns", status: "healthy" });
 };
 
-const route18 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route19 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action: action$1,
   loader: loader$2
@@ -3802,7 +3836,7 @@ function Dashboard() {
   ] });
 }
 
-const route19 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route20 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   default: Dashboard,
   loader: loader$1
@@ -4173,14 +4207,14 @@ function ReturnPortal() {
   ] }) }) });
 }
 
-const route20 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+const route21 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   action,
   default: ReturnPortal,
   loader
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','imports':['/assets/components-CdU1FCkv.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-CT5gW-Ys.js','imports':['/assets/components-CdU1FCkv.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/context-ulSF2uG3.js'],'css':[]},'routes/api.refresh-session':{'id':'routes/api.refresh-session','parentId':'root','path':'api/refresh-session','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.refresh-session-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.check-session':{'id':'routes/api.check-session','parentId':'root','path':'api/check-session','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.check-session-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.seed-policies':{'id':'routes/api.seed-policies','parentId':'root','path':'api/seed-policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.seed-policies-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.quick-action':{'id':'routes/api.quick-action','parentId':'root','path':'api/quick-action','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.quick-action-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.upgrade-pro':{'id':'routes/api.upgrade-pro','parentId':'root','path':'api/upgrade-pro','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.upgrade-pro-l0sNRNKZ.js','imports':[],'css':[]},'routes/app.fraud-rules':{'id':'routes/app.fraud-rules','parentId':'root','path':'app/fraud-rules','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.fraud-rules-BGYrXVm9.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Checkbox-o8QdqIDE.js','/assets/Tag-C0_xAJFL.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/returns._index':{'id':'routes/returns._index','parentId':'root','path':'returns','index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._index-3B22G6fw.js','imports':['/assets/components-CdU1FCkv.js','/assets/Link-DitTtWTX.js','/assets/Page-BMJ0XUbE.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Layout-TqR5M3D9.js','/assets/EmptyState-B47Lu63v.js','/assets/context-DAVpCaJ7.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/Checkbox-o8QdqIDE.js','/assets/CSSTransition-BZID_MIM.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/app.exchanges':{'id':'routes/app.exchanges','parentId':'root','path':'app/exchanges','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.exchanges-CfBv6q4K.js','imports':['/assets/components-CdU1FCkv.js','/assets/Link-DitTtWTX.js','/assets/Page-BMJ0XUbE.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/EmptyState-B47Lu63v.js','/assets/Modal-LjBbTQ5v.js','/assets/Select-C25pWQee.js','/assets/context-DAVpCaJ7.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/Checkbox-o8QdqIDE.js','/assets/CSSTransition-BZID_MIM.js','/assets/banner-context-0ew862t1.js','/assets/context-ulSF2uG3.js','/assets/InlineGrid-BIw6R_K2.js'],'css':[]},'routes/api.seed-all':{'id':'routes/api.seed-all','parentId':'root','path':'api/seed-all','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.seed-all-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/app.billing':{'id':'routes/app.billing','parentId':'root','path':'app/billing','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.billing-DSWhSTBp.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Banner-BU17Rzbf.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/InlineGrid-BIw6R_K2.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/returns.$id':{'id':'routes/returns.$id','parentId':'root','path':'returns/:id','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._id-DW0V_Tja.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Banner-BU17Rzbf.js','/assets/Tag-C0_xAJFL.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/analytics':{'id':'routes/analytics','parentId':'root','path':'analytics','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/analytics-gqPt2l69.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js'],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-CwyEXBW7.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Tag-C0_xAJFL.js','/assets/Modal-LjBbTQ5v.js','/assets/Checkbox-o8QdqIDE.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js','/assets/context-ulSF2uG3.js','/assets/CSSTransition-BZID_MIM.js','/assets/InlineGrid-BIw6R_K2.js'],'css':[]},'routes/settings':{'id':'routes/settings','parentId':'root','path':'settings','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/settings-Cxn0Mpmg.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Select-C25pWQee.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/api.mcp':{'id':'routes/api.mcp','parentId':'root','path':'api/mcp','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.mcp-l0sNRNKZ.js','imports':[],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-DkL3cuOy.js','imports':['/assets/components-CdU1FCkv.js','/assets/Link-DitTtWTX.js','/assets/Page-BMJ0XUbE.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/context-DAVpCaJ7.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/Checkbox-o8QdqIDE.js','/assets/CSSTransition-BZID_MIM.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/return':{'id':'routes/return','parentId':'root','path':'return','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/return-D4-bnz9R.js','imports':['/assets/components-CdU1FCkv.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Banner-BU17Rzbf.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/banner-context-0ew862t1.js'],'css':[]}},'url':'/assets/manifest-bff7e7ee.js','version':'bff7e7ee'};
+const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','imports':['/assets/components-CdU1FCkv.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':true,'module':'/assets/root-CT5gW-Ys.js','imports':['/assets/components-CdU1FCkv.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/context-ulSF2uG3.js'],'css':[]},'routes/api.refresh-session':{'id':'routes/api.refresh-session','parentId':'root','path':'api/refresh-session','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.refresh-session-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.check-session':{'id':'routes/api.check-session','parentId':'root','path':'api/check-session','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.check-session-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.seed-policies':{'id':'routes/api.seed-policies','parentId':'root','path':'api/seed-policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.seed-policies-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.quick-action':{'id':'routes/api.quick-action','parentId':'root','path':'api/quick-action','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.quick-action-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.test-refund':{'id':'routes/api.test-refund','parentId':'root','path':'api/test-refund','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.test-refund-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.upgrade-pro':{'id':'routes/api.upgrade-pro','parentId':'root','path':'api/upgrade-pro','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.upgrade-pro-l0sNRNKZ.js','imports':[],'css':[]},'routes/app.fraud-rules':{'id':'routes/app.fraud-rules','parentId':'root','path':'app/fraud-rules','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.fraud-rules-BGYrXVm9.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Checkbox-o8QdqIDE.js','/assets/Tag-C0_xAJFL.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/returns._index':{'id':'routes/returns._index','parentId':'root','path':'returns','index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._index-3B22G6fw.js','imports':['/assets/components-CdU1FCkv.js','/assets/Link-DitTtWTX.js','/assets/Page-BMJ0XUbE.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Layout-TqR5M3D9.js','/assets/EmptyState-B47Lu63v.js','/assets/context-DAVpCaJ7.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/Checkbox-o8QdqIDE.js','/assets/CSSTransition-BZID_MIM.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/app.exchanges':{'id':'routes/app.exchanges','parentId':'root','path':'app/exchanges','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.exchanges-CfBv6q4K.js','imports':['/assets/components-CdU1FCkv.js','/assets/Link-DitTtWTX.js','/assets/Page-BMJ0XUbE.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/EmptyState-B47Lu63v.js','/assets/Modal-LjBbTQ5v.js','/assets/Select-C25pWQee.js','/assets/context-DAVpCaJ7.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/Checkbox-o8QdqIDE.js','/assets/CSSTransition-BZID_MIM.js','/assets/banner-context-0ew862t1.js','/assets/context-ulSF2uG3.js','/assets/InlineGrid-BIw6R_K2.js'],'css':[]},'routes/api.seed-all':{'id':'routes/api.seed-all','parentId':'root','path':'api/seed-all','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.seed-all-l0sNRNKZ.js','imports':[],'css':[]},'routes/api.webhooks':{'id':'routes/api.webhooks','parentId':'root','path':'api/webhooks','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.webhooks-l0sNRNKZ.js','imports':[],'css':[]},'routes/app.billing':{'id':'routes/app.billing','parentId':'root','path':'app/billing','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/app.billing-DSWhSTBp.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Banner-BU17Rzbf.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/InlineGrid-BIw6R_K2.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/returns.$id':{'id':'routes/returns.$id','parentId':'root','path':'returns/:id','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/returns._id-DW0V_Tja.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Banner-BU17Rzbf.js','/assets/Tag-C0_xAJFL.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/api.auth.$':{'id':'routes/api.auth.$','parentId':'root','path':'api/auth/*','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.auth._-l0sNRNKZ.js','imports':[],'css':[]},'routes/analytics':{'id':'routes/analytics','parentId':'root','path':'analytics','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/analytics-gqPt2l69.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js'],'css':[]},'routes/policies':{'id':'routes/policies','parentId':'root','path':'policies','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/policies-CwyEXBW7.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Tag-C0_xAJFL.js','/assets/Modal-LjBbTQ5v.js','/assets/Checkbox-o8QdqIDE.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js','/assets/context-ulSF2uG3.js','/assets/CSSTransition-BZID_MIM.js','/assets/InlineGrid-BIw6R_K2.js'],'css':[]},'routes/settings':{'id':'routes/settings','parentId':'root','path':'settings','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/settings-Cxn0Mpmg.js','imports':['/assets/components-CdU1FCkv.js','/assets/Page-BMJ0XUbE.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Select-C25pWQee.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/context-DAVpCaJ7.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/api.mcp':{'id':'routes/api.mcp','parentId':'root','path':'api/mcp','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/api.mcp-l0sNRNKZ.js','imports':[],'css':[]},'routes/healthz':{'id':'routes/healthz','parentId':'root','path':'healthz','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/healthz-l0sNRNKZ.js','imports':[],'css':[]},'routes/_index':{'id':'routes/_index','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/_index-DkL3cuOy.js','imports':['/assets/components-CdU1FCkv.js','/assets/Link-DitTtWTX.js','/assets/Page-BMJ0XUbE.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/TitleBar-DFMSJ8Yc.js','/assets/Layout-TqR5M3D9.js','/assets/Banner-BU17Rzbf.js','/assets/context-DAVpCaJ7.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/Checkbox-o8QdqIDE.js','/assets/CSSTransition-BZID_MIM.js','/assets/banner-context-0ew862t1.js'],'css':[]},'routes/return':{'id':'routes/return','parentId':'root','path':'return','index':undefined,'caseSensitive':undefined,'hasAction':true,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasErrorBoundary':false,'module':'/assets/return-D4-bnz9R.js','imports':['/assets/components-CdU1FCkv.js','/assets/ButtonGroup-y5ERiXEe.js','/assets/Banner-BU17Rzbf.js','/assets/use-is-after-initial-mount-BFlrBGM6.js','/assets/banner-context-0ew862t1.js'],'css':[]}},'url':'/assets/manifest-ecfd3649.js','version':'ecfd3649'};
 
 /**
        * `mode` is only relevant for the old Remix compiler but
@@ -4234,13 +4268,21 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','im
           caseSensitive: undefined,
           module: route4
         },
+  "routes/api.test-refund": {
+          id: "routes/api.test-refund",
+          parentId: "root",
+          path: "api/test-refund",
+          index: undefined,
+          caseSensitive: undefined,
+          module: route5
+        },
   "routes/api.upgrade-pro": {
           id: "routes/api.upgrade-pro",
           parentId: "root",
           path: "api/upgrade-pro",
           index: undefined,
           caseSensitive: undefined,
-          module: route5
+          module: route6
         },
   "routes/app.fraud-rules": {
           id: "routes/app.fraud-rules",
@@ -4248,7 +4290,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','im
           path: "app/fraud-rules",
           index: undefined,
           caseSensitive: undefined,
-          module: route6
+          module: route7
         },
   "routes/returns._index": {
           id: "routes/returns._index",
@@ -4256,7 +4298,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','im
           path: "returns",
           index: true,
           caseSensitive: undefined,
-          module: route7
+          module: route8
         },
   "routes/app.exchanges": {
           id: "routes/app.exchanges",
@@ -4264,7 +4306,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','im
           path: "app/exchanges",
           index: undefined,
           caseSensitive: undefined,
-          module: route8
+          module: route9
         },
   "routes/api.seed-all": {
           id: "routes/api.seed-all",
@@ -4272,7 +4314,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','im
           path: "api/seed-all",
           index: undefined,
           caseSensitive: undefined,
-          module: route9
+          module: route10
         },
   "routes/api.webhooks": {
           id: "routes/api.webhooks",
@@ -4280,7 +4322,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','im
           path: "api/webhooks",
           index: undefined,
           caseSensitive: undefined,
-          module: route10
+          module: route11
         },
   "routes/app.billing": {
           id: "routes/app.billing",
@@ -4288,7 +4330,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','im
           path: "app/billing",
           index: undefined,
           caseSensitive: undefined,
-          module: route11
+          module: route12
         },
   "routes/returns.$id": {
           id: "routes/returns.$id",
@@ -4296,7 +4338,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','im
           path: "returns/:id",
           index: undefined,
           caseSensitive: undefined,
-          module: route12
+          module: route13
         },
   "routes/api.auth.$": {
           id: "routes/api.auth.$",
@@ -4304,7 +4346,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','im
           path: "api/auth/*",
           index: undefined,
           caseSensitive: undefined,
-          module: route13
+          module: route14
         },
   "routes/analytics": {
           id: "routes/analytics",
@@ -4312,7 +4354,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','im
           path: "analytics",
           index: undefined,
           caseSensitive: undefined,
-          module: route14
+          module: route15
         },
   "routes/policies": {
           id: "routes/policies",
@@ -4320,7 +4362,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','im
           path: "policies",
           index: undefined,
           caseSensitive: undefined,
-          module: route15
+          module: route16
         },
   "routes/settings": {
           id: "routes/settings",
@@ -4328,7 +4370,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','im
           path: "settings",
           index: undefined,
           caseSensitive: undefined,
-          module: route16
+          module: route17
         },
   "routes/api.mcp": {
           id: "routes/api.mcp",
@@ -4336,7 +4378,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','im
           path: "api/mcp",
           index: undefined,
           caseSensitive: undefined,
-          module: route17
+          module: route18
         },
   "routes/healthz": {
           id: "routes/healthz",
@@ -4344,7 +4386,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','im
           path: "healthz",
           index: undefined,
           caseSensitive: undefined,
-          module: route18
+          module: route19
         },
   "routes/_index": {
           id: "routes/_index",
@@ -4352,7 +4394,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','im
           path: undefined,
           index: true,
           caseSensitive: undefined,
-          module: route19
+          module: route20
         },
   "routes/return": {
           id: "routes/return",
@@ -4360,7 +4402,7 @@ const serverManifest = {'entry':{'module':'/assets/entry.client-CgziCAqg.js','im
           path: "return",
           index: undefined,
           caseSensitive: undefined,
-          module: route20
+          module: route21
         }
       };
 
