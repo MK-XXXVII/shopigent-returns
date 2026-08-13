@@ -4013,6 +4013,7 @@ const action = async ({ request }) => {
     const orderResult = await getOrdersByEmail(shop, session.accessToken, customerEmail);
     const shopifyOrders = orderResult?.orders || [];
     let createdCount = 0;
+    let anyAutoApproved = false;
     for (const [orderId, data] of orderData) {
       if (data.itemIds.length === 0) continue;
       const shopifyOrder = shopifyOrders.find((o) => String(o.id) === orderId);
@@ -4053,6 +4054,7 @@ const action = async ({ request }) => {
           return true;
         });
         if (matches && conditions.some((c) => c.field === "autoApprove" && c.value === true)) {
+          anyAutoApproved = true;
           await prisma$1.returnRequest.update({
             where: { id: returnRec.id },
             data: { status: "APPROVED", decidedBy: "auto", decidedAt: /* @__PURE__ */ new Date() }
@@ -4070,7 +4072,7 @@ const action = async ({ request }) => {
     }
     return json({
       success: true,
-      message: `${createdCount} return request${createdCount > 1 ? "s" : ""} submitted${autoApproved ? " and auto-approved!" : "!"} We'll review ${createdCount > 1 ? "them" : "it"} shortly.`
+      message: `${createdCount} return request${createdCount > 1 ? "s" : ""} submitted${anyAutoApproved ? " and auto-approved!" : "!"} We'll review ${createdCount > 1 ? "them" : "it"} shortly.`
     });
   }
   return json({ error: "Invalid action" });

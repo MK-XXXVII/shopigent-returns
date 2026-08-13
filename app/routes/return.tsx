@@ -220,6 +220,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const shopifyOrders = orderResult?.orders || [];
 
     let createdCount = 0;
+    let anyAutoApproved = false;
     for (const [orderId, data] of orderData) {
       if (data.itemIds.length === 0) continue;
 
@@ -271,7 +272,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           return true;
         });
         if (matches && conditions.some((c: any) => c.field === "autoApprove" && c.value === true)) {
-          autoApproved = true;
+          anyAutoApproved = true;
           // Auto-approve the return
           await prisma.returnRequest.update({
             where: { id: returnRec.id },
@@ -292,7 +293,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     return json({
       success: true,
-      message: `${createdCount} return request${createdCount > 1 ? "s" : ""} submitted${autoApproved ? " and auto-approved!" : "!"} We'll review ${createdCount > 1 ? "them" : "it"} shortly.`,
+      message: `${createdCount} return request${createdCount > 1 ? "s" : ""} submitted${anyAutoApproved ? " and auto-approved!" : "!"} We'll review ${createdCount > 1 ? "them" : "it"} shortly.`,
     });
   }
 
