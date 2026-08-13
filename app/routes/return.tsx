@@ -188,24 +188,46 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   // ─── Submit Return ─────────────────────────────────────────
   if (_action === "submit_return") {
-    const orderId = formData.get("orderId") as string;
     const customerName = formData.get("customerName") as string;
     const customerEmail = formData.get("customerEmail") as string;
     const reason = formData.get("reason") as string;
-    const orderName2 = formData.get("orderName2") as string;
 
-    // Parse selected items from checkboxes
+    // Parse selected items grouped by order
     const selectedItemIds = formData.getAll("selectedItemIds") as string[];
+    const orderIds = formData.getAll("orderId") as string[];
+    const orderNames = formData.getAll("orderName2") as string[];
 
-    // Look up the actual items from the order via Shopify API
-    let selectedItems: any[] = [];
+    // Group selected item IDs by order
+    const orderData = new Map<string, { orderName: string; itemIds: string[] }>();
+    for (let i = 0; i < orderIds.length; i++) {
+      orderData.set(orderIds[i], { orderName: orderNames[i] || orderIds[i], itemIds: [] });
+    }
+    for (const itemId of selectedItemIds) {
+      // Each itemId is submitted as "orderId:itemId" format from the UI
+      const [orderId, ...rest] = itemId.split(":");
+      const realItemId = rest.join(":");
+      if (orderData.has(orderId)) {
+        orderData.get(orderId)!.itemIds.push(realItemId);
+      }
+    }
 
-    if (selectedItemIds.length > 0) {
-      const orderResult = await getOrdersByEmail(shop, session.accessToken, customerEmail);
-      for (const o of (orderResult?.orders || [])) {
-        if (String(o.id) === orderId) {
-          selectedItems = (o.line_items || [])
-            .filter((li: any) => selectedItemIds.includes(String(li.id)))
+    if (orderData.size === 0) {
+      return json({ error: "Please select items to return." });
+    }
+
+    // Look up actual items from Shopify API
+    const orderResult = await getOrdersByEmail(shop, session.accessToken, customerEmail);
+    const shopifyOrders = orderResult?.orders || [];
+
+    let created = 0;
+    for (const [orderId, data] of orderData) {
+      if (data.itemIds.length === 0) continue;
+
+      // Find matching items from Shopify API
+      const shopifyOrder = shopifyOrders.find((o: any) => String(o.id) === orderId);
+      const selectedItems = shopifyOrder
+        ? (shopifyOrder.line_items || [])
+            .filter((li: any) => data.itemIds.includes(String(li.id)))
             .map((li: any) => ({
               id: String(li.id),
               variantId: `gid://shopify/ProductVariant/${li.variant_id}`,
@@ -213,29 +235,34 @@ export const action = async ({ request }: ActionFunctionArgs) => {
               quantity: li.quantity,
               price: li.price || "0",
               sku: li.sku || "",
-            }));
-        }
-      }
+            }))
+        : [];
+
+      if (selectedItems.length === 0) continue;
+
+      await prisma.returnRequest.create({
+        data: {
+          shop,
+          orderId,
+          orderName: data.orderName,
+          customerEmail,
+          customerName,
+          items: selectedItems,
+          reason,
+          status: "PENDING",
+        },
+      });
+      created++;
     }
 
-    if (!orderId || selectedItems.length === 0) {
-      return json({ error: "Please enter at least one item to return." });
+    if (created === 0) {
+      return json({ error: "No valid items selected. Please try again." });
     }
 
-    await prisma.returnRequest.create({
-      data: {
-        shop,
-        orderId,
-        orderName: orderName2,
-        customerEmail,
-        customerName,
-        items: selectedItems,
-        reason,
-        status: "PENDING",
-      },
+    return json({
+      success: true,
+      message: `${created} return request${created > 1 ? "s" : ""} submitted! We'll review ${created > 1 ? "them" : "it"} shortly.`,
     });
-
-    return json({ success: true, message: "Return request submitted! We'll review it shortly." });
   }
 
   return json({ error: "Invalid action" });
@@ -381,7 +408,7 @@ export default function ReturnPortal() {
                             <input
                               type="checkbox"
                               name="selectedItemIds"
-                              value={item.id}
+                              value={`${order.id}:${item.id}`}
                               defaultChecked={false}
                               style={{ width: 18, height: 18 }}
                             />

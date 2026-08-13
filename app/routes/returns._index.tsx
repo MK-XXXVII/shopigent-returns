@@ -1,5 +1,5 @@
 import { json, type LoaderFunctionArgs } from "@remix-run/node";
-import { useLoaderData } from "@remix-run/react";
+import { useLoaderData, useNavigate } from "@remix-run/react";
 import {
   Page,
   Layout,
@@ -12,6 +12,8 @@ import {
   useIndexResourceState,
   Link,
   EmptyState,
+  Button,
+  InlineStack,
 } from "@shopify/polaris";
 import { useState } from "react";
 import shopify from "../shopify.server";
@@ -62,6 +64,7 @@ function statusBadge(status: string) {
 
 export default function ReturnsPage() {
   const { returns, counts, currentStatus } = useLoaderData<typeof loader>();
+  const navigate = useNavigate();
 
   const resourceName = { singular: "return", plural: "returns" };
   const { selectedResources, allResourcesSelected, handleSelectionChange } =
@@ -72,15 +75,17 @@ export default function ReturnsPage() {
   const rowMarkup = returns.map(
     ({ id, orderName, customerName, status, createdAt }, index) => {
       const badge = statusBadge(status);
+      const isPending = status === "PENDING";
       return (
         <IndexTable.Row
           id={id}
           key={id}
           selected={selectedResources.includes(id)}
           position={index}
+          onClick={() => navigate(`/returns/${id}`)}
         >
           <IndexTable.Cell>
-            <Link url={`/returns/${id}`}>
+            <Link url={`/returns/${id}`} onClick={(e: any) => { e.stopPropagation(); navigate(`/returns/${id}`); }}>
               {orderName || "—"}
             </Link>
           </IndexTable.Cell>
@@ -90,6 +95,29 @@ export default function ReturnsPage() {
           </IndexTable.Cell>
           <IndexTable.Cell>
             {new Date(createdAt).toLocaleDateString()}
+          </IndexTable.Cell>
+          <IndexTable.Cell>
+            <InlineStack gap="100">
+              <Button size="micro" onClick={(e: any) => { e.stopPropagation(); navigate(`/returns/${id}`); }}>
+                View
+              </Button>
+              {isPending && (
+                <>
+                  <Button size="micro" variant="primary" tone="success" onClick={(e: any) => {
+                    e.stopPropagation();
+                    navigate(`/returns/${id}`);
+                  }}>
+                    Approve
+                  </Button>
+                  <Button size="micro" tone="critical" onClick={(e: any) => {
+                    e.stopPropagation();
+                    navigate(`/returns/${id}`);
+                  }}>
+                    Deny
+                  </Button>
+                </>
+              )}
+            </InlineStack>
           </IndexTable.Cell>
         </IndexTable.Row>
       );
@@ -158,6 +186,7 @@ export default function ReturnsPage() {
                     { title: "Customer" },
                     { title: "Status" },
                     { title: "Date" },
+                    { title: "Actions" },
                   ]}
                 >
                   {rowMarkup}
