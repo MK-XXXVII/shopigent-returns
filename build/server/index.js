@@ -213,9 +213,9 @@ const action$a = async ({ request }) => {
   const shop = await prisma$1.shop.findFirst({ where: { mcpApiKeyHash: hash } });
   if (!shop) return json({ error: "Invalid API key" }, { status: 401 });
   const policies = [
-    { name: "Standard 30-Day Return", description: "Auto-approved for items under $200. 0% restocking fee.", priority: 1, isActive: true, conditions: [{ field: "maxDays", operator: "lte", value: 30 }, { field: "maxAmount", operator: "lte", value: 200 }], autoApprove: true, restockingFee: 0 },
-    { name: "High-Value Review", description: "Items over $200 flagged for manual review. 10% restocking fee.", priority: 2, isActive: true, conditions: [{ field: "maxDays", operator: "lte", value: 30 }, { field: "minAmount", operator: "gt", value: 200 }], autoApprove: false, restockingFee: 10 },
-    { name: "Final Sale - Electronics", description: "Electronics, clearance, and custom items are non-returnable.", priority: 3, isActive: true, conditions: [{ field: "maxDays", operator: "lte", value: 0 }], autoApprove: false, restockingFee: 0 }
+    { name: "Standard 30-Day Return", description: "Auto-approved for items under $200. 0% restocking fee.", priority: 1, isActive: true, conditions: [{ field: "maxDays", operator: "lte", value: 30 }, { field: "maxAmount", operator: "lte", value: 200 }, { field: "autoApprove", operator: "eq", value: true }, { field: "restockingFee", operator: "eq", value: 0 }] },
+    { name: "High-Value Review", description: "Items over $200 flagged for manual review. 10% restocking fee.", priority: 2, isActive: true, conditions: [{ field: "maxDays", operator: "lte", value: 30 }, { field: "minAmount", operator: "gt", value: 200 }, { field: "autoApprove", operator: "eq", value: false }, { field: "restockingFee", operator: "eq", value: 10 }] },
+    { name: "Final Sale - Electronics", description: "Electronics, clearance, and custom items are non-returnable.", priority: 3, isActive: true, conditions: [{ field: "maxDays", operator: "lte", value: 0 }, { field: "autoApprove", operator: "eq", value: false }, { field: "restockingFee", operator: "eq", value: 0 }] }
   ];
   let created = 0, updated = 0;
   for (const p of policies) {
