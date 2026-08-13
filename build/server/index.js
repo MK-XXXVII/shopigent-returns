@@ -3861,14 +3861,14 @@ function generateDevOtp() {
 
 async function createShopifyReturn(shop, accessToken, orderId, items) {
   const orderGid = orderId.startsWith("gid://") ? orderId : `gid://shopify/Order/${orderId}`;
-  const mutation = `mutation returnCreate($input: ReturnInput!) {
-    returnCreate(input: $input) {
+  const mutation = `mutation returnCreate($returnInput: ReturnInput!) {
+    returnCreate(returnInput: $returnInput) {
       return { id status }
       userErrors { field message }
     }
   }`;
   const result = await shopifyAdminQuery(shop, accessToken, mutation, {
-    input: {
+    returnInput: {
       orderId: orderGid,
       returnLineItems: items.map((item) => ({
         variantId: item.variantId,
