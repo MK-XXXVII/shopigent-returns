@@ -28,7 +28,6 @@ export async function ensureReturnsWebhook(shop: string): Promise<{ ok: boolean;
         topic: "returns/update",
         address: callback,
         format: "json",
-        api_version: "2026-10",
       },
     }),
   });
