@@ -113,6 +113,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       shopAddress: config.shopAddress || { line1: "", city: "", postalCode: "", country: "NL" },
     };
     const result = await createReturnLabel(session.shop, labelRequest);
+    console.log(`[test-label] shopAddress=${JSON.stringify(labelRequest.shopAddress)} to=${JSON.stringify(customerAddress)} result=${JSON.stringify(result).slice(0, 500)}`);
     if (result.success && result.labelUrl) {
       await sendEmail({
         to: config.testEmail || session.shop.replace(".myshopify.com", "") + "@example.com",
