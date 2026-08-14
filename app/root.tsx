@@ -21,7 +21,7 @@ export const links = () => [{ rel: "stylesheet", href: polarisStyles }];
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   // Public routes (customer portal) — no Shopify admin auth
-  const isPublic = url.pathname.startsWith("/return");
+  const isPublic = url.pathname.startsWith("/return") || url.pathname.startsWith("/api/auth");
   if (!isPublic) {
     await authenticate.admin(request);
   }
