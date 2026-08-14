@@ -23,20 +23,31 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   // Also fetch the returns for the shop's orders to inspect statuses
   let returnsResult = null;
-  if (body.orderId) {
-    const orderGid = body.orderId.startsWith("gid://") ? body.orderId : `gid://shopify/Order/${body.orderId}`;
-    const q = `{ order(id: "${orderGid}") { id name returns(first: 10) { nodes { id status } } } }`;
-    const gRes = await fetch(`https://${shop}/admin/api/2026-10/graphql.json`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
-      body: JSON.stringify({ query: q }),
+  let orderName2 = null;
+  if (body.orderName) {
+    // Find the order by name via REST
+    const oRes = await fetch(`https://${shop}/admin/api/2026-10/orders.json?name=${encodeURIComponent(body.orderName)}&limit=5`, {
+      headers: { "X-Shopify-Access-Token": token },
     });
-    returnsResult = await gRes.json();
+    const oData = await oRes.json();
+    const found = (oData?.orders || [])[0];
+    orderName2 = found ? { name: found.name, id: found.id } : null;
+    if (found) {
+      const orderGid = `gid://shopify/Order/${found.id}`;
+      const q = `{ order(id: "${orderGid}") { id name returns(first: 10) { nodes { id status } } } }`;
+      const gRes = await fetch(`https://${shop}/admin/api/2026-10/graphql.json`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
+        body: JSON.stringify({ query: q }),
+      });
+      returnsResult = await gRes.json();
+    }
   }
 
   return json({
     shop,
     resStatus: res.status,
+    orderName2,
     webhooks: hooks.map((h: any) => ({ topic: h.topic, address: h.address, id: h.id })),
     returns: returnsResult,
   });
