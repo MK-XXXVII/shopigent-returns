@@ -222,6 +222,8 @@ export async function executeRefund(
     orderId: orderGid,
     refundLineItems,
     note: reason,
+    // If there's a real payment transaction, reference it as parent.
+    // Otherwise use a manual/offline gateway refund (no parent_id needed).
     transactions: paymentTx ? [{
       parentId: paymentTx.id,
       amount: amount.toString(),
@@ -229,7 +231,7 @@ export async function executeRefund(
       kind: "REFUND",
     }] : [{
       amount: amount.toString(),
-      gateway: "shopify",
+      gateway: "manual",
       kind: "REFUND",
     }],
   };
