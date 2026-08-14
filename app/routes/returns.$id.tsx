@@ -19,7 +19,7 @@ import { issueConfirmationToken, verifyConfirmationToken } from "../lib/confirma
 import { executeRefund } from "../lib/shopify-admin.server";
 import { approveShopifyReturn, declineShopifyReturn } from "../lib/shopify-return.server";
 import { generateAndEmailReturnLabel } from "../lib/return-label-notify.server";
-import { sendEmail, returnApprovedEmail, returnDeniedEmail } from "../lib/email.server";
+import { sendEmail, returnApprovedEmail, returnDeniedEmail, refundProcessedEmail } from "../lib/email.server";
 
 const STATUS_COLORS: Record<string, "success" | "warning" | "critical" | "info" | "new"> = {
   PENDING: "warning", APPROVED: "success", DENIED: "critical",
@@ -173,6 +173,34 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     return json({ error: "No customer email on file" }, { status: 400 });
   }
 
+  // Process refund from the app — execute Shopify refund + email customer
+  if (action === "process_refund") {
+    if (returnReq.status === "PENDING") {
+      return json({ error: "Approve the return first before refunding" }, { status: 400 });
+    }
+    if (returnReq.status === "REFUNDED") {
+      return json({ error: "Return already refunded" }, { status: 400 });
+    }
+    let sess = await prisma.session.findFirst({ where: { shop, isOnline: false } });
+    if (!sess?.accessToken) sess = await prisma.session.findFirst({ where: { shop } });
+    if (!sess?.accessToken) return json({ error: "No access token" }, { status: 500 });
+
+    const amount = (returnReq.items as any[]).reduce((s: number, i: any) => s + (parseFloat(i.price || "0") * (i.quantity || 0)), 0);
+    try {
+      const result = await executeRefund(shop, sess.accessToken, returnReq.orderId, amount, true);
+      const refundId = result?.id || null;
+      await prisma.returnRequest.update({
+        where: { id: returnId },
+        data: { status: "REFUNDED", refundAmount: amount, refundId },
+      });
+      await prisma.decisionLog.create({ data: { returnId, actor: "admin", action: "refund", details: { refundId, amount } } });
+      if (returnReq.customerEmail) sendEmail({ ...refundProcessedEmail(returnReq.customerName || "Customer", returnReq.orderName || "", amount), to: returnReq.customerEmail });
+      return json({ success: true, message: "💰 Refund processed!", newStatus: "REFUNDED" });
+    } catch (err: any) {
+      return json({ error: `Refund failed: ${err.message}` }, { status: 500 });
+    }
+  }
+
   return json({ error: "Unknown action" });
 };
 
@@ -240,7 +268,15 @@ export default function ReturnDetailPage() {
                       📦 Process Return (Send Label)
                     </Button>
                   )}
+                  {(r.status === "SHIPPED" || r.status === "APPROVED") && (
+                    <Button variant="primary" tone="success" onClick={() => fetcher.submit({ _action: "process_refund" }, { method: "post" })} loading={fetcher.state !== "idle"}>
+                      💰 Process Refund
+                    </Button>
+                  )}
                 </InlineStack>
+                {/* Global action feedback — shows for any action regardless of status */}
+                {isError && <Banner tone="critical">{actionData.error}</Banner>}
+                {isSuccess && <Banner tone="success">{actionData.message}</Banner>}
                 {r.customerName && (
                   <Text variant="bodyMd" as="p">
                     <strong>Customer:</strong> {r.customerName} {r.customerEmail && `(${r.customerEmail})`}

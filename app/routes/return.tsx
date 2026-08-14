@@ -219,6 +219,28 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       return json({ error: "Please select items to return." });
     }
 
+    // Duplicate check: see if any of these order items already have an active return
+    const orderIdsForCheck = Array.from(orderData.keys());
+    const existingReturns = await prisma.returnRequest.findMany({
+      where: {
+        shop,
+        orderId: { in: orderIdsForCheck },
+        status: { in: ["PENDING", "APPROVED", "SHIPPED", "EXCHANGE"] },
+      },
+    });
+    if (existingReturns.length > 0) {
+      const alreadyReturned: { orderName?: string | null; itemTitles: string[] }[] = existingReturns.map((er) => ({
+        orderName: er.orderName,
+        itemTitles: (er.items as any[]).map((i: any) => i.title || i.id),
+      }));
+      return json({
+        error: "Items in these orders already have an active return request.",
+        duplicateNote: alreadyReturned
+          .map((d) => `${d.orderName || ""}: ${d.itemTitles.join(", ")}`)
+          .join(" | "),
+      });
+    }
+
     // Look up actual items from Shopify API
     const orderResult = await getOrdersByEmail(shop, session.accessToken, customerEmail);
     const shopifyOrders = orderResult?.orders || [];
@@ -523,8 +545,29 @@ export default function ReturnPortal() {
                     </Card>
                   );
                 })}
-                <TextField label="Reason for return" name="reason" value={reason} onChange={setReason}
-                  placeholder="e.g. Wrong size, defective, changed mind..." multiline={2} />
+                <div style={{ marginBottom: 16 }}>
+                  <label htmlFor="return-reason" style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: 14 }}>
+                    Reason for return
+                  </label>
+                  <select
+                    id="return-reason"
+                    name="reason"
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    required
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #ccc", fontSize: 14, background: "#fff" }}
+                  >
+                    <option value="">Select a reason...</option>
+                    <option value="wrong_size">Wrong size / Doesn't fit</option>
+                    <option value="defective">Damaged or defective</option>
+                    <option value="wrong_item">Received the wrong item</option>
+                    <option value="not_as_described">Not as described</option>
+                    <option value="color_style">Color / style not what I expected</option>
+                    <option value="changed_mind">Changed my mind / No longer wanted</option>
+                    <option value="duplicate">Duplicate order</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
                 <Button submit variant="primary" disabled={!reason} loading={isSubmitting}>
                   Submit Return Request
                 </Button>

@@ -10,6 +10,8 @@ interface EmailPayload {
   to: string;
   subject: string;
   html: string;
+  fromName?: string;
+  from?: string;
 }
 
 export async function sendEmail(payload: EmailPayload): Promise<boolean> {
@@ -17,6 +19,9 @@ export async function sendEmail(payload: EmailPayload): Promise<boolean> {
     console.log("[email] No MAIL_RELAY_KEY configured, skipping");
     return false;
   }
+
+  // Default sender name unless overridden
+  const fromName = payload.fromName || "Shopigent Returns";
 
   try {
     const response = await fetch(RELAY_URL, {
@@ -30,6 +35,8 @@ export async function sendEmail(payload: EmailPayload): Promise<boolean> {
         subject: payload.subject,
         text: payload.html.replace(/<[^>]*>/g, ""), // strip HTML for plain text fallback
         html: payload.html,
+        fromName,
+        from: payload.from,
       }),
       signal: AbortSignal.timeout(15_000),
     });
@@ -127,14 +134,16 @@ export function returnLabelEmail(
   customerName: string,
   orderName: string,
   labelUrl: string,
-  trackingNumber?: string
+  trackingNumber?: string,
+  storeName?: string
 ): EmailPayload {
   const trackingLine = trackingNumber
     ? `<p>Tracking number: <strong>${trackingNumber}</strong></p>`
     : "";
+  const storeSuffix = storeName ? ` - ${storeName}` : "";
   return {
     to: "",
-    subject: `Your Return Shipping Label — ${orderName}`,
+    subject: `📦 Your Return Shipping Label - ${orderName}${storeSuffix}`,
     html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
       <h2 style="color:#5c6ac4">📦 Your Return Shipping Label</h2>
       <p>Hi ${customerName},</p>

@@ -57,6 +57,9 @@ export async function generateAndEmailReturnLabel(
     return { success: false, error: "No customer email — cannot send label", skipped: true };
   }
 
+  const storeName = humanizeStoreName(shop);
+  const sender = `${storeName} by Shopigent Returns`;
+
   const labelRequest = buildLabelRequest(shop, returnRec);
   const result = await createReturnLabel(shop, labelRequest);
 
@@ -64,8 +67,9 @@ export async function generateAndEmailReturnLabel(
   if (!result.success && opts?.allowTest && /not configured/i.test(result.error || "")) {
     const placeholderUrl = `https://returns-docs.greeknous.com/demo-label?order=${encodeURIComponent(orderName)}`;
     await sendEmail({
-      ...returnLabelEmail(returnRec.customerName || "Customer", orderName, placeholderUrl),
+      ...returnLabelEmail(returnRec.customerName || "Customer", orderName, placeholderUrl, undefined, storeName),
       to: customerEmail,
+      fromName: sender,
     });
     return { success: true, skipped: true, labelUrl: placeholderUrl };
   }
@@ -79,8 +83,9 @@ export async function generateAndEmailReturnLabel(
   }
 
   await sendEmail({
-    ...returnLabelEmail(returnRec.customerName || "Customer", orderName, result.labelUrl, result.trackingNumber),
+    ...returnLabelEmail(returnRec.customerName || "Customer", orderName, result.labelUrl, result.trackingNumber, storeName),
     to: customerEmail,
+    fromName: sender,
   });
 
   return {
@@ -88,4 +93,13 @@ export async function generateAndEmailReturnLabel(
     labelUrl: result.labelUrl,
     trackingNumber: result.trackingNumber,
   };
+}
+
+// Derive a human-friendly store name from the shop domain (e.g. shopigent-kosmos.myshopify.com → "Shopigent Kosmos")
+export function humanizeStoreName(shop: string): string {
+  const base = shop.split(".")[0];
+  return base
+    .split(/[-_]/)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
 }
