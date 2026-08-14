@@ -48,7 +48,7 @@ export async function syncReturnFromShopify(shop: string, shopifyReturnId: strin
   let q: string;
 
   if (shopifyReturnId) {
-    q = `{ return(id: "${shopifyReturnId}") { id status order { id name } returnLineItems(first: 10) { nodes { id status } } } }`;
+    q = `{ return(id: "${shopifyReturnId}") { id status } }`;
   } else if (orderGid) {
     q = `{ order(id: "${orderGid}") { id name returns(first: 5) { nodes { id status } } } }`;
   } else {
