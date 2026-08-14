@@ -162,6 +162,28 @@ export default function FraudRulesPage() {
     setDomainInput("");
   }, [domainInput, domains]);
 
+  // Flush any pending typed input into the comma-separated state before submit
+  const flushPending = useCallback(() => {
+    let dirty = false;
+    if (domainInput.trim()) {
+      const val = domainInput.trim().toLowerCase();
+      const existing = domains ? domains.split(",").map((s) => s.trim().toLowerCase()) : [];
+      if (!existing.includes(val)) {
+        setDomains([...existing, val].join(", "));
+        dirty = true;
+      }
+    }
+    if (countryInput.trim()) {
+      const val = countryInput.trim().toUpperCase();
+      const existing = countries ? countries.split(",").map((s) => s.trim().toUpperCase()) : [];
+      if (!existing.includes(val)) {
+        setCountries([...existing, val].join(", "));
+        dirty = true;
+      }
+    }
+    return dirty;
+  }, [domainInput, domains, countryInput, countries]);
+
   const removeDomainTag = useCallback((tag: string) => {
     const existing = domains ? domains.split(",").map((s) => s.trim()).filter(Boolean) : [];
     const next = existing.filter((t) => t.toLowerCase() !== tag.toLowerCase()).join(", ");
@@ -185,7 +207,11 @@ export default function FraudRulesPage() {
                 will increase the risk score and may flag the return for manual review.
               </Text>
 
-              <fetcher.Form method="post">
+              <fetcher.Form method="post" onSubmit={(e) => {
+                e.preventDefault();
+                flushPending();
+                setTimeout(() => fetcher.submit(e.currentTarget, { method: "post" }), 0);
+              }}>
                 <input type="hidden" name="_action" value="save_rules" />
                 <input type="hidden" name="enabled" value={String(enabled)} />
                 <input type="hidden" name="blockedCountries" value={countries} />
