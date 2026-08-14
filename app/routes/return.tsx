@@ -8,6 +8,7 @@ import { shouldBypassOtp, generateDevOtp } from "../lib/otp-dev.server";
 import { shopifyAdminQuery, getOrdersByEmail } from "../lib/shopify-admin.server";
 import { createShopifyReturn, approveShopifyReturn } from "../lib/shopify-return.server";
 import { generateAndEmailReturnLabel } from "../lib/return-label-notify.server";
+import { loadFraudRules, evaluateFraudRules } from "../lib/fraud-rules.server";
 
 // Customer Portal — public-facing, no Shopify auth required
 // Uses the store's stored offline access token to query the Admin API
@@ -288,6 +289,38 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         orderBy: { priority: "asc" },
       });
       const totalAmount = selectedItems.reduce((s: number, i: any) => s + (parseFloat(i.price || "0") * (i.quantity || 0)), 0);
+
+      // ── Fraud rule evaluation (custom rules + signals) ──────
+      const shopRec = await prisma.shop.findUnique({ where: { shop } });
+      const rules = loadFraudRules((shopRec?.config as any) || {});
+      const recentReturnCount = customerEmail
+        ? await prisma.returnRequest.count({
+            where: {
+              shop,
+              customerEmail,
+              createdAt: { gte: new Date(Date.now() - (rules.maxReturnsWindowDays || 30) * 86400000) },
+            },
+          })
+        : 0;
+      const fraudEval = evaluateFraudRules(
+        { totalAmount, customerEmail, customerCountry: undefined },
+        rules,
+        recentReturnCount
+      );
+      if (fraudEval.triggeredRules.length > 0) {
+        await prisma.fraudSignal.create({
+          data: {
+            returnId: returnRec.id,
+            signal: fraudEval.triggeredRules.map((t) => t.rule).join(","),
+            score: fraudEval.maxScore,
+            details: { rules: fraudEval.triggeredRules } as any,
+          },
+        });
+        await prisma.decisionLog.create({
+          data: { returnId: returnRec.id, actor: "auto", action: "fraud_flag", details: { ruleNames: fraudEval.triggeredRules.map((t) => t.rule) } as any },
+        });
+      }
+
       for (const policy of policies) {
         const conditions = policy.conditions as any[];
         const matches = conditions.every((c: any) => {
