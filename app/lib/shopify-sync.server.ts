@@ -38,6 +38,8 @@ export async function syncReturnFromShopify(shop: string, shopifyReturnId: strin
   if (!our) return null;
   const orderId = our.orderId;
 
+  console.log(`[sync] Starting for return ${ourReturnId}, orderId=${orderId}, shopifyReturnId=${shopifyReturnId}, shop=${shop}`);
+
   // Find the Shopify return by ID, or by order if no ID stored
   let shopifyReturn: any = null;
 
