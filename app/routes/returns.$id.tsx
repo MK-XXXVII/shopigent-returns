@@ -17,6 +17,7 @@ import shopify from "../shopify.server";
 import prisma from "../lib/db.server";
 import { issueConfirmationToken, verifyConfirmationToken } from "../lib/confirmation.server";
 import { executeRefund } from "../lib/shopify-admin.server";
+import { approveShopifyReturn, declineShopifyReturn } from "../lib/shopify-return.server";
 import { sendEmail, returnApprovedEmail, returnDeniedEmail } from "../lib/email.server";
 
 const STATUS_COLORS: Record<string, "success" | "warning" | "critical" | "info" | "new"> = {
@@ -96,6 +97,19 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           console.error(`[admin] Refund failed: ${err.message}`);
         }
       }
+      // Sync approve to Shopify if a Shopify return exists
+      if (sess?.accessToken && returnReq.shopifyReturnId) {
+        try {
+          const approved = await approveShopifyReturn(shop, sess.accessToken, returnReq.shopifyReturnId);
+          if (approved.success) {
+            await prisma.decisionLog.create({ data: { returnId, actor: "admin", action: "shopify_approve", details: { returnId: returnReq.shopifyReturnId } } });
+          } else {
+            console.error(`[admin] Shopify approve failed: ${approved.error}`);
+          }
+        } catch (e: any) {
+          console.error(`[admin] Shopify approve error: ${e.message}`);
+        }
+      }
       await prisma.decisionLog.create({ data: { returnId, actor: "admin", action: "approve", details: { source: "detail_page" } } });
       if (returnReq.customerEmail) sendEmail({ ...returnApprovedEmail(returnReq.customerName || "Customer", returnReq.orderName || ""), to: returnReq.customerEmail });
       return json({ success: true, message: "✅ Return approved!", newStatus: "APPROVED" });
@@ -105,6 +119,21 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         data: { status: "DENIED", decidedBy: "admin", decidedAt: new Date(), notes: "Denied by admin" },
       });
       if (claim.count === 0) return json({ error: "Already processed" });
+      // Sync deny to Shopify if a Shopify return exists
+      let sess = await prisma.session.findFirst({ where: { shop, isOnline: false } });
+      if (!sess?.accessToken) sess = await prisma.session.findFirst({ where: { shop } });
+      if (sess?.accessToken && returnReq.shopifyReturnId) {
+        try {
+          const declined = await declineShopifyReturn(shop, sess.accessToken, returnReq.shopifyReturnId);
+          if (declined.success) {
+            await prisma.decisionLog.create({ data: { returnId, actor: "admin", action: "shopify_decline", details: { returnId: returnReq.shopifyReturnId } } });
+          } else {
+            console.error(`[admin] Shopify decline failed: ${declined.error}`);
+          }
+        } catch (e: any) {
+          console.error(`[admin] Shopify decline error: ${e.message}`);
+        }
+      }
       await prisma.decisionLog.create({ data: { returnId, actor: "admin", action: "deny", details: { source: "detail_page" } } });
       if (returnReq.customerEmail) sendEmail({ ...returnDeniedEmail(returnReq.customerName || "Customer", returnReq.orderName || "", "Denied by store admin"), to: returnReq.customerEmail });
       return json({ success: true, message: "❌ Return denied", newStatus: "DENIED" });

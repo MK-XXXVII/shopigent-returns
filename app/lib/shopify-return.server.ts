@@ -141,3 +141,37 @@ export async function approveShopifyReturn(
     ? { success: true }
     : { error: "Failed to approve return" };
 }
+
+// Decline a return request in Shopify
+export async function declineShopifyReturn(
+  shop: string,
+  accessToken: string,
+  returnId: string,
+  declineReason?: string
+): Promise<{ success?: boolean; error?: string }> {
+  const mutation = `mutation returnDeclineRequest($input: ReturnDeclineRequestInput!) {
+    returnDeclineRequest(input: $input) {
+      return { id status }
+      userErrors { field message }
+    }
+  }`;
+
+  const result = await shopifyAdminQuery(shop, accessToken, mutation, {
+    input: {
+      returnId,
+      declineReason: declineReason || "DECLINED_BY_MERCHANT",
+    },
+  });
+
+  if (result?.errors?.length) {
+    return { error: result.errors.map((e: any) => e.message).join(", ") };
+  }
+  const errors = result?.data?.returnDeclineRequest?.userErrors;
+  if (errors?.length > 0) {
+    return { error: errors.map((e: any) => e.message).join(", ") };
+  }
+  const returnObj = result?.data?.returnDeclineRequest?.return;
+  return returnObj?.id
+    ? { success: true }
+    : { error: "Failed to decline return" };
+}

@@ -1867,6 +1867,134 @@ const route12 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   loader: loader$9
 }, Symbol.toStringTag, { value: 'Module' }));
 
+async function createShopifyReturn(shop, accessToken, orderId, items, reason) {
+  const orderGid = orderId.startsWith("gid://") ? orderId : `gid://shopify/Order/${orderId}`;
+  const query = `{
+    order(id: "${orderGid}") {
+      id
+      displayFulfillmentStatus
+      fulfillments(first: 10) {
+        id
+        fulfillmentLineItems(first: 50) {
+          edges { node { id lineItem { id variant { id } } quantity } }
+        }
+      }
+    }
+  }`;
+  const result = await shopifyAdminQuery(shop, accessToken, query);
+  console.log(`[shopify-return] GraphQL:`, JSON.stringify(result).slice(0, 3e3));
+  if (result?.errors) {
+    const msg = result.errors.map((e) => e.message).join(", ");
+    console.error(`[shopify-return] GraphQL error: ${msg}`);
+    return { error: `GraphQL error: ${msg}` };
+  }
+  const fulfillments = result?.data?.order?.fulfillments || [];
+  if (fulfillments.length === 0) {
+    return { error: "Order has no fulfillments. Create a fulfillment first." };
+  }
+  const returnLineItems = [];
+  for (const reqItem of items) {
+    const variantId = reqItem.variantId.replace("gid://shopify/ProductVariant/", "");
+    let found = false;
+    for (const fulfillment of fulfillments) {
+      const fliNodes = fulfillment.fulfillmentLineItems?.edges?.map((e) => e.node) || [];
+      for (const fli of fliNodes) {
+        const fliVariantId = fli.lineItem?.variant?.id?.replace("gid://shopify/ProductVariant/", "");
+        if (fliVariantId === variantId) {
+          returnLineItems.push({
+            fulfillmentLineItemId: fli.id,
+            quantity: reqItem.quantity
+          });
+          found = true;
+          break;
+        }
+      }
+      if (found) break;
+    }
+    if (!found) {
+      return { error: `Variant ${variantId} not found in any fulfillment` };
+    }
+  }
+  const rawReason = (reason || "").toLowerCase();
+  let returnReason = "OTHER";
+  if (rawReason.includes("defect") || rawReason.includes("damag") || rawReason.includes("broken")) returnReason = "DEFECTIVE";
+  else if (rawReason.includes("size") || rawReason.includes("fit")) returnReason = "SIZE_TOO_SMALL";
+  else if (rawReason.includes("color")) returnReason = "COLOR";
+  else if (rawReason.includes("wrong")) returnReason = "WRONG_ITEM";
+  else if (rawReason.includes("not as described") || rawReason.includes("different")) returnReason = "NOT_AS_DESCRIBED";
+  else if (rawReason.includes("unwanted") || rawReason.includes("changed") || rawReason.includes("want")) returnReason = "UNWANTED";
+  else if (rawReason.includes("style")) returnReason = "STYLE";
+  const mutation = `mutation returnRequest($input: ReturnRequestInput!) {
+    returnRequest(input: $input) {
+      return { id status }
+      userErrors { field message }
+    }
+  }`;
+  const createResult = await shopifyAdminQuery(shop, accessToken, mutation, {
+    input: {
+      orderId: orderGid,
+      returnLineItems: returnLineItems.map((li) => ({
+        ...li,
+        returnReason,
+        customerNote: reason ? reason.slice(0, 300) : void 0
+      }))
+    }
+  });
+  console.log(`[shopify-return] Create:`, JSON.stringify(createResult).slice(0, 2e3));
+  if (createResult?.errors?.length) {
+    return { error: createResult.errors.map((e) => e.message).join(", ") };
+  }
+  const errors = createResult?.data?.returnRequest?.userErrors;
+  if (errors?.length > 0) {
+    return { error: errors.map((e) => e.message).join(", ") };
+  }
+  const returnObj = createResult?.data?.returnRequest?.return;
+  return returnObj ? { returnId: returnObj.id } : { error: "Failed to create return" };
+}
+async function approveShopifyReturn(shop, accessToken, returnId) {
+  const mutation = `mutation returnApproveRequest($input: ReturnApproveRequestInput!) {
+    returnApproveRequest(input: $input) {
+      return { id status }
+      userErrors { field message }
+    }
+  }`;
+  const result = await shopifyAdminQuery(shop, accessToken, mutation, {
+    input: { returnId }
+  });
+  if (result?.errors?.length) {
+    return { error: result.errors.map((e) => e.message).join(", ") };
+  }
+  const errors = result?.data?.returnApproveRequest?.userErrors;
+  if (errors?.length > 0) {
+    return { error: errors.map((e) => e.message).join(", ") };
+  }
+  const returnObj = result?.data?.returnApproveRequest?.return;
+  return returnObj?.id ? { success: true } : { error: "Failed to approve return" };
+}
+async function declineShopifyReturn(shop, accessToken, returnId, declineReason) {
+  const mutation = `mutation returnDeclineRequest($input: ReturnDeclineRequestInput!) {
+    returnDeclineRequest(input: $input) {
+      return { id status }
+      userErrors { field message }
+    }
+  }`;
+  const result = await shopifyAdminQuery(shop, accessToken, mutation, {
+    input: {
+      returnId,
+      declineReason: "DECLINED_BY_MERCHANT"
+    }
+  });
+  if (result?.errors?.length) {
+    return { error: result.errors.map((e) => e.message).join(", ") };
+  }
+  const errors = result?.data?.returnDeclineRequest?.userErrors;
+  if (errors?.length > 0) {
+    return { error: errors.map((e) => e.message).join(", ") };
+  }
+  const returnObj = result?.data?.returnDeclineRequest?.return;
+  return returnObj?.id ? { success: true } : { error: "Failed to decline return" };
+}
+
 const STATUS_COLORS = {
   PENDING: "warning",
   APPROVED: "success",
@@ -1938,6 +2066,18 @@ const action$5 = async ({ request, params }) => {
           console.error(`[admin] Refund failed: ${err.message}`);
         }
       }
+      if (sess?.accessToken && returnReq.shopifyReturnId) {
+        try {
+          const approved = await approveShopifyReturn(shop, sess.accessToken, returnReq.shopifyReturnId);
+          if (approved.success) {
+            await prisma$1.decisionLog.create({ data: { returnId, actor: "admin", action: "shopify_approve", details: { returnId: returnReq.shopifyReturnId } } });
+          } else {
+            console.error(`[admin] Shopify approve failed: ${approved.error}`);
+          }
+        } catch (e) {
+          console.error(`[admin] Shopify approve error: ${e.message}`);
+        }
+      }
       await prisma$1.decisionLog.create({ data: { returnId, actor: "admin", action: "approve", details: { source: "detail_page" } } });
       if (returnReq.customerEmail) sendEmail({ ...returnApprovedEmail(returnReq.customerName || "Customer", returnReq.orderName || ""), to: returnReq.customerEmail });
       return json({ success: true, message: "✅ Return approved!", newStatus: "APPROVED" });
@@ -1947,6 +2087,20 @@ const action$5 = async ({ request, params }) => {
         data: { status: "DENIED", decidedBy: "admin", decidedAt: /* @__PURE__ */ new Date(), notes: "Denied by admin" }
       });
       if (claim.count === 0) return json({ error: "Already processed" });
+      let sess = await prisma$1.session.findFirst({ where: { shop, isOnline: false } });
+      if (!sess?.accessToken) sess = await prisma$1.session.findFirst({ where: { shop } });
+      if (sess?.accessToken && returnReq.shopifyReturnId) {
+        try {
+          const declined = await declineShopifyReturn(shop, sess.accessToken, returnReq.shopifyReturnId);
+          if (declined.success) {
+            await prisma$1.decisionLog.create({ data: { returnId, actor: "admin", action: "shopify_decline", details: { returnId: returnReq.shopifyReturnId } } });
+          } else {
+            console.error(`[admin] Shopify decline failed: ${declined.error}`);
+          }
+        } catch (e) {
+          console.error(`[admin] Shopify decline error: ${e.message}`);
+        }
+      }
       await prisma$1.decisionLog.create({ data: { returnId, actor: "admin", action: "deny", details: { source: "detail_page" } } });
       if (returnReq.customerEmail) sendEmail({ ...returnDeniedEmail(returnReq.customerName || "Customer", returnReq.orderName || "", "Denied by store admin"), to: returnReq.customerEmail });
       return json({ success: true, message: "❌ Return denied", newStatus: "DENIED" });
@@ -3857,111 +4011,6 @@ function shouldBypassOtp(email) {
 }
 function generateDevOtp() {
   return "123456";
-}
-
-async function createShopifyReturn(shop, accessToken, orderId, items, reason) {
-  const orderGid = orderId.startsWith("gid://") ? orderId : `gid://shopify/Order/${orderId}`;
-  const query = `{
-    order(id: "${orderGid}") {
-      id
-      displayFulfillmentStatus
-      fulfillments(first: 10) {
-        id
-        fulfillmentLineItems(first: 50) {
-          edges { node { id lineItem { id variant { id } } quantity } }
-        }
-      }
-    }
-  }`;
-  const result = await shopifyAdminQuery(shop, accessToken, query);
-  console.log(`[shopify-return] GraphQL:`, JSON.stringify(result).slice(0, 3e3));
-  if (result?.errors) {
-    const msg = result.errors.map((e) => e.message).join(", ");
-    console.error(`[shopify-return] GraphQL error: ${msg}`);
-    return { error: `GraphQL error: ${msg}` };
-  }
-  const fulfillments = result?.data?.order?.fulfillments || [];
-  if (fulfillments.length === 0) {
-    return { error: "Order has no fulfillments. Create a fulfillment first." };
-  }
-  const returnLineItems = [];
-  for (const reqItem of items) {
-    const variantId = reqItem.variantId.replace("gid://shopify/ProductVariant/", "");
-    let found = false;
-    for (const fulfillment of fulfillments) {
-      const fliNodes = fulfillment.fulfillmentLineItems?.edges?.map((e) => e.node) || [];
-      for (const fli of fliNodes) {
-        const fliVariantId = fli.lineItem?.variant?.id?.replace("gid://shopify/ProductVariant/", "");
-        if (fliVariantId === variantId) {
-          returnLineItems.push({
-            fulfillmentLineItemId: fli.id,
-            quantity: reqItem.quantity
-          });
-          found = true;
-          break;
-        }
-      }
-      if (found) break;
-    }
-    if (!found) {
-      return { error: `Variant ${variantId} not found in any fulfillment` };
-    }
-  }
-  const rawReason = (reason || "").toLowerCase();
-  let returnReason = "OTHER";
-  if (rawReason.includes("defect") || rawReason.includes("damag") || rawReason.includes("broken")) returnReason = "DEFECTIVE";
-  else if (rawReason.includes("size") || rawReason.includes("fit")) returnReason = "SIZE_TOO_SMALL";
-  else if (rawReason.includes("color")) returnReason = "COLOR";
-  else if (rawReason.includes("wrong")) returnReason = "WRONG_ITEM";
-  else if (rawReason.includes("not as described") || rawReason.includes("different")) returnReason = "NOT_AS_DESCRIBED";
-  else if (rawReason.includes("unwanted") || rawReason.includes("changed") || rawReason.includes("want")) returnReason = "UNWANTED";
-  else if (rawReason.includes("style")) returnReason = "STYLE";
-  const mutation = `mutation returnRequest($input: ReturnRequestInput!) {
-    returnRequest(input: $input) {
-      return { id status }
-      userErrors { field message }
-    }
-  }`;
-  const createResult = await shopifyAdminQuery(shop, accessToken, mutation, {
-    input: {
-      orderId: orderGid,
-      returnLineItems: returnLineItems.map((li) => ({
-        ...li,
-        returnReason,
-        customerNote: reason ? reason.slice(0, 300) : void 0
-      }))
-    }
-  });
-  console.log(`[shopify-return] Create:`, JSON.stringify(createResult).slice(0, 2e3));
-  if (createResult?.errors?.length) {
-    return { error: createResult.errors.map((e) => e.message).join(", ") };
-  }
-  const errors = createResult?.data?.returnRequest?.userErrors;
-  if (errors?.length > 0) {
-    return { error: errors.map((e) => e.message).join(", ") };
-  }
-  const returnObj = createResult?.data?.returnRequest?.return;
-  return returnObj ? { returnId: returnObj.id } : { error: "Failed to create return" };
-}
-async function approveShopifyReturn(shop, accessToken, returnId) {
-  const mutation = `mutation returnApproveRequest($input: ReturnApproveRequestInput!) {
-    returnApproveRequest(input: $input) {
-      return { id status }
-      userErrors { field message }
-    }
-  }`;
-  const result = await shopifyAdminQuery(shop, accessToken, mutation, {
-    input: { returnId }
-  });
-  if (result?.errors?.length) {
-    return { error: result.errors.map((e) => e.message).join(", ") };
-  }
-  const errors = result?.data?.returnApproveRequest?.userErrors;
-  if (errors?.length > 0) {
-    return { error: errors.map((e) => e.message).join(", ") };
-  }
-  const returnObj = result?.data?.returnApproveRequest?.return;
-  return returnObj?.id ? { success: true } : { error: "Failed to approve return" };
 }
 
 const loader = async ({ request }) => {
