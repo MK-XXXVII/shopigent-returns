@@ -122,3 +122,29 @@ export function refundProcessedEmail(customerName: string, orderName: string, am
     </div>`,
   };
 }
+
+export function returnLabelEmail(
+  customerName: string,
+  orderName: string,
+  labelUrl: string,
+  trackingNumber?: string
+): EmailPayload {
+  const trackingLine = trackingNumber
+    ? `<p>Tracking number: <strong>${trackingNumber}</strong></p>`
+    : "";
+  return {
+    to: "",
+    subject: `Your Return Shipping Label — ${orderName}`,
+    html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
+      <h2 style="color:#5c6ac4">📦 Your Return Shipping Label</h2>
+      <p>Hi ${customerName},</p>
+      <p>Your return for order <strong>${orderName}</strong> has been approved. Please use the label below to send your item(s) back to us.</p>
+      <div style="text-align:center;margin:24px 0">
+        <a href="${labelUrl}" target="_blank" style="background:#5c6ac4;color:#fff;padding:14px 28px;border-radius:6px;text-decoration:none;font-weight:bold;display:inline-block">Download Return Label</a>
+      </div>
+      ${trackingLine}
+      <p style="color:#666">Attach this label to your package and drop it off at any shipping point of the carrier. Keep a copy for your records.</p>
+      <hr><p style="color:#666;font-size:12px">Shopigent Returns — AI-powered return management</p>
+    </div>`,
+  };
+}

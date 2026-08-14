@@ -18,6 +18,7 @@ import prisma from "../lib/db.server";
 import { issueConfirmationToken, verifyConfirmationToken } from "../lib/confirmation.server";
 import { executeRefund } from "../lib/shopify-admin.server";
 import { approveShopifyReturn, declineShopifyReturn } from "../lib/shopify-return.server";
+import { generateAndEmailReturnLabel } from "../lib/return-label-notify.server";
 import { sendEmail, returnApprovedEmail, returnDeniedEmail } from "../lib/email.server";
 
 const STATUS_COLORS: Record<string, "success" | "warning" | "critical" | "info" | "new"> = {
@@ -112,7 +113,20 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       }
       await prisma.decisionLog.create({ data: { returnId, actor: "admin", action: "approve", details: { source: "detail_page" } } });
       if (returnReq.customerEmail) sendEmail({ ...returnApprovedEmail(returnReq.customerName || "Customer", returnReq.orderName || ""), to: returnReq.customerEmail });
-      return json({ success: true, message: "✅ Return approved!", newStatus: "APPROVED" });
+
+      // Generate + email return shipping label
+      if (returnReq.customerEmail) {
+        const labelInfo = await generateAndEmailReturnLabel(shop, returnReq, { allowTest: true });
+        if (labelInfo.success && labelInfo.labelUrl) {
+          const labels = (returnReq.labels as any[]) || [];
+          labels.push({ type: "return_shipping", url: labelInfo.labelUrl, trackingNumber: labelInfo.trackingNumber || null, createdAt: new Date().toISOString() });
+          await prisma.returnRequest.update({ where: { id: returnId }, data: { labels } });
+          await prisma.decisionLog.create({ data: { returnId, actor: "admin", action: "label_sent", details: { url: labelInfo.labelUrl } } });
+        } else if (labelInfo.error) {
+          console.error(`[admin] Label generation failed: ${labelInfo.error}`);
+        }
+      }
+      return json({ success: true, message: "✅ Return approved! Label sent to customer.", newStatus: "APPROVED" });
     } else {
       const claim = await prisma.returnRequest.updateMany({
         where: { id: returnId, status: "PENDING" },
@@ -138,6 +152,25 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       if (returnReq.customerEmail) sendEmail({ ...returnDeniedEmail(returnReq.customerName || "Customer", returnReq.orderName || "", "Denied by store admin"), to: returnReq.customerEmail });
       return json({ success: true, message: "❌ Return denied", newStatus: "DENIED" });
     }
+  }
+
+  // Process return from the app — generate label + email customer (for APPROVED/SHIPPED)
+  if (action === "process_return") {
+    if (returnReq.status === "PENDING") {
+      return json({ error: "Approve the return first before processing" }, { status: 400 });
+    }
+    if (returnReq.customerEmail) {
+      const labelInfo = await generateAndEmailReturnLabel(shop, returnReq, { allowTest: true });
+      if (labelInfo.success && labelInfo.labelUrl) {
+        const labels = (returnReq.labels as any[]) || [];
+        labels.push({ type: "return_shipping", url: labelInfo.labelUrl, trackingNumber: labelInfo.trackingNumber || null, createdAt: new Date().toISOString() });
+        await prisma.returnRequest.update({ where: { id: returnId }, data: { status: "SHIPPED", labels } });
+        await prisma.decisionLog.create({ data: { returnId, actor: "admin", action: "process", details: { url: labelInfo.labelUrl } } });
+        return json({ success: true, message: "📦 Return label sent to customer!", newStatus: "SHIPPED" });
+      }
+      return json({ error: labelInfo.error || "Failed to generate label" }, { status: 500 });
+    }
+    return json({ error: "No customer email on file" }, { status: 400 });
   }
 
   return json({ error: "Unknown action" });
@@ -201,6 +234,11 @@ export default function ReturnDetailPage() {
                           <Text variant="bodySm" as="p" tone="subdued">Token issued. Click Confirm Approve or Confirm Deny to proceed.</Text>
                         )}
                       </BlockStack>
+                  )}
+                  {r.status === "APPROVED" && (
+                    <Button variant="primary" onClick={() => fetcher.submit({ _action: "process_return" }, { method: "post" })} loading={fetcher.state !== "idle"}>
+                      📦 Process Return (Send Label)
+                    </Button>
                   )}
                 </InlineStack>
                 {r.customerName && (

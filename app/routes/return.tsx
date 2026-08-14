@@ -7,6 +7,7 @@ import { sendEmail, storeCreditProcessedEmail } from "../lib/email.server";
 import { shouldBypassOtp, generateDevOtp } from "../lib/otp-dev.server";
 import { shopifyAdminQuery, getOrdersByEmail } from "../lib/shopify-admin.server";
 import { createShopifyReturn, approveShopifyReturn } from "../lib/shopify-return.server";
+import { generateAndEmailReturnLabel } from "../lib/return-label-notify.server";
 
 // Customer Portal — public-facing, no Shopify auth required
 // Uses the store's stored offline access token to query the Admin API
@@ -321,6 +322,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             }
           } catch (err: any) {
             console.error(`[portal] Shopify return error: ${err.message}`);
+          }
+          // Generate + email return label on auto-approve
+          if (returnRec.customerEmail) {
+            try {
+              const labelInfo = await generateAndEmailReturnLabel(shop, returnRec, { allowTest: true });
+              if (labelInfo.success && labelInfo.labelUrl) {
+                const labels = (returnRec.labels as any[]) || [];
+                labels.push({ type: "return_shipping", url: labelInfo.labelUrl, trackingNumber: labelInfo.trackingNumber || null, createdAt: new Date().toISOString() });
+                await prisma.returnRequest.update({ where: { id: returnRec.id }, data: { labels } });
+                await prisma.decisionLog.create({ data: { returnId: returnRec.id, actor: "auto", action: "label_sent", details: { url: labelInfo.labelUrl } } });
+              } else if (labelInfo.error) {
+                console.error(`[portal] Label failed: ${labelInfo.error}`);
+              }
+            } catch (e: any) {
+              console.error(`[portal] Label error: ${e.message}`);
+            }
           }
           break;
         }
