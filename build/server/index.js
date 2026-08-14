@@ -3859,7 +3859,7 @@ function generateDevOtp() {
   return "123456";
 }
 
-async function createShopifyReturn(shop, accessToken, orderId, items) {
+async function createShopifyReturn(shop, accessToken, orderId, items, reason) {
   const orderGid = orderId.startsWith("gid://") ? orderId : `gid://shopify/Order/${orderId}`;
   const query = `{
     order(id: "${orderGid}") {
@@ -3907,6 +3907,15 @@ async function createShopifyReturn(shop, accessToken, orderId, items) {
       return { error: `Variant ${variantId} not found in any fulfillment` };
     }
   }
+  const rawReason = (reason || "").toLowerCase();
+  let returnReason = "OTHER";
+  if (rawReason.includes("defect") || rawReason.includes("damag") || rawReason.includes("broken")) returnReason = "DEFECTIVE";
+  else if (rawReason.includes("size") || rawReason.includes("fit")) returnReason = "SIZE_TOO_SMALL";
+  else if (rawReason.includes("color")) returnReason = "COLOR";
+  else if (rawReason.includes("wrong")) returnReason = "WRONG_ITEM";
+  else if (rawReason.includes("not as described") || rawReason.includes("different")) returnReason = "NOT_AS_DESCRIBED";
+  else if (rawReason.includes("unwanted") || rawReason.includes("changed") || rawReason.includes("want")) returnReason = "UNWANTED";
+  else if (rawReason.includes("style")) returnReason = "STYLE";
   const mutation = `mutation returnRequest($input: ReturnRequestInput!) {
     returnRequest(input: $input) {
       return { id status }
@@ -3914,7 +3923,14 @@ async function createShopifyReturn(shop, accessToken, orderId, items) {
     }
   }`;
   const createResult = await shopifyAdminQuery(shop, accessToken, mutation, {
-    input: { orderId: orderGid, returnLineItems }
+    input: {
+      orderId: orderGid,
+      returnLineItems: returnLineItems.map((li) => ({
+        ...li,
+        returnReason,
+        customerNote: reason ? reason.slice(0, 300) : void 0
+      }))
+    }
   });
   console.log(`[shopify-return] Create:`, JSON.stringify(createResult).slice(0, 2e3));
   if (createResult?.errors?.length) {
@@ -4146,7 +4162,7 @@ const action = async ({ request }) => {
                 variantId: i.variantId,
                 quantity: i.quantity
               }));
-              const shopifyReturn = await createShopifyReturn(shop, sess.accessToken, orderId, variantItems);
+              const shopifyReturn = await createShopifyReturn(shop, sess.accessToken, orderId, variantItems, reason);
               if (shopifyReturn.returnId) {
                 await prisma$1.returnRequest.update({
                   where: { id: returnRec.id },

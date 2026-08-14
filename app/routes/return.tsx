@@ -296,7 +296,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 variantId: i.variantId,
                 quantity: i.quantity,
               }));
-              const shopifyReturn = await createShopifyReturn(shop, sess.accessToken, orderId, variantItems);
+              const shopifyReturn = await createShopifyReturn(shop, sess.accessToken, orderId, variantItems, reason);
               if (shopifyReturn.returnId) {
                 await prisma.returnRequest.update({
                   where: { id: returnRec.id },

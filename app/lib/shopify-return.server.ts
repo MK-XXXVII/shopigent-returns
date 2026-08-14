@@ -5,7 +5,8 @@ export async function createShopifyReturn(
   shop: string,
   accessToken: string,
   orderId: string,
-  items: { variantId: string; quantity: number }[]
+  items: { variantId: string; quantity: number }[],
+  reason?: string
 ): Promise<{ returnId?: string; error?: string }> {
   const orderGid = orderId.startsWith("gid://") ? orderId : `gid://shopify/Order/${orderId}`;
 
@@ -67,6 +68,17 @@ export async function createShopifyReturn(
   }
 
   // Step 3: Create the return request
+  // Map a customer reason to a ReturnReason enum or default to OTHER
+  const rawReason = (reason || "").toLowerCase();
+  let returnReason = "OTHER";
+  if (rawReason.includes("defect") || rawReason.includes("damag") || rawReason.includes("broken")) returnReason = "DEFECTIVE";
+  else if (rawReason.includes("size") || rawReason.includes("fit")) returnReason = "SIZE_TOO_SMALL";
+  else if (rawReason.includes("color")) returnReason = "COLOR";
+  else if (rawReason.includes("wrong")) returnReason = "WRONG_ITEM";
+  else if (rawReason.includes("not as described") || rawReason.includes("different")) returnReason = "NOT_AS_DESCRIBED";
+  else if (rawReason.includes("unwanted") || rawReason.includes("changed") || rawReason.includes("want")) returnReason = "UNWANTED";
+  else if (rawReason.includes("style")) returnReason = "STYLE";
+
   const mutation = `mutation returnRequest($input: ReturnRequestInput!) {
     returnRequest(input: $input) {
       return { id status }
@@ -75,7 +87,14 @@ export async function createShopifyReturn(
   }`;
 
   const createResult = await shopifyAdminQuery(shop, accessToken, mutation, {
-    input: { orderId: orderGid, returnLineItems },
+    input: {
+      orderId: orderGid,
+      returnLineItems: returnLineItems.map((li) => ({
+        ...li,
+        returnReason,
+        customerNote: reason ? reason.slice(0, 300) : undefined,
+      })),
+    },
   });
 
   console.log(`[shopify-return] Create:`, JSON.stringify(createResult).slice(0, 2000));
