@@ -2,6 +2,7 @@
 // Handles expiring offline access tokens by refreshing via OAuth
 
 import prisma from "./db.server";
+import * as crypto from "node:crypto";
 
 const API_VERSION = process.env.SHOPIFY_API_VERSION || "2024-10";
 
@@ -165,13 +166,13 @@ export async function executeRefund(
   if (!order) {
     console.error("[refund] Order lookup failed:", JSON.stringify(orderResult?.errors || orderResult));
     // If protected customer data is blocked, try to refund without order lookup
-    const directRefundQuery = `mutation refundCreate($input: RefundInput!) {
-      refundCreate(input: $input) {
+    const fallbackKey = crypto.randomUUID();
+    const directRefundQuery = `mutation refundCreate($input: RefundInput!){
+      refundCreate(input: $input) @idempotent(key: "${fallbackKey}") {
         refund { id transactions(first: 10) { nodes { id status } } }
         userErrors { field message }
       }
     }`;
-    const fallbackKey = `${orderId}-${Date.now()}-fallback`;
     const directResult = await shopifyAdminQuery(shop, accessToken, directRefundQuery, {
       input: {
         orderId: orderGid,
@@ -209,9 +210,9 @@ export async function executeRefund(
   })) || [];
 
   // Step 2: Execute refund directly (no calculateRefund needed)
-  const idempotencyKey = `${orderId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const execQuery = `mutation refundCreate($input: RefundInput!) {
-    refundCreate(input: $input) {
+  const idempotencyKey = crypto.randomUUID();
+  const execQuery = `mutation refundCreate($input: RefundInput!){
+    refundCreate(input: $input) @idempotent(key: "${idempotencyKey}") {
       refund { id transactions(first: 10) { nodes { id status processedAt amountSet { shopMoney { amount } } } } }
       userErrors { field message }
     }
