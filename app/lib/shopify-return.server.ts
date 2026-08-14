@@ -111,3 +111,33 @@ export async function createShopifyReturn(
     ? { returnId: returnObj.id }
     : { error: "Failed to create return" };
 }
+
+// Approve a return request in Shopify → sets status to OPEN
+export async function approveShopifyReturn(
+  shop: string,
+  accessToken: string,
+  returnId: string
+): Promise<{ success?: boolean; error?: string }> {
+  const mutation = `mutation returnApproveRequest($input: ReturnApproveRequestInput!) {
+    returnApproveRequest(input: $input) {
+      return { id status }
+      userErrors { field message }
+    }
+  }`;
+
+  const result = await shopifyAdminQuery(shop, accessToken, mutation, {
+    input: { returnId },
+  });
+
+  if (result?.errors?.length) {
+    return { error: result.errors.map((e: any) => e.message).join(", ") };
+  }
+  const errors = result?.data?.returnApproveRequest?.userErrors;
+  if (errors?.length > 0) {
+    return { error: errors.map((e: any) => e.message).join(", ") };
+  }
+  const returnObj = result?.data?.returnApproveRequest?.return;
+  return returnObj?.id
+    ? { success: true }
+    : { error: "Failed to approve return" };
+}

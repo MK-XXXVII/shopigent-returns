@@ -6,7 +6,7 @@ import prisma from "../lib/db.server";
 import { sendEmail, storeCreditProcessedEmail } from "../lib/email.server";
 import { shouldBypassOtp, generateDevOtp } from "../lib/otp-dev.server";
 import { shopifyAdminQuery, getOrdersByEmail } from "../lib/shopify-admin.server";
-import { createShopifyReturn } from "../lib/shopify-return.server";
+import { createShopifyReturn, approveShopifyReturn } from "../lib/shopify-return.server";
 
 // Customer Portal — public-facing, no Shopify auth required
 // Uses the store's stored offline access token to query the Admin API
@@ -305,6 +305,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 await prisma.decisionLog.create({
                   data: { returnId: returnRec.id, actor: "auto", action: "shopify_return", details: { returnId: shopifyReturn.returnId } },
                 });
+                // Auto-accept the return in Shopify (matches our policy approval)
+                const approved = await approveShopifyReturn(shop, sess.accessToken, shopifyReturn.returnId);
+                if (approved.success) {
+                  await prisma.decisionLog.create({
+                    data: { returnId: returnRec.id, actor: "auto", action: "shopify_approve", details: { returnId: shopifyReturn.returnId } },
+                  });
+                } else {
+                  console.error(`[portal] Shopify approve failed: ${approved.error}`);
+                }
               }
               if (shopifyReturn.error) {
                 console.error(`[portal] Shopify return failed: ${shopifyReturn.error}`);

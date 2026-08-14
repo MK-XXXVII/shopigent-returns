@@ -3943,6 +3943,26 @@ async function createShopifyReturn(shop, accessToken, orderId, items, reason) {
   const returnObj = createResult?.data?.returnRequest?.return;
   return returnObj ? { returnId: returnObj.id } : { error: "Failed to create return" };
 }
+async function approveShopifyReturn(shop, accessToken, returnId) {
+  const mutation = `mutation returnApproveRequest($input: ReturnApproveRequestInput!) {
+    returnApproveRequest(input: $input) {
+      return { id status }
+      userErrors { field message }
+    }
+  }`;
+  const result = await shopifyAdminQuery(shop, accessToken, mutation, {
+    input: { returnId }
+  });
+  if (result?.errors?.length) {
+    return { error: result.errors.map((e) => e.message).join(", ") };
+  }
+  const errors = result?.data?.returnApproveRequest?.userErrors;
+  if (errors?.length > 0) {
+    return { error: errors.map((e) => e.message).join(", ") };
+  }
+  const returnObj = result?.data?.returnApproveRequest?.return;
+  return returnObj?.id ? { success: true } : { error: "Failed to approve return" };
+}
 
 const loader = async ({ request }) => {
   const url = new URL(request.url);
@@ -4171,6 +4191,14 @@ const action = async ({ request }) => {
                 await prisma$1.decisionLog.create({
                   data: { returnId: returnRec.id, actor: "auto", action: "shopify_return", details: { returnId: shopifyReturn.returnId } }
                 });
+                const approved = await approveShopifyReturn(shop, sess.accessToken, shopifyReturn.returnId);
+                if (approved.success) {
+                  await prisma$1.decisionLog.create({
+                    data: { returnId: returnRec.id, actor: "auto", action: "shopify_approve", details: { returnId: shopifyReturn.returnId } }
+                  });
+                } else {
+                  console.error(`[portal] Shopify approve failed: ${approved.error}`);
+                }
               }
               if (shopifyReturn.error) {
                 console.error(`[portal] Shopify return failed: ${shopifyReturn.error}`);
