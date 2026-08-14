@@ -77,58 +77,69 @@ export async function createReturnLabel(shop: string, request: LabelRequest): Pr
 }
 
 // === SendCloud (EU/NL — PostNL, DHL, DPD) ===
-// Docs: https://developers.sendcloud.sc/reference/post_v2-labels
+// Docs: POST /api/v2/parcels with request_label=true
 async function createSendCloudLabel(req: LabelRequest, apiKey: string, apiSecret: string): Promise<LabelResult> {
   if (!apiKey || !apiSecret) {
     return { success: false, error: "SendCloud not configured (SENDCLOUD_API_KEY + SENDCLOUD_API_SECRET)" };
   }
 
   try {
-    const response = await fetch("https://panel.sendcloud.sc/api/v2/labels", {
+    // Find the first available shipping method
+    // First try to get shipping methods from SendCloud
+    let shipmentId = 7; // default PostNL
+    try {
+      const methodsResp = await fetch("https://panel.sendcloud.sc/api/v2/shipping_methods", {
+        headers: { "Authorization": "Basic " + Buffer.from(`${apiKey}:${apiSecret}`).toString("base64") },
+      });
+      if (methodsResp.ok) {
+        const methodsData = await methodsResp.json();
+        if (methodsData.shipping_methods?.length > 0) {
+          shipmentId = methodsData.shipping_methods[0].id;
+        }
+      }
+    } catch {}
+
+    const response = await fetch("https://panel.sendcloud.sc/api/v2/parcels", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Authorization": "Basic " + Buffer.from(`${apiKey}:${apiSecret}`).toString("base64"),
       },
       body: JSON.stringify({
-        label: {
-          order_number: req.orderName,
-          order_id: req.orderName,
+        parcel: {
           name: req.customerName,
-          email: req.customerEmail,
-          telephone: req.customerPhone || "",
-          address: req.customerAddress?.line1 || req.shopAddress.line1,
+          company_name: "",
+          address: req.customerAddress?.line1?.replace(/\d+$/, "").trim() || req.shopAddress.line1?.replace(/\d+$/, "").trim() || "",
+          house_number: (req.customerAddress?.line1 || req.shopAddress.line1 || "").match(/(\d+.*)$/)?.[1] || "1",
           address_2: req.customerAddress?.line2 || req.shopAddress.line2 || "",
-          city: req.customerAddress?.city || req.shopAddress.city,
-          postal_code: req.customerAddress?.postalCode || req.shopAddress.postalCode,
-          country: req.customerAddress?.country || req.shopAddress.country,
-          to_service_point: false,
-          parcel_items: req.items.map(item => ({
-            description: item.title,
-            quantity: item.quantity,
-            weight: (req.weight || 1) / req.items.length,
-            value: 0,
-          })),
+          city: req.customerAddress?.city || req.shopAddress.city || "",
+          postal_code: req.customerAddress?.postalCode || req.shopAddress.postalCode || "",
+          telephone: req.customerPhone || "",
+          email: req.customerEmail,
+          country: req.customerAddress?.country || req.shopAddress.country || "NL",
+          weight: String(req.weight || 1),
+          order_number: req.orderName,
           request_label: true,
-          label_format: "pdf",
+          shipment: { id: shipmentId },
+          quantity: req.items.reduce((s: number, i: any) => s + i.quantity, 1),
         },
       }),
     });
 
     if (!response.ok) {
       const err = await response.text();
-      return { success: false, error: `SendCloud error: ${response.status} ${err}` };
+      return { success: false, error: `SendCloud error: ${response.status} ${err.slice(0, 300)}` };
     }
 
     const data = await response.json();
-    const label = data.label || data;
+    const parcel = data.parcel || data;
 
     return {
       success: true,
-      labelUrl: label.label_printer_url || label.label_url,
-      trackingNumber: label.tracking_number,
-      labelId: String(label.id),
-      cost: label.total_price ? parseFloat(label.total_price) : undefined,
+      labelUrl: parcel.label?.label_printer || parcel.label?.normal_printer?.[0] || parcel.documents?.[0]?.link || "",
+      trackingNumber: parcel.tracking_number || "",
+      labelId: String(parcel.id || ""),
+      cost: parcel.total_order_value ? parseFloat(parcel.total_order_value) : undefined,
     };
   } catch (err: any) {
     return { success: false, error: `SendCloud error: ${err.message}` };
