@@ -67,8 +67,15 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const returnReq = await prisma.returnRequest.findFirst({
     where: { id: returnId, shop },
   });
-  if (!returnReq || returnReq.status !== "PENDING") {
-    return json({ error: "Return not available" }, { status: 400 });
+  if (!returnReq) {
+    return json({ error: "Return not found" }, { status: 404 });
+  }
+
+  // Only PENDING-status actions require the return to be PENDING
+  if (action === "issue_token" || action === "approve" || action === "deny") {
+    if (returnReq.status !== "PENDING") {
+      return json({ error: "Return is not pending; cannot approve/deny" }, { status: 400 });
+    }
   }
 
   if (action === "issue_token") {
