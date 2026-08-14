@@ -19,6 +19,7 @@ import { issueConfirmationToken, verifyConfirmationToken } from "../lib/confirma
 import { executeRefund } from "../lib/shopify-admin.server";
 import { approveShopifyReturn, declineShopifyReturn } from "../lib/shopify-return.server";
 import { generateAndEmailReturnLabel } from "../lib/return-label-notify.server";
+import { syncReturnFromShopify } from "../lib/shopify-sync.server";
 import { sendEmail, returnApprovedEmail, returnDeniedEmail, refundProcessedEmail } from "../lib/email.server";
 
 const STATUS_COLORS: Record<string, "success" | "warning" | "critical" | "info" | "new"> = {
@@ -28,7 +29,7 @@ const STATUS_COLORS: Record<string, "success" | "warning" | "critical" | "info" 
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { session } = await shopify.authenticate.admin(request);
-  const returnReq = await prisma.returnRequest.findFirst({
+  let returnReq = await prisma.returnRequest.findFirst({
     where: { id: params.id, shop: session.shop },
     include: {
       fraudSignals: true,
@@ -37,6 +38,21 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   });
 
   if (!returnReq) throw new Response("Not found", { status: 404 });
+
+  // Bidirectional sync: live-check the Shopify return status on load
+  try {
+    await syncReturnFromShopify(session.shop, (returnReq as any).shopifyReturnId, (returnReq as any).id);
+    // Re-fetch to reflect any synced change
+    returnReq = await prisma.returnRequest.findFirst({
+      where: { id: params.id, shop: session.shop },
+      include: {
+        fraudSignals: true,
+        decisionLogs: { orderBy: { createdAt: "desc" } },
+      },
+    });
+  } catch (err: any) {
+    console.error(`[sync] Load sync failed: ${err.message}`);
+  }
 
   return json({ return: returnReq });
 };
