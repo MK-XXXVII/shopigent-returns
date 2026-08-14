@@ -17,7 +17,7 @@ import shopify from "../shopify.server";
 import prisma from "../lib/db.server";
 import { issueConfirmationToken, verifyConfirmationToken } from "../lib/confirmation.server";
 import { executeRefund } from "../lib/shopify-admin.server";
-import { approveShopifyReturn, declineShopifyReturn } from "../lib/shopify-return.server";
+import { approveShopifyReturn, declineShopifyReturn, closeShopifyReturn } from "../lib/shopify-return.server";
 import { generateAndEmailReturnLabel } from "../lib/return-label-notify.server";
 import { syncReturnFromShopify } from "../lib/shopify-sync.server";
 import { sendEmail, returnApprovedEmail, returnDeniedEmail, refundProcessedEmail } from "../lib/email.server";
@@ -218,6 +218,17 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       });
       await prisma.decisionLog.create({ data: { returnId, actor: "admin", action: "refund", details: { refundId, amount } } });
       if (returnReq.customerEmail) sendEmail({ ...refundProcessedEmail(returnReq.customerName || "Customer", returnReq.orderName || "", amount), to: returnReq.customerEmail });
+      // Close the Shopify return so its state on the order matches (returnClose)
+      if (returnReq.shopifyReturnId) {
+        try {
+          const closeResult = await closeShopifyReturn(shop, sess.accessToken, returnReq.shopifyReturnId);
+          if (closeResult.success) {
+            console.log(`[process_refund] Closed Shopify return ${returnReq.shopifyReturnId}`);
+          }
+        } catch (e: any) {
+          console.error(`[process_refund] Close Shopify return failed: ${e.message}`);
+        }
+      }
       return json({ success: true, message: "💰 Refund processed!", newStatus: "REFUNDED" });
     } catch (err: any) {
       return json({ error: `Refund failed: ${err.message}` }, { status: 500 });

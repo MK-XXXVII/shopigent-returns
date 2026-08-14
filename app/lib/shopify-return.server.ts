@@ -176,3 +176,31 @@ export async function declineShopifyReturn(
     ? { success: true }
     : { error: "Failed to decline return" };
 }
+
+// Close a return in Shopify — indicates the return is complete (refunded/restocked)
+export async function closeShopifyReturn(
+  shop: string,
+  accessToken: string,
+  returnId: string
+): Promise<{ success?: boolean; error?: string }> {
+  const mutation = `mutation returnClose($id: ID!) {
+    returnClose(id: $id) {
+      return { id status }
+      userErrors { field message }
+    }
+  }`;
+
+  const result = await shopifyAdminQuery(shop, accessToken, mutation, { id: returnId });
+
+  if (result?.errors?.length) {
+    return { error: result.errors.map((e: any) => e.message).join(", ") };
+  }
+  const errors = result?.data?.returnClose?.userErrors;
+  if (errors?.length > 0) {
+    return { error: errors.map((e: any) => e.message).join(", ") };
+  }
+  const returnObj = result?.data?.returnClose?.return;
+  return returnObj?.id
+    ? { success: true }
+    : { error: "Failed to close return" };
+}
