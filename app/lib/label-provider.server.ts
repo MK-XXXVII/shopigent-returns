@@ -224,19 +224,26 @@ async function createShippoLabel(req: LabelRequest, apiKey: string): Promise<Lab
     const label = await labelResp.json();
     console.log(`[shippo-label] full response keys: ${Object.keys(label).join(",")}`);
 
-    // Extract label URL robustly — Shippo nests it under label.label_url or label.url
-    const labelUrl =
-      label.label_url ||
-      label.label?.label_url ||
-      label.label?.url ||
-      label.label_pdf ||
-      label.label_file ||
-      label.purchase_response?.label_url ||
-      "";
+    // Extract label URL robustly — label_url is top-level key
+    let labelUrl = (label.label_url || "").trim();
+
+    // If still empty after creation, the transaction might be async; wait and fetch
+    if (!labelUrl && label.object_id) {
+      console.log(`[shippo-label] label_url empty, fetching transaction ${label.object_id}...`);
+      try {
+        const fetchRes = await fetch(`https://api.goshippo.com/transactions/${label.object_id}/`, {
+          headers: { "Authorization": `ShippoToken ${apiKey}` },
+        });
+        if (fetchRes.ok) {
+          const fullTx = await fetchRes.json();
+          labelUrl = fullTx.label_url || "";
+        }
+      } catch {}
+    }
 
     return {
       success: true,
-      labelUrl: labelUrl,
+      labelUrl,
       trackingNumber: label.tracking_number || label.trackingNumber || "",
       labelId: label.object_id || label.id || "",
       cost: label.amount ? parseFloat(label.amount) : undefined,
