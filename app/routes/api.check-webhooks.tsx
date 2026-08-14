@@ -19,7 +19,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const token = sess?.accessToken || (await prisma.session.findFirst({ where: { shop } }))?.accessToken;
   if (!token) return json({ error: "No token" }, { status: 500 });
 
-  const q = `{ return(id: "${returnId}") { id status refundAmount order { id name } } }`;
+  const q = `{ return(id: "${returnId}") { id status order { id name } } }`;
   const gRes = await fetch(`https://${shop}/admin/api/2026-10/graphql.json`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
