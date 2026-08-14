@@ -307,7 +307,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         rules,
         recentReturnCount
       );
-      if (fraudEval.triggeredRules.length > 0) {
+      const fraudTriggered = fraudEval.triggeredRules.length > 0;
+      if (fraudTriggered) {
         await prisma.fraudSignal.create({
           data: {
             returnId: returnRec.id,
@@ -318,6 +319,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         });
         await prisma.decisionLog.create({
           data: { returnId: returnRec.id, actor: "auto", action: "fraud_flag", details: { ruleNames: fraudEval.triggeredRules.map((t) => t.rule) } as any },
+        });
+        // Keep PENDING for manual merchant review — skip auto-approve
+        await prisma.returnRequest.update({
+          where: { id: returnRec.id },
+          data: { status: "PENDING", decidedBy: null, decidedAt: null },
         });
       }
 
@@ -331,7 +337,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           if (c.field === "restockingFee") return true;
           return true;
         });
-        if (matches && conditions.some((c: any) => c.field === "autoApprove" && c.value === true)) {
+        if (matches && !fraudTriggered && conditions.some((c: any) => c.field === "autoApprove" && c.value === true)) {
           anyAutoApproved = true;
           // Auto-approve the return
           await prisma.returnRequest.update({
