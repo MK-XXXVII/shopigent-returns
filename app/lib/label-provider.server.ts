@@ -222,12 +222,23 @@ async function createShippoLabel(req: LabelRequest, apiKey: string): Promise<Lab
     }
 
     const label = await labelResp.json();
+    console.log(`[shippo-label] full response keys: ${Object.keys(label).join(",")}`);
+
+    // Extract label URL robustly — Shippo nests it under label.label_url or label.url
+    const labelUrl =
+      label.label_url ||
+      label.label?.label_url ||
+      label.label?.url ||
+      label.label_pdf ||
+      label.label_file ||
+      label.purchase_response?.label_url ||
+      "";
 
     return {
       success: true,
-      labelUrl: label.label_url,
-      trackingNumber: label.tracking_number,
-      labelId: label.object_id,
+      labelUrl: labelUrl,
+      trackingNumber: label.tracking_number || label.trackingNumber || "",
+      labelId: label.object_id || label.id || "",
       cost: label.amount ? parseFloat(label.amount) : undefined,
     };
   } catch (err: any) {
