@@ -94,10 +94,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const shopRec = await prisma.shop.findUnique({ where: { shop: session.shop } });
     const config: any = shopRec?.config || {};
     const testEmail = (formData.get("testEmail") as string) || config.testEmail || session.shop.replace(".myshopify.com", "") + "@example.com";
+    // Customer (to) address for the test shipment
+    const customerAddress = {
+      line1: (formData.get("toAddr1") as string) || config.testToAddress?.line1 || "1600 Amphitheatre Pkwy",
+      city: (formData.get("toCity") as string) || config.testToAddress?.city || "Mountain View",
+      postalCode: (formData.get("toZip") as string) || config.testToAddress?.postalCode || "94043",
+      country: (formData.get("toCountry") as string) || config.testToAddress?.country || "US",
+      state: (formData.get("toState") as string) || config.testToAddress?.state || "CA",
+    };
     const labelRequest = {
       orderName: "TEST",
       customerName: "Test Customer",
       customerEmail: testEmail,
+      customerAddress,
       items: [{ title: "Test Item", quantity: 1, sku: "TEST" }],
       weight: 0.5,
       description: "Test label from Shopigent Returns",
@@ -269,9 +278,14 @@ export default function SettingsPage() {
             <BlockStack gap="300">
               <Text variant="headingMd" as="h2" fontWeight="bold">Test Label Generation</Text>
               <Text variant="bodyMd" as="p" tone="subdued">Click below to generate a test return label using your configured provider. The label PDF link will be emailed to you.</Text>
-              <fetcher.Form method="post" style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+              <fetcher.Form method="post" style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
                 <input type="hidden" name="_action" value="test_label" />
                 <TextField label="Send to email" name="testEmail" placeholder="kalogeras84@gmail.com" autoComplete="off" />
+                <TextField label="To: Address" name="toAddr1" placeholder="1 Infinite Loop" autoComplete="off" />
+                <TextField label="To: City" name="toCity" placeholder="Cupertino" autoComplete="off" />
+                <TextField label="To: ZIP" name="toZip" placeholder="95014" autoComplete="off" />
+                <TextField label="To: State" name="toState" placeholder="CA" autoComplete="off" />
+                <TextField label="To: Country" name="toCountry" placeholder="US" autoComplete="off" />
                 <Button submit loading={fetcher.state !== "idle"}>
                   📬 Generate & Send
                 </Button>
