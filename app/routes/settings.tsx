@@ -22,6 +22,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       shippoKey: config.shippoKey ? "***" : "",
       easypostKey: config.easypostKey ? "***" : "",
     },
+    shopAddress: config.shopAddress || {
+      line1: process.env.SHOP_ADDRESS_LINE1 || "",
+      city: process.env.SHOP_ADDRESS_CITY || "",
+      postalCode: process.env.SHOP_ADDRESS_ZIP || "",
+      country: process.env.SHOP_ADDRESS_COUNTRY || "NL",
+      state: process.env.SHOP_ADDRESS_STATE || "",
+    },
   });
 };
 
@@ -51,12 +58,23 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const shippoKey = formData.get("shippoKey") as string;
     const easypostKey = formData.get("easypostKey") as string;
 
+    // Return address for labels
+    const shopAddress = {
+      line1: (formData.get("addrLine1") as string) || currentConfig.shopAddress?.line1 || "",
+      line2: (formData.get("addrLine2") as string) || currentConfig.shopAddress?.line2 || "",
+      city: (formData.get("addrCity") as string) || currentConfig.shopAddress?.city || "",
+      postalCode: (formData.get("addrZip") as string) || currentConfig.shopAddress?.postalCode || "",
+      country: (formData.get("addrCountry") as string) || currentConfig.shopAddress?.country || "NL",
+      state: (formData.get("addrState") as string) || currentConfig.shopAddress?.state || "",
+    };
+
     await prisma.shop.update({
       where: { shop: session.shop },
       data: {
         config: {
           ...currentConfig,
           labelProvider: provider,
+          shopAddress,
           // Only update if a new value is provided (not masked "***")
           ...(sendcloudKey && sendcloudKey !== "***" ? { sendcloudKey } : {}),
           ...(sendcloudSecret && sendcloudSecret !== "***" ? { sendcloudSecret } : {}),
@@ -72,7 +90,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function SettingsPage() {
-  const { shopDomain, hasMcpKey, labelConfig } = useLoaderData<typeof loader>();
+  const { shopDomain, hasMcpKey, labelConfig, shopAddress } = useLoaderData<typeof loader>();
   const fetcher = useFetcher();
   const [copiedMcp, setCopiedMcp] = useState(false);
   const [copiedPortal, setCopiedPortal] = useState(false);
@@ -84,6 +102,12 @@ export default function SettingsPage() {
   const [scSecret, setScSecret] = useState(labelConfig.sendcloudSecret);
   const [shKey, setShKey] = useState(labelConfig.shippoKey);
   const [epKey, setEpKey] = useState(labelConfig.easypostKey);
+  const [addrLine1, setAddrLine1] = useState(shopAddress.line1);
+  const [addrLine2, setAddrLine2] = useState(shopAddress.line2 || "");
+  const [addrCity, setAddrCity] = useState(shopAddress.city);
+  const [addrZip, setAddrZip] = useState(shopAddress.postalCode);
+  const [addrCountry, setAddrCountry] = useState(shopAddress.country);
+  const [addrState, setAddrState] = useState(shopAddress.state || "");
 
   return (
     <Page title="Settings">
@@ -192,6 +216,18 @@ export default function SettingsPage() {
                   {provider === "easypost" && (
                     <TextField label="EasyPost API Key" name="easypostKey" value={epKey} onChange={setEpKey} autoComplete="off" placeholder={epKey === "***" ? "•••••••• (saved)" : "Enter your API key"} />
                   )}
+
+                  <div style={{ marginTop: 16, borderTop: "1px solid #e1e3e5", paddingTop: 16 }}>
+                    <Text variant="headingSm" as="h3" fontWeight="bold">Return Address (from address on label)</Text>
+                    <BlockStack gap="200">
+                      <TextField label="Address Line 1" name="addrLine1" value={addrLine1} onChange={setAddrLine1} placeholder="Street, number" autoComplete="off" />
+                      <TextField label="Address Line 2 (optional)" name="addrLine2" value={addrLine2} onChange={setAddrLine2} autoComplete="off" />
+                      <TextField label="City" name="addrCity" value={addrCity} onChange={setAddrCity} autoComplete="off" />
+                      <TextField label="Postal / ZIP code" name="addrZip" value={addrZip} onChange={setAddrZip} autoComplete="off" />
+                      <TextField label="State/Province (optional)" name="addrState" value={addrState} onChange={setAddrState} autoComplete="off" />
+                      <TextField label="Country (ISO code, e.g. NL, US, DE)" name="addrCountry" value={addrCountry} onChange={setAddrCountry} autoComplete="off" />
+                    </BlockStack>
+                  </div>
 
                   <Button submit variant="primary">Save Provider Settings</Button>
                 </BlockStack>
