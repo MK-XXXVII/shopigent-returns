@@ -1,12 +1,15 @@
 import { json, type LoaderFunctionArgs, type ActionFunctionArgs } from "@remix-run/node";
 import { useLoaderData, useFetcher } from "@remix-run/react";
-import * as crypto from "node:crypto";
 import {
-  Page, Layout, Card, BlockStack, Text, Banner, Button, InlineStack, TextField, Select,
+  Page, Layout, Card, BlockStack, Text, Banner, Button, Select, TextField, InlineStack,
 } from "@shopify/polaris";
+import { TitleBar } from "@shopify/app-bridge-react";
+import * as crypto from "node:crypto";
 import { useState } from "react";
 import shopify from "../shopify.server";
 import prisma from "../lib/db.server";
+import { createReturnLabel } from "../lib/label-provider.server";
+import { sendEmail } from "../lib/email.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await shopify.authenticate.admin(request);
@@ -84,6 +87,32 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       },
     });
     return json({ saved: true });
+  }
+
+  // Test label generation
+  if (_action === "test_label") {
+    const shopRec = await prisma.shop.findUnique({ where: { shop: session.shop } });
+    const config: any = shopRec?.config || {};
+    const labelRequest = {
+      orderName: "TEST",
+      customerName: "Test Customer",
+      customerEmail: config.testEmail || session.shop.replace(".myshopify.com", "") + "@example.com",
+      items: [{ title: "Test Item", quantity: 1, sku: "TEST" }],
+      weight: 0.5,
+      description: "Test label from Shopigent Returns",
+      shopAddress: config.shopAddress || { line1: "", city: "", postalCode: "", country: "NL" },
+    };
+    const result = await createReturnLabel(session.shop, labelRequest);
+    if (result.success && result.labelUrl) {
+      await sendEmail({
+        to: config.testEmail || session.shop.replace(".myshopify.com", "") + "@example.com",
+        subject: "Test Label from Shopigent Returns",
+        html: `<p>Test label generated successfully!</p><p><a href="${result.labelUrl}" target="_blank">Download Label</a></p>${result.trackingNumber ? `<p>Tracking: ${result.trackingNumber}</p>` : ""}<p>Cost: ${result.cost ? "$" + result.cost : "N/A"}</p>`,
+        fromName: "Shopigent Returns Test",
+      });
+      return json({ testResult: "ok", labelUrl: result.labelUrl, tracking: result.trackingNumber });
+    }
+    return json({ testResult: "error", error: result.error || "Label generation failed" });
   }
 
   return json({ ok: true });
@@ -232,6 +261,27 @@ export default function SettingsPage() {
                   <Button submit variant="primary">Save Provider Settings</Button>
                 </BlockStack>
               </fetcher.Form>
+            </BlockStack>
+          </Card>
+
+          <Card>
+            <BlockStack gap="300">
+              <Text variant="headingMd" as="h2" fontWeight="bold">Test Label Generation</Text>
+              <Text variant="bodyMd" as="p" tone="subdued">Click below to generate a test return label using your configured provider. The label PDF link will be emailed to you.</Text>
+              <InlineStack gap="200">
+                <Button onClick={() => fetcher.submit({ _action: "test_label" }, { method: "post" })} loading={fetcher.state !== "idle"} disabled={fetcher.state !== "idle"}>
+                  📬 Generate Test Label
+                </Button>
+              </InlineStack>
+              {fetcher.data?.testResult === "ok" && (
+                <Banner tone="success">
+                  <p>✓ Label generated! <a href={fetcher.data.labelUrl} target="_blank" rel="noopener noreferrer">Download PDF</a></p>
+                  {fetcher.data.tracking && <p>Tracking: {fetcher.data.tracking}</p>}
+                </Banner>
+              )}
+              {fetcher.data?.testResult === "error" && (
+                <Banner tone="critical"><p>✗ {fetcher.data.error}</p></Banner>
+              )}
             </BlockStack>
           </Card>
 
