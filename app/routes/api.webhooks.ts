@@ -71,6 +71,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         break;
       }
 
+      case "RETURNS_UPDATE": {
+        // Bidirectional sync: Shopify return changed (status, refund, etc.) → update our record
+        await handleReturnsUpdate(shop, payload);
+        break;
+      }
+
       default:
         console.log(`[webhook] Unhandled topic: ${topic}`);
     }
@@ -81,3 +87,85 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return new Response(error.message, { status: 401 });
   }
 };
+
+// Map Shopify Return status → our ReturnStatus
+function mapShopifyReturnStatus(shopifyStatus: string | undefined): string {
+  switch ((shopifyStatus || "").toUpperCase()) {
+    case "OPEN": return "APPROVED";            // return approved, processing
+    case "PARTIALLY_REFUNDED": return "APPROVED";
+    case "REFUNDED":
+    case "COMPLETED": return "REFUNDED";       // fully refunded
+    case "CANCELLED":
+    case "DECLINED": return "DENIED";
+    case "REQUESTED": return "PENDING";
+    case "CLOSED": return "CLOSED";
+    case "REVIEWING": return "PENDING";
+    default: return (shopifyStatus || "PENDING").toUpperCase();
+  }
+}
+
+async function handleReturnsUpdate(shop: string, payload: any) {
+  const shopifyReturnId = payload.id;
+  const shopifyStatus = payload.status;
+  const orderId = payload.order?.id || payload.order_id || null;
+
+  if (!shopifyReturnId) {
+    console.error(`[webhook] RETURNS_UPDATE missing id:`, JSON.stringify(payload).slice(0, 500));
+    return;
+  }
+
+  // Find our return by the Shopify return ID
+  let returnReq = await prisma.returnRequest.findFirst({
+    where: { shop, shopifyReturnId },
+  });
+
+  // Fallback: match by orderId
+  if (!returnReq && orderId) {
+    returnReq = await prisma.returnRequest.findFirst({
+      where: { shop, orderId, status: { not: "REFUNDED" } },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  if (!returnReq) {
+    console.log(`[webhook] No matching return for Shopify return ${shopifyReturnId}`);
+    return;
+  }
+
+  const mappedStatus = mapShopifyReturnStatus(shopifyStatus);
+  const oldStatus = returnReq.status;
+
+  // Don't downgrade an already-refunded return to approved
+  if (oldStatus === "REFUNDED" && mappedStatus !== "REFUNDED") {
+    console.log(`[webhook] Keeping REFUNDED (Shopify says ${mappedStatus}) for ${shopifyReturnId}`);
+    return;
+  }
+
+  const updates: any = { status: mappedStatus };
+  // Capture refund amount/id if present
+  const refund = payload.refunds?.[0] || payload.refund;
+  if (refund) {
+    if (refund.id) updates.refundId = String(refund.id);
+    if (refund.transactions?.[0]?.amount) {
+      updates.refundAmount = parseFloat(refund.transactions[0].amount);
+    }
+  }
+  if (payload.refund_line_items && !((returnReq.items as any[]) || []).length) {
+    updates.items = payload.refund_line_items.map((li: any) => ({
+      title: li.line_item?.title || li.title || "Item",
+      quantity: li.quantity || 1,
+      price: li.price || "0",
+    }));
+  }
+
+  await prisma.returnRequest.update({
+    where: { id: returnReq.id },
+    data: updates,
+  });
+
+  await prisma.decisionLog.create({
+    data: { returnId: returnReq.id, actor: "shopify_webhook", action: "status_sync", details: { from: oldStatus, to: mappedStatus, shopifyStatus, returnId: shopifyReturnId } },
+  });
+
+  console.log(`[webhook] Synced return ${returnReq.id}: ${oldStatus} → ${mappedStatus} (Shopify ${shopifyStatus})`);
+}

@@ -14,12 +14,19 @@ import {
   InlineStack,
 } from "@shopify/polaris";
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
-import shopify from "../shopify.server";
+import shopify, { registerWebhooks } from "../shopify.server";
 import prisma from "../lib/db.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await shopify.authenticate.admin(request);
   const shop = session.shop;
+
+  // Re-register webhooks (idempotent) — ensures returns/update is active
+  try {
+    await registerWebhooks({ session });
+  } catch (err: any) {
+    console.error(`[dashboard] Webhook registration: ${err.message}`);
+  }
 
   const totalReturns = await prisma.returnRequest.count({ where: { shop } });
   const pendingReturns = await prisma.returnRequest.count({
