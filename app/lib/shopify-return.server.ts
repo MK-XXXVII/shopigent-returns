@@ -1,7 +1,6 @@
 import { shopifyAdminQuery } from "./shopify-admin.server";
 
-// Create a Shopify Return on the order via returnRequest
-// Uses the simple REST API approach to get fulfillment line items
+// Create a Shopify Return — uses GraphQL to find fulfillment line items
 export async function createShopifyReturn(
   shop: string,
   accessToken: string,
@@ -9,60 +8,65 @@ export async function createShopifyReturn(
   items: { variantId: string; quantity: number }[]
 ): Promise<{ returnId?: string; error?: string }> {
   const orderGid = orderId.startsWith("gid://") ? orderId : `gid://shopify/Order/${orderId}`;
-  const numericOrderId = orderId.replace("gid://shopify/Order/", "");
 
-  // Step 1: Get order via REST API (simpler) to find fulfillment IDs
-  const restUrl = `https://${shop}/admin/api/2026-10/orders/${numericOrderId}.json`;
-  const restResp = await fetch(restUrl, {
-    headers: { "X-Shopify-Access-Token": accessToken },
-  });
-  const restData = await restResp.json();
-  const order = restData?.order;
+  // Step 1: Get fulfillment line items via GraphQL
+  const query = `{
+    order(id: "${orderGid}") {
+      id
+      displayFulfillmentStatus
+      fulfillments(first: 10) {
+        id
+        lineItems(first: 50) {
+          edges { node { id lineItem { id variant { id } } quantity } }
+        }
+      }
+    }
+  }`;
 
-  if (!order) {
-    return { error: "Order not found" };
+  const result = await shopifyAdminQuery(shop, accessToken, query);
+  console.log(`[shopify-return] GraphQL:`, JSON.stringify(result).slice(0, 3000));
+
+  // Check for GraphQL errors
+  if (result?.errors) {
+    const msg = result.errors.map((e: any) => e.message).join(", ");
+    console.error(`[shopify-return] GraphQL error: ${msg}`);
+    return { error: `GraphQL error: ${msg}` };
   }
 
-  console.log(`[shopify-return] REST order:`, JSON.stringify({
-    id: order.id,
-    name: order.name,
-    fulfillment_status: order.fulfillment_status,
-    line_items: order.line_items?.map((li: any) => ({ id: li.id, variant_id: li.variant_id, fulfillable_quantity: li.fulfillable_quantity })),
-    fulfillments: order.fulfillments?.map((f: any) => ({ id: f.id, status: f.status, line_items: f.line_items?.map((fli: any) => ({ id: fli.id, line_item_id: fli.line_item_id })) })),
-  }).slice(0, 3000));
+  const fulfillments = result?.data?.order?.fulfillments || [];
+  if (fulfillments.length === 0) {
+    return { error: "Order has no fulfillments. Create a fulfillment first." };
+  }
 
-  // Step 2: Build return line items with fulfillmentLineItemId
+  // Step 2: Build return line items
   const returnLineItems: any[] = [];
 
   for (const reqItem of items) {
     const variantId = reqItem.variantId.replace("gid://shopify/ProductVariant/", "");
-    let fulfillmentLineItemId: string | null = null;
+    let found = false;
 
-    // Search through REST fulfillments
-    for (const fulfillment of (order.fulfillments || [])) {
-      for (const fli of (fulfillment.line_items || [])) {
-        // Check if this fulfillment line item matches our variant
-        const matchingLineItem = order.line_items?.find((li: any) => li.id === fli.line_item_id);
-        if (matchingLineItem && String(matchingLineItem.variant_id) === variantId) {
-          // Convert REST fulfillment line item ID to GID format
-          fulfillmentLineItemId = `gid://shopify/FulfillmentLineItem/${fli.id}`;
+    for (const fulfillment of fulfillments) {
+      const fliNodes = fulfillment.lineItems?.edges?.map((e: any) => e.node) || [];
+      for (const fli of fliNodes) {
+        const fliVariantId = fli.lineItem?.variant?.id?.replace("gid://shopify/ProductVariant/", "");
+        if (fliVariantId === variantId) {
+          returnLineItems.push({
+            fulfillmentLineItemId: fli.id,
+            quantity: reqItem.quantity,
+          });
+          found = true;
           break;
         }
       }
-      if (fulfillmentLineItemId) break;
+      if (found) break;
     }
 
-    if (!fulfillmentLineItemId) {
-      return { error: `Item variant ${variantId} hasn't been fulfilled. Fulfill the order in Shopify admin first.` };
+    if (!found) {
+      return { error: `Variant ${variantId} not found in any fulfillment` };
     }
-
-    returnLineItems.push({
-      fulfillmentLineItemId,
-      quantity: reqItem.quantity,
-    });
   }
 
-  // Step 3: Create the return
+  // Step 3: Create the return request
   const mutation = `mutation returnRequest($input: ReturnRequestInput!) {
     returnRequest(input: $input) {
       return { id status }
@@ -70,28 +74,21 @@ export async function createShopifyReturn(
     }
   }`;
 
-  const result = await shopifyAdminQuery(shop, accessToken, mutation, {
-    input: {
-      orderId: orderGid,
-      returnLineItems,
-    },
+  const createResult = await shopifyAdminQuery(shop, accessToken, mutation, {
+    input: { orderId: orderGid, returnLineItems },
   });
 
-  console.log(`[shopify-return] Create result:`, JSON.stringify(result).slice(0, 2000));
+  console.log(`[shopify-return] Create:`, JSON.stringify(createResult).slice(0, 2000));
 
-  if (result?.errors?.length) {
-    return { error: result.errors.map((e: any) => e.message).join(", ") };
+  if (createResult?.errors?.length) {
+    return { error: createResult.errors.map((e: any) => e.message).join(", ") };
   }
-
-  const errors = result?.data?.returnRequest?.userErrors;
+  const errors = createResult?.data?.returnRequest?.userErrors;
   if (errors?.length > 0) {
     return { error: errors.map((e: any) => e.message).join(", ") };
   }
-
-  const returnObj = result?.data?.returnRequest?.return;
-  if (!returnObj) {
-    return { error: "Failed to create return: no return object" };
-  }
-
-  return { returnId: returnObj.id };
+  const returnObj = createResult?.data?.returnRequest?.return;
+  return returnObj
+    ? { returnId: returnObj.id }
+    : { error: "Failed to create return" };
 }
