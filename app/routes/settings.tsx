@@ -93,10 +93,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (_action === "test_label") {
     const shopRec = await prisma.shop.findUnique({ where: { shop: session.shop } });
     const config: any = shopRec?.config || {};
+    const testEmail = (formData.get("testEmail") as string) || config.testEmail || session.shop.replace(".myshopify.com", "") + "@example.com";
     const labelRequest = {
       orderName: "TEST",
       customerName: "Test Customer",
-      customerEmail: config.testEmail || session.shop.replace(".myshopify.com", "") + "@example.com",
+      customerEmail: testEmail,
       items: [{ title: "Test Item", quantity: 1, sku: "TEST" }],
       weight: 0.5,
       description: "Test label from Shopigent Returns",
@@ -268,11 +269,13 @@ export default function SettingsPage() {
             <BlockStack gap="300">
               <Text variant="headingMd" as="h2" fontWeight="bold">Test Label Generation</Text>
               <Text variant="bodyMd" as="p" tone="subdued">Click below to generate a test return label using your configured provider. The label PDF link will be emailed to you.</Text>
-              <InlineStack gap="200">
-                <Button onClick={() => fetcher.submit({ _action: "test_label" }, { method: "post" })} loading={fetcher.state !== "idle"} disabled={fetcher.state !== "idle"}>
-                  📬 Generate Test Label
+              <fetcher.Form method="post" style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+                <input type="hidden" name="_action" value="test_label" />
+                <TextField label="Send to email" name="testEmail" placeholder="kalogeras84@gmail.com" autoComplete="off" />
+                <Button submit loading={fetcher.state !== "idle"}>
+                  📬 Generate & Send
                 </Button>
-              </InlineStack>
+              </fetcher.Form>
               {fetcher.data?.testResult === "ok" && (
                 <Banner tone="success">
                   <p>✓ Label generated! <a href={fetcher.data.labelUrl} target="_blank" rel="noopener noreferrer">Download PDF</a></p>
