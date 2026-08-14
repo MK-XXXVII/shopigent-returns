@@ -23,7 +23,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // Public routes (customer portal) — no Shopify admin auth
   const isPublic = url.pathname.startsWith("/return") || url.pathname.startsWith("/api/auth");
   if (!isPublic) {
-    await authenticate.admin(request);
+    // Skip auth if no shop param (e.g. stale embedded nav) — let the remount handle it
+    const shop = url.searchParams.get("shop");
+    if (shop) {
+      await authenticate.admin(request);
+    }
   }
   return { apiKey: process.env.SHOPIFY_API_KEY || "", isPublic };
 };
