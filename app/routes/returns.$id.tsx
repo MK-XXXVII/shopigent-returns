@@ -1,5 +1,5 @@
 import { json, type LoaderFunctionArgs, type ActionFunctionArgs } from "@remix-run/node";
-import { useLoaderData, useFetcher } from "@remix-run/react";
+import { useLoaderData, useFetcher, useNavigate } from "@remix-run/react";
 import {
   Page,
   Layout,
@@ -277,11 +277,12 @@ export default function ReturnDetailPage() {
   const hasToken = actionData?.token;
   const isSuccess = actionData?.success;
   const isError = actionData?.error;
+  const navigate = useNavigate();
 
   return (
     <Page
       title={`Return ${r.orderName || r.id.slice(0, 8)}`}
-      backAction={{ url: "/returns" }}
+      backAction={{ onAction: () => navigate(-1) }}
     >
       <Layout>
         <Layout.Section>
