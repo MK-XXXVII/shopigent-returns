@@ -180,7 +180,7 @@ export async function executeRefund(
         note: reason,
         transactions: [{
           amount: amount.toString(),
-          gateway: "manual",
+          gateway: "cash",
           kind: "REFUND",
           orderId: orderGid,
         }],
@@ -231,7 +231,7 @@ export async function executeRefund(
       kind: "REFUND",
     }] : [{
       amount: amount.toString(),
-      gateway: "manual",
+      gateway: "cash",
       kind: "REFUND",
     }],
   };
