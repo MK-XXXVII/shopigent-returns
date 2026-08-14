@@ -20,9 +20,24 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   });
   const data = await res.json();
   const hooks = data?.webhooks || [];
+
+  // Also fetch the returns for the shop's orders to inspect statuses
+  let returnsResult = null;
+  if (body.orderId) {
+    const orderGid = body.orderId.startsWith("gid://") ? body.orderId : `gid://shopify/Order/${body.orderId}`;
+    const q = `{ order(id: "${orderGid}") { id name returns(first: 10) { nodes { id status } } } }`;
+    const gRes = await fetch(`https://${shop}/admin/api/2026-10/graphql.json`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
+      body: JSON.stringify({ query: q }),
+    });
+    returnsResult = await gRes.json();
+  }
+
   return json({
     shop,
     resStatus: res.status,
     webhooks: hooks.map((h: any) => ({ topic: h.topic, address: h.address, id: h.id })),
+    returns: returnsResult,
   });
 };
