@@ -16,7 +16,7 @@ export async function createShopifyReturn(
       displayFulfillmentStatus
       fulfillments(first: 10) {
         id
-        lineItems(first: 50) {
+        fulfillmentLineItems(first: 50) {
           edges { node { id lineItem { id variant { id } } quantity } }
         }
       }
@@ -46,7 +46,7 @@ export async function createShopifyReturn(
     let found = false;
 
     for (const fulfillment of fulfillments) {
-      const fliNodes = fulfillment.lineItems?.edges?.map((e: any) => e.node) || [];
+      const fliNodes = fulfillment.fulfillmentLineItems?.edges?.map((e: any) => e.node) || [];
       for (const fli of fliNodes) {
         const fliVariantId = fli.lineItem?.variant?.id?.replace("gid://shopify/ProductVariant/", "");
         if (fliVariantId === variantId) {
