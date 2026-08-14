@@ -165,7 +165,7 @@ export async function executeRefund(
   if (!order) {
     console.error("[refund] Order lookup failed:", JSON.stringify(orderResult?.errors || orderResult));
     // If protected customer data is blocked, try to refund without order lookup
-    const directRefundQuery = `mutation refundCreate($input: RefundInput!) @idempotent {
+    const directRefundQuery = `mutation refundCreate($input: RefundInput!) {
       refundCreate(input: $input) {
         refund { id transactions(first: 10) { nodes { id status } } }
         userErrors { field message }
@@ -210,7 +210,7 @@ export async function executeRefund(
 
   // Step 2: Execute refund directly (no calculateRefund needed)
   const idempotencyKey = `${orderId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const execQuery = `mutation refundCreate($input: RefundInput!) @idempotent {
+  const execQuery = `mutation refundCreate($input: RefundInput!) {
     refundCreate(input: $input) {
       refund { id transactions(first: 10) { nodes { id status processedAt amountSet { shopMoney { amount } } } } }
       userErrors { field message }
