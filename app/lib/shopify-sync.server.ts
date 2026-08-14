@@ -1,7 +1,7 @@
 // Live sync: query the Shopify return status for a return and update our DB
 import prisma from "./db.server";
 
-const API = "2026-10";
+const API = process.env.SHOPIFY_API_VERSION || "2026-07";
 
 export async function shopifyQuery(shop: string, token: string, query: string, vars?: any) {
   const res = await fetch(`https://${shop}/admin/api/${API}/graphql.json`, {

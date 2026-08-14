@@ -6,7 +6,7 @@ export async function ensureReturnsWebhook(shop: string): Promise<{ ok: boolean;
   const token = sess?.accessToken || (await prisma.session.findFirst({ where: { shop } }))?.accessToken;
   if (!token) return { ok: false, detail: "No access token" };
 
-  const base = `https://${shop}/admin/api/2026-10`;
+  const base = `https://${shop}/admin/api/${process.env.SHOPIFY_API_VERSION || "2026-07"}`;
   const callback = `${process.env.SHOPIFY_APP_URL || "https://returns.greeknous.com"}/api/webhooks`;
 
   // 1. Check existing

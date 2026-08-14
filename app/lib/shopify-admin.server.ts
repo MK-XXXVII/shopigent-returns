@@ -4,7 +4,7 @@
 import prisma from "./db.server";
 import * as crypto from "node:crypto";
 
-const API_VERSION = process.env.SHOPIFY_API_VERSION || "2024-10";
+const API_VERSION = process.env.SHOPIFY_API_VERSION || "2026-07";
 
 interface ShopifyResponse {
   data?: any;
