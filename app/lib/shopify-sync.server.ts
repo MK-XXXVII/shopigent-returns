@@ -48,9 +48,9 @@ export async function syncReturnFromShopify(shop: string, shopifyReturnId: strin
   let q: string;
 
   if (shopifyReturnId) {
-    q = `{ return(id: "${shopifyReturnId}") { id status refundAmount order { id name } returnLineItems(first: 10) { nodes { id status } } } }`;
+    q = `{ return(id: "${shopifyReturnId}") { id status order { id name } returnLineItems(first: 10) { nodes { id status } } } }`;
   } else if (orderGid) {
-    q = `{ order(id: "${orderGid}") { id name returns(first: 5) { nodes { id status refundAmount } } } }`;
+    q = `{ order(id: "${orderGid}") { id name returns(first: 5) { nodes { id status } } } }`;
   } else {
     return null;
   }
@@ -67,7 +67,10 @@ export async function syncReturnFromShopify(shop: string, shopifyReturnId: strin
     }
   }
 
-  if (!shopifyReturn) return null;
+  if (!shopifyReturn) {
+    console.log(`[sync] No return found in Shopify response for ${ourReturnId}:`, JSON.stringify(data?.errors || data?.data).slice(0, 300));
+    return null;
+  }
 
   const mapped = mapShopifyReturnStatus(shopifyReturn.status);
 
@@ -77,10 +80,7 @@ export async function syncReturnFromShopify(shop: string, shopifyReturnId: strin
   }
 
   if (our.status !== mapped) {
-    const updates: any = { status: mapped };
-    const refundAmount = shopifyReturn.refundAmount;
-    if (refundAmount != null) updates.refundAmount = typeof refundAmount === "string" ? parseFloat(refundAmount) : refundAmount;
-    await prisma.returnRequest.update({ where: { id: ourReturnId }, data: updates });
+    await prisma.returnRequest.update({ where: { id: ourReturnId }, data: { status: mapped as any } });
     await prisma.decisionLog.create({
       data: { returnId: ourReturnId, actor: "shopify_sync", action: "status_sync", details: { from: our.status, to: mapped, shopifyStatus: shopifyReturn.status } },
     });
