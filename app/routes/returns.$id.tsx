@@ -235,6 +235,34 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     }
   }
 
+  // Cancel/deny an approved return from the app (no confirmation token needed)
+  if (action === "cancel_approved") {
+    if (returnReq.status !== "APPROVED" && returnReq.status !== "SHIPPED") {
+      return json({ error: "Only approved/shipped returns can be cancelled" }, { status: 400 });
+    }
+    let sess = await prisma.session.findFirst({ where: { shop, isOnline: false } });
+    if (!sess?.accessToken) sess = await prisma.session.findFirst({ where: { shop } });
+    // Decline in Shopify if still open
+    if (sess?.accessToken && returnReq.shopifyReturnId) {
+      try {
+        await declineShopifyReturn(shop, sess.accessToken, returnReq.shopifyReturnId);
+        await closeShopifyReturn(shop, sess.accessToken, returnReq.shopifyReturnId);
+      } catch {}
+    }
+    await prisma.returnRequest.update({
+      where: { id: returnId },
+      data: { status: "DENIED" },
+    });
+    await prisma.decisionLog.create({
+      data: { returnId, actor: "admin", action: "cancel", details: { from: returnReq.status } },
+    });
+    if (returnReq.customerEmail) sendEmail({
+      ...returnDeniedEmail(returnReq.customerName || "Customer", returnReq.orderName || "", "Return cancelled by store"),
+      to: returnReq.customerEmail,
+    });
+    return json({ success: true, message: "❌ Return cancelled/denied", newStatus: "DENIED" });
+  }
+
   return json({ error: "Unknown action" });
 };
 
@@ -305,6 +333,11 @@ export default function ReturnDetailPage() {
                   {(r.status === "SHIPPED" || r.status === "APPROVED") && (
                     <Button variant="primary" tone="success" onClick={() => fetcher.submit({ _action: "process_refund" }, { method: "post" })} loading={fetcher.state !== "idle"}>
                       💰 Process Refund
+                    </Button>
+                  )}
+                  {(r.status === "APPROVED" || r.status === "SHIPPED") && (
+                    <Button tone="critical" onClick={() => fetcher.submit({ _action: "cancel_approved" }, { method: "post" })} loading={fetcher.state !== "idle"}>
+                      ❌ Cancel Return
                     </Button>
                   )}
                 </InlineStack>
