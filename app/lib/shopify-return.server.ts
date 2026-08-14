@@ -126,7 +126,7 @@ export async function approveShopifyReturn(
   }`;
 
   const result = await shopifyAdminQuery(shop, accessToken, mutation, {
-    input: { returnId },
+    input: { id: returnId, notifyCustomer: true },
   });
 
   if (result?.errors?.length) {
@@ -158,8 +158,9 @@ export async function declineShopifyReturn(
 
   const result = await shopifyAdminQuery(shop, accessToken, mutation, {
     input: {
-      returnId,
-      declineReason: declineReason || "DECLINED_BY_MERCHANT",
+      id: returnId,
+      declineReason: declineReason || "OTHER",
+      notifyCustomer: true,
     },
   });
 
