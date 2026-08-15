@@ -8,6 +8,7 @@ import {
   isRouteErrorResponse,
   Link,
   useLoaderData,
+  useLocation,
 } from "@remix-run/react";
 import { AppProvider as PolarisAppProvider } from "@shopify/polaris";
 import { AppProvider as ShopifyAppProvider } from "@shopify/shopify-app-remix/react";
@@ -37,6 +38,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 export default function App() {
   const { apiKey, isPublic } = useLoaderData<typeof loader>();
+  const location = useLocation();
 
   return (
     <html>
@@ -58,7 +60,7 @@ export default function App() {
           </PolarisAppProvider>
         ) : (
           <ShopifyAppProvider isEmbeddedApp apiKey={apiKey}>
-            <NavMenu>
+            <NavMenu key={location.pathname}>
               <Link to="/">Dashboard</Link>
               <Link to="/policies">Policies</Link>
               <Link to="/returns">Returns</Link>
