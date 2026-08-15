@@ -28,9 +28,15 @@ const STATUS_COLORS: Record<string, "success" | "warning" | "critical" | "info" 
 };
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const { session } = await shopify.authenticate.admin(request);
+  const url = new URL(request.url);
+  let session: any = null;
+  // Only authenticate if shop param is present — otherwise root handles it
+  if (url.searchParams.get("shop")) {
+    session = await shopify.authenticate.admin(request).then((r: any) => r.session).catch(() => null);
+  }
+  const shop = session?.shop || url.searchParams.get("shop") || "";
   let returnReq = await prisma.returnRequest.findFirst({
-    where: { id: params.id, shop: session.shop },
+    where: { id: params.id, shop },
     include: {
       fraudSignals: true,
       decisionLogs: { orderBy: { createdAt: "desc" } },
@@ -41,10 +47,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   // Bidirectional sync: live-check the Shopify return status on load
   try {
-    await syncReturnFromShopify(session.shop, (returnReq as any).shopifyReturnId, (returnReq as any).id);
+    await syncReturnFromShopify(shop, (returnReq as any).shopifyReturnId, (returnReq as any).id);
     // Re-fetch to reflect any synced change
     returnReq = await prisma.returnRequest.findFirst({
-      where: { id: params.id, shop: session.shop },
+      where: { id: params.id, shop },
       include: {
         fraudSignals: true,
         decisionLogs: { orderBy: { createdAt: "desc" } },
