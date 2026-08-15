@@ -313,7 +313,10 @@ export default function ReturnDetailPage() {
   return (
     <Page
       title={`Return ${r.orderName || r.id.slice(0, 8)}`}
-      backAction={{ onAction: () => navigate(-1) }}
+      backAction={{ onAction: () => {
+                    if (window.history.length > 1) navigate(-1);
+                    else navigate("/");
+                  } }}
     >
       <Layout>
         <Layout.Section>
