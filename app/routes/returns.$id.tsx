@@ -230,6 +230,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           const closeResult = await closeShopifyReturn(shop, sess.accessToken, returnReq.shopifyReturnId);
           if (closeResult.success) {
             console.log(`[process_refund] Closed Shopify return ${returnReq.shopifyReturnId}`);
+          } else {
+            console.log(`[process_refund] Close Shopify return returned: ${closeResult.error}`);
           }
         } catch (e: any) {
           console.error(`[process_refund] Close Shopify return failed: ${e.message}`);
