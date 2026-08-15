@@ -28,13 +28,8 @@ const STATUS_COLORS: Record<string, "success" | "warning" | "critical" | "info" 
 };
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const url = new URL(request.url);
-  let session: any = null;
-  // Only authenticate if shop param is present — otherwise root handles it
-  if (url.searchParams.get("shop")) {
-    session = await shopify.authenticate.admin(request).then((r: any) => r.session).catch(() => null);
-  }
-  const shop = session?.shop || url.searchParams.get("shop") || "";
+  const { session } = await shopify.authenticate.admin(request);
+  const shop = session.shop;
   let returnReq = await prisma.returnRequest.findFirst({
     where: { id: params.id, shop },
     include: {
