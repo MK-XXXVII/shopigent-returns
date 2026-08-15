@@ -92,7 +92,13 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     if (!token) return json({ error: "Confirmation token required. Click Issue Token first." }, { status: 400 });
 
     const targetAction = action === "approve" ? "approve_return" : "deny_return";
-    const check = verifyConfirmationToken(token, secret, shop, targetAction, returnId, { returnId });
+    // The issued token is scoped to this returnId+shop but bound to one action;
+    // accept it for either approve or deny so a single token covers both decisions.
+    let check = verifyConfirmationToken(token, secret, shop, targetAction, returnId, { returnId });
+    if (!check.valid) {
+      const otherAction = action === "approve" ? "deny_return" : "approve_return";
+      check = verifyConfirmationToken(token, secret, shop, otherAction, returnId, { returnId });
+    }
     if (!check.valid) return json({ error: `Token invalid: ${check.reason}` }, { status: 400 });
 
     if (action === "approve") {
