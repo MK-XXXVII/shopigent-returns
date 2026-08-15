@@ -16,7 +16,7 @@ import {
 import shopify from "../shopify.server";
 import prisma from "../lib/db.server";
 import { issueConfirmationToken, verifyConfirmationToken } from "../lib/confirmation.server";
-import { executeRefund } from "../lib/shopify-admin.server";
+import { executeRefund, shopifyAdminQuery } from "../lib/shopify-admin.server";
 import { approveShopifyReturn, declineShopifyReturn, closeShopifyReturn } from "../lib/shopify-return.server";
 import { generateAndEmailReturnLabel } from "../lib/return-label-notify.server";
 import { syncReturnFromShopify } from "../lib/shopify-sync.server";
@@ -274,17 +274,32 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
   // Close return on Shopify (for REFUNDED returns where Shopify return is still OPEN)
   if (action === "close_return") {
-    if (!returnReq.shopifyReturnId) {
-      return json({ error: "No Shopify return ID — not created via portal/MCP" }, { status: 400 });
-    }
     let sess = await prisma.session.findFirst({ where: { shop, isOnline: false } });
     if (!sess?.accessToken) sess = await prisma.session.findFirst({ where: { shop } });
     if (!sess?.accessToken) return json({ error: "No access token" }, { status: 500 });
+
+    // Look up Shopify return ID — if not stored, query Shopify by orderId
+    let shopifyReturnId = returnReq.shopifyReturnId;
+    if (!shopifyReturnId) {
+      try {
+        const r = await shopifyAdminQuery(shop, sess.accessToken, "query { order(id: 'gid://shopify/Order/" + returnReq.orderId + "') { returns(first: 1) { nodes { id status } } } }");
+        const found = r?.data?.order?.returns?.nodes?.[0];
+        if (found) shopifyReturnId = found.id;
+      } catch {}
+    }
+    if (!shopifyReturnId) {
+      return json({ error: "No Shopify return found for this order" }, { status: 400 });
+    }
+
     try {
-      const closeResult = await closeShopifyReturn(shop, sess.accessToken, returnReq.shopifyReturnId);
+      const closeResult = await closeShopifyReturn(shop, sess.accessToken, shopifyReturnId);
       if (closeResult.success) {
+        await prisma.returnRequest.update({
+          where: { id: returnId },
+          data: { shopifyReturnId },
+        });
         await prisma.decisionLog.create({
-          data: { returnId, actor: "admin", action: "close_return", details: { returnId: returnReq.shopifyReturnId } },
+          data: { returnId, actor: "admin", action: "close_return", details: { returnId: shopifyReturnId } },
         });
         return json({ success: true, message: `🔒 Shopify return closed!`, newStatus: returnReq.status });
       }
@@ -324,7 +339,7 @@ export default function ReturnDetailPage() {
             {/* Status + Actions */}
             <Card>
               <BlockStack gap="300">
-                <InlineStack align="space-between">
+                <InlineStack align="space-between" wrap={false}>
                   <BlockStack gap="200">
                     <Text variant="headingMd" as="h2" fontWeight="bold">
                       Status
@@ -333,51 +348,49 @@ export default function ReturnDetailPage() {
                       {r.status}
                     </Badge>
                   </BlockStack>
-                  {r.status === "PENDING" && (
-                      <BlockStack gap="200">
-                          {hasToken ? (
-                            <>
-                              <Button variant="primary" tone="success" onClick={() => fetcher.submit({ _action: "approve", confirmationToken: actionData.token }, { method: "post" })} loading={fetcher.state !== "idle"}>
-                                ✅ Confirm Approve
-                              </Button>
-                              <Button tone="critical" onClick={() => fetcher.submit({ _action: "deny", confirmationToken: actionData.token }, { method: "post" })} loading={fetcher.state !== "idle"}>
-                                ❌ Confirm Deny
-                              </Button>
-                            </>
-                          ) : (
-                            <>
-                              <Button onClick={() => fetcher.submit({ _action: "issue_token", target: "approve_return" }, { method: "post" })} loading={fetcher.state !== "idle"}>
-                                🔐 Issue Confirmation Token
-                              </Button>
-                            </>
-                          )}
-                        {isError && <Banner tone="critical">{actionData.error}</Banner>}
-                        {isSuccess && <Banner tone="success">{actionData.message}</Banner>}
+                  <BlockStack gap="200" style={{ minWidth: 280 }}>
+                    {r.status === "PENDING" && (
+                      <>
+                        {hasToken ? (
+                          <InlineStack gap="200">
+                            <Button variant="primary" tone="success" fullWidth onClick={() => fetcher.submit({ _action: "approve", confirmationToken: actionData.token }, { method: "post" })} loading={fetcher.state !== "idle"}>
+                              ✅ Confirm Approve
+                            </Button>
+                            <Button tone="critical" fullWidth onClick={() => fetcher.submit({ _action: "deny", confirmationToken: actionData.token }, { method: "post" })} loading={fetcher.state !== "idle"}>
+                              ❌ Confirm Deny
+                            </Button>
+                          </InlineStack>
+                        ) : (
+                          <Button fullWidth onClick={() => fetcher.submit({ _action: "issue_token", target: "approve_return" }, { method: "post" })} loading={fetcher.state !== "idle"}>
+                            🔐 Issue Confirmation Token
+                          </Button>
+                        )}
                         {hasToken && !isSuccess && (
                           <Text variant="bodySm" as="p" tone="subdued">Token issued. Click Confirm Approve or Confirm Deny to proceed.</Text>
                         )}
-                      </BlockStack>
-                  )}
-                  {r.status === "APPROVED" && (
-                    <Button variant="primary" onClick={() => fetcher.submit({ _action: "process_return" }, { method: "post" })} loading={fetcher.state !== "idle"}>
-                      📦 Process Return (Send Label)
-                    </Button>
-                  )}
-                  {(r.status === "SHIPPED" || r.status === "APPROVED") && (
-                    <Button variant="primary" tone="success" onClick={() => fetcher.submit({ _action: "process_refund" }, { method: "post" })} loading={fetcher.state !== "idle"}>
-                      💰 Process Refund
-                    </Button>
-                  )}
-                  {(r.status === "APPROVED" || r.status === "SHIPPED") && (
-                    <Button tone="critical" onClick={() => fetcher.submit({ _action: "cancel_approved" }, { method: "post" })} loading={fetcher.state !== "idle"}>
-                      ❌ Cancel Return
-                    </Button>
-                  )}
-                  {r.status === "REFUNDED" && (
-                    <Button onClick={() => fetcher.submit({ _action: "close_return" }, { method: "post" })} loading={fetcher.state !== "idle"}>
-                      🔒 Close Return on Shopify
-                    </Button>
-                  )}
+                      </>
+                    )}
+                    {r.status === "APPROVED" && (
+                      <Button variant="primary" fullWidth onClick={() => fetcher.submit({ _action: "process_return" }, { method: "post" })} loading={fetcher.state !== "idle"}>
+                        📦 Process Return (Send Label)
+                      </Button>
+                    )}
+                    {(r.status === "SHIPPED" || r.status === "APPROVED") && (
+                      <Button variant="primary" tone="success" fullWidth onClick={() => fetcher.submit({ _action: "process_refund" }, { method: "post" })} loading={fetcher.state !== "idle"}>
+                        💰 Process Refund
+                      </Button>
+                    )}
+                    {(r.status === "APPROVED" || r.status === "SHIPPED") && (
+                      <Button tone="critical" fullWidth onClick={() => fetcher.submit({ _action: "cancel_approved" }, { method: "post" })} loading={fetcher.state !== "idle"}>
+                        ❌ Cancel Return
+                      </Button>
+                    )}
+                    {r.status === "REFUNDED" && (
+                      <Button fullWidth onClick={() => fetcher.submit({ _action: "close_return" }, { method: "post" })} loading={fetcher.state !== "idle"}>
+                        🔒 Close Return on Shopify
+                      </Button>
+                    )}
+                  </BlockStack>
                 </InlineStack>
                 {/* Global action feedback — shows for any action regardless of status */}
                 {isError && <Banner tone="critical">{actionData.error}</Banner>}
