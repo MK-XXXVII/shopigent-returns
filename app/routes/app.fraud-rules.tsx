@@ -209,8 +209,27 @@ export default function FraudRulesPage() {
 
               <fetcher.Form method="post" onSubmit={(e) => {
                 e.preventDefault();
-                flushPending();
-                setTimeout(() => fetcher.submit(e.currentTarget, { method: "post" }), 0);
+                // Compute final values synchronously (merge pending typed input into saved tags)
+                const dExisting = domains ? domains.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean) : [];
+                const dPending = domainInput.trim().toLowerCase();
+                if (dPending && !dExisting.includes(dPending)) dExisting.push(dPending);
+                const cExisting = countries ? countries.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean) : [];
+                const cPendingVal = countryInput.trim().toUpperCase();
+                if (cPendingVal && !cExisting.includes(cPendingVal)) cExisting.push(cPendingVal);
+                // Submit with explicit computed data (not reading stale form DOM)
+                fetcher.submit({
+                  _action: "save_rules",
+                  enabled: String(enabled),
+                  blockedCountries: cExisting.join(", "),
+                  suspiciousEmailDomains: dExisting.join(", "),
+                  maxReturnsPerCustomer: maxReturns,
+                  maxReturnsWindowDays: windowDays,
+                  maxValuePerReturn: maxValue,
+                }, { method: "post" });
+                setDomainInput("");
+                setCountryInput("");
+                setDomains(dExisting.join(", "));
+                setCountries(cExisting.join(", "));
               }}>
                 <input type="hidden" name="_action" value="save_rules" />
                 <input type="hidden" name="enabled" value={String(enabled)} />
