@@ -13,7 +13,7 @@ import { AppProvider as PolarisAppProvider } from "@shopify/polaris";
 import { AppProvider as ShopifyAppProvider } from "@shopify/shopify-app-remix/react";
 import { NavMenu } from "@shopify/app-bridge-react";
 import polarisStyles from "@shopify/polaris/build/esm/styles.css?url";
-import { authenticate } from "./shopify.server";
+import { authenticate, login } from "./shopify.server";
 import type { LoaderFunctionArgs } from "@remix-run/node";
 
 export const links = () => [{ rel: "stylesheet", href: polarisStyles }];
@@ -27,6 +27,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const shop = url.searchParams.get("shop");
     if (shop) {
       await authenticate.admin(request);
+    } else {
+      // No shop param — redirect to login to let the framework handle re-auth
+      await login(request);
     }
   }
   return { apiKey: process.env.SHOPIFY_API_KEY || "", isPublic };
