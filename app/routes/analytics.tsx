@@ -154,7 +154,7 @@ function StatCard({ label, value, tone, prefix, suffix }: {
 }) {
   return (
     <Card>
-      <BlockStack gap="100">
+      <BlockStack gap="200">
         <Text variant="bodySm" as="span" tone="subdued">{label}</Text>
         <Text variant="headingXl" as="p" fontWeight="bold" tone={tone as any}>
           {prefix}{typeof value === "number" ? value.toLocaleString() : value}{suffix}

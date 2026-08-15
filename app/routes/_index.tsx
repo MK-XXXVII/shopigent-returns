@@ -104,7 +104,7 @@ export default function Dashboard() {
             {new Date(createdAt).toLocaleDateString()}
           </IndexTable.Cell>
           <IndexTable.Cell>
-            <InlineStack gap="100">
+            <InlineStack gap="200">
               <Button size="micro" onClick={(e: any) => { e.stopPropagation(); navigate(`/returns/${id}`); }}>
                 View
               </Button>

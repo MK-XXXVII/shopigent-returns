@@ -325,7 +325,7 @@ export default function ReturnDetailPage() {
             <Card>
               <BlockStack gap="300">
                 <InlineStack align="space-between">
-                  <BlockStack gap="100">
+                  <BlockStack gap="200">
                     <Text variant="headingMd" as="h2" fontWeight="bold">
                       Status
                     </Text>
@@ -335,7 +335,6 @@ export default function ReturnDetailPage() {
                   </BlockStack>
                   {r.status === "PENDING" && (
                       <BlockStack gap="200">
-                        <InlineStack gap="200">
                           {hasToken ? (
                             <>
                               <Button variant="primary" tone="success" onClick={() => fetcher.submit({ _action: "approve", confirmationToken: actionData.token }, { method: "post" })} loading={fetcher.state !== "idle"}>
@@ -352,7 +351,6 @@ export default function ReturnDetailPage() {
                               </Button>
                             </>
                           )}
-                        </InlineStack>
                         {isError && <Banner tone="critical">{actionData.error}</Banner>}
                         {isSuccess && <Banner tone="success">{actionData.message}</Banner>}
                         {hasToken && !isSuccess && (
@@ -412,7 +410,7 @@ export default function ReturnDetailPage() {
                   Items ({items.length})
                 </Text>
                 {items.map((item: any, i: number) => (
-                  <BlockStack key={i} gap="100">
+                  <BlockStack key={i} gap="200">
                     <InlineStack align="space-between">
                       <Text variant="bodyMd" as="span" fontWeight="bold">
                         {item.title}
@@ -459,7 +457,7 @@ export default function ReturnDetailPage() {
                     Activity Log
                   </Text>
                   {logs.map((log) => (
-                    <BlockStack key={log.id} gap="100">
+                    <BlockStack key={log.id} gap="200">
                       <InlineStack gap="200">
                         <Text variant="bodySm" as="span" fontWeight="bold">
                           {log.actor}
