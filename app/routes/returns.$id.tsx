@@ -271,6 +271,28 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     return json({ success: true, message: "❌ Return cancelled/denied", newStatus: "DENIED" });
   }
 
+  // Close return on Shopify (for REFUNDED returns where Shopify return is still OPEN)
+  if (action === "close_return") {
+    if (!returnReq.shopifyReturnId) {
+      return json({ error: "No Shopify return ID — not created via portal/MCP" }, { status: 400 });
+    }
+    let sess = await prisma.session.findFirst({ where: { shop, isOnline: false } });
+    if (!sess?.accessToken) sess = await prisma.session.findFirst({ where: { shop } });
+    if (!sess?.accessToken) return json({ error: "No access token" }, { status: 500 });
+    try {
+      const closeResult = await closeShopifyReturn(shop, sess.accessToken, returnReq.shopifyReturnId);
+      if (closeResult.success) {
+        await prisma.decisionLog.create({
+          data: { returnId, actor: "admin", action: "close_return", details: { returnId: returnReq.shopifyReturnId } },
+        });
+        return json({ success: true, message: `🔒 Shopify return closed!`, newStatus: returnReq.status });
+      }
+      return json({ error: closeResult.error || "Close failed" }, { status: 500 });
+    } catch (err: any) {
+      return json({ error: `Close failed: ${err.message}` }, { status: 500 });
+    }
+  }
+
   return json({ error: "Unknown action" });
 };
 
@@ -347,6 +369,11 @@ export default function ReturnDetailPage() {
                   {(r.status === "APPROVED" || r.status === "SHIPPED") && (
                     <Button tone="critical" onClick={() => fetcher.submit({ _action: "cancel_approved" }, { method: "post" })} loading={fetcher.state !== "idle"}>
                       ❌ Cancel Return
+                    </Button>
+                  )}
+                  {r.status === "REFUNDED" && (
+                    <Button onClick={() => fetcher.submit({ _action: "close_return" }, { method: "post" })} loading={fetcher.state !== "idle"}>
+                      🔒 Close Return on Shopify
                     </Button>
                   )}
                 </InlineStack>
