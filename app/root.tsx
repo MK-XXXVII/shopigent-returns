@@ -82,19 +82,18 @@ export function ErrorBoundary() {
 
   if (isRouteErrorResponse(error)) {
     return (
-      <div>
-        <h1>
-          {error.status} {error.statusText}
-        </h1>
-        <p>{error.data}</p>
+      <div style={{ fontFamily: "Arial", padding: 40, textAlign: "center" }}>
+        <h1 style={{ color: "#5c6ac4" }}>Shopigent Returns</h1>
+        <p>{error.data || "Re-authenticating — please wait..."}</p>
+        {error.status === 500 && <p style={{ color: "#666", fontSize: 13 }}>{error.status} {error.statusText}</p>}
       </div>
     );
   }
 
   return (
-    <div>
-      <h1>Error</h1>
-      <p>{(error as Error)?.message ?? "Unknown error"}</p>
+    <div style={{ fontFamily: "Arial", padding: 40, textAlign: "center" }}>
+      <h1 style={{ color: "#5c6ac4" }}>Shopigent Returns</h1>
+      <p>{(error as Error)?.message || "Re-authenticating — please wait..."}</p>
     </div>
   );
 }
