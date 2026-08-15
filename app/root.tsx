@@ -39,6 +39,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 export default function App() {
   const { apiKey, isPublic } = useLoaderData<typeof loader>();
   const location = useLocation();
+  // NavMenu key forces re-mount on route change (fixes embedded nav not updating)
+  const navKey = location.pathname + location.search;
 
   return (
     <html>
@@ -60,7 +62,7 @@ export default function App() {
           </PolarisAppProvider>
         ) : (
           <ShopifyAppProvider isEmbeddedApp apiKey={apiKey}>
-            <NavMenu key={location.pathname}>
+            <NavMenu key={navKey}>
               <Link to="/">Dashboard</Link>
               <Link to="/policies">Policies</Link>
               <Link to="/returns">Returns</Link>
