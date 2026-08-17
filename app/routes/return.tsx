@@ -495,7 +495,7 @@ export default function ReturnPortal() {
       {/* Branded header */}
       <div style={{ textAlign: "center", marginBottom: 28 }}>
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
-          <img src="/logo-email.svg" alt="Shopigent Returns" style={{ height: 60, maxWidth: "100%" }} />
+          <img src="/logo-email.svg" alt="Shopigent Returns" style={{ height: 120, maxWidth: "100%", width: "auto" }} />
         </div>
         {storeName && (
           <Text variant="headingMd" as="p">{storeName}</Text>
