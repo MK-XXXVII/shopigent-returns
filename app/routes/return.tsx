@@ -462,10 +462,12 @@ export default function ReturnPortal() {
     return (
       <div style={{ maxWidth: 560, margin: "48px auto", padding: "0 20px" }}>
         <div style={{ textAlign: "center", marginBottom: 24 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-            <img src="/logo-email.svg" alt="Shopigent Returns" style={{ height: 40 }} />
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
+            <img src="/logo-icon.svg" alt="" style={{ width: 100, height: 100 }} />
           </div>
-          <Text variant="headingSm" as="p" tone="subdued">Returns Portal</Text>
+          <div style={{ fontSize: 18, fontWeight: 700, color: "#452b60", fontFamily: "'Inter',Arial,sans-serif" }}>
+            Shopigent <span style={{ color: "#269982", fontWeight: 600 }}>Returns</span>
+          </div>
         </div>
         <Card>
           <BlockStack gap="500" align="center">
@@ -494,13 +496,20 @@ export default function ReturnPortal() {
     <div style={{ maxWidth: 720, margin: "40px auto", padding: "0 20px" }}>
       {/* Branded header */}
       <div style={{ textAlign: "center", marginBottom: 28 }}>
-        <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
-          <img src="/logo-email.svg" alt="Shopigent Returns" style={{ height: 120, maxWidth: "100%", width: "auto" }} />
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+          <img src="/logo-icon.svg" alt="" style={{ width: 120, height: 120 }} />
+        </div>
+        <div style={{ fontFamily: "'Inter',Arial,sans-serif" }}>
+          <div style={{ fontSize: 30, fontWeight: 800, letterSpacing: "-0.5px", color: "#452b60" }}>
+            Shopigent
+          </div>
+          <div style={{ fontSize: 20, fontWeight: 600, color: "#269982", letterSpacing: "-0.3px" }}>
+            Returns
+          </div>
         </div>
         {storeName && (
-          <Text variant="headingMd" as="p">{storeName}</Text>
+          <Text variant="bodyMd" as="p" tone="subdued" alignment="center" fontWeight="bold">for {storeName}</Text>
         )}
-        <Text variant="headingMd" as="p" fontWeight="bold">Returns Portal</Text>
       </div>
 
       {/* Step indicator */}
