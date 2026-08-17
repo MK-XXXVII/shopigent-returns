@@ -1,5 +1,5 @@
 import { json, type LoaderFunctionArgs } from "@remix-run/node";
-import { useLoaderData, useNavigate } from "@remix-run/react";
+import { useLoaderData, useNavigate, useNavigation } from "@remix-run/react";
 import {
   Page,
   Layout,
@@ -7,6 +7,8 @@ import {
   BlockStack,
   Text,
   Banner,
+  SkeletonBodyText,
+  TextField,
   IndexTable,
   Badge,
   Link,
@@ -14,7 +16,7 @@ import {
   InlineStack,
   EmptyState,
 } from "@shopify/polaris";
-import { useState } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import shopify from "../shopify.server";
 import prisma from "../lib/db.server";
 
@@ -64,10 +66,19 @@ function statusBadge(status: string) {
 export default function ReturnsPage() {
   const { returns, counts, currentStatus } = useLoaderData<typeof loader>();
   const navigate = useNavigate();
+  const navigation = useNavigation();
+  const isLoading = navigation.state === "loading";
+
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const q = searchQuery.toLowerCase();
+  const filteredReturns = q
+    ? returns.filter((r) => (r.orderName || "").toLowerCase().includes(q) || (r.customerName || "").toLowerCase().includes(q))
+    : returns;
 
   const totalCount = Object.values(counts).reduce((a, b) => a + b, 0);
 
-  const rowMarkup = returns.map(
+  const filteredRowMarkup = filteredReturns.map(
     ({ id, orderName, customerName, status, createdAt }, index) => {
       const badge = statusBadge(status);
       const isPending = status === "PENDING";
@@ -158,30 +169,47 @@ export default function ReturnsPage() {
               ))}
             </div>
 
-            {/* Returns table */}
-            <Card>
-              {returns.length === 0 ? (
-                <EmptyState
-                  heading="No returns yet"
-                  image=""
-                >
-                  <p>Returns will appear here when customers submit them or when orders are fulfilled.</p>
-                </EmptyState>
-              ) : (
-                <IndexTable
-                  resourceName={{ singular: "return", plural: "returns" }}
-                  itemCount={returns.length}
-                  headings={[
-                    { title: "Order" },
-                    { title: "Customer" },
-                    { title: "Status" },
-                    { title: "Date" },
-                    { title: "Actions" },
-                  ]}
-                >
-                  {rowMarkup}
-                </IndexTable>
-              )}
+            {/* Search bar */}
+                        {returns.length > 0 && (
+                          <TextField
+                            label="Search returns"
+                            placeholder="Search by order name or customer..."
+                            value={searchQuery}
+                            onChange={setSearchQuery}
+                            autoComplete="off"
+                            clearButton
+                            onClearButtonClick={() => setSearchQuery("")}
+                          />
+                        )}
+
+                        {/* Returns table */}
+                        <Card>
+                          {isLoading ? (
+                            <div style={{ padding: 20 }}>
+                              <SkeletonBodyText lines={5} />
+                            </div>
+                          ) : filteredReturns.length === 0 ? (
+                            <EmptyState
+                              heading={searchQuery ? "No matching returns" : "No returns yet"}
+                              image=""
+                            >
+                              <p>{searchQuery ? "Try a different search term." : "Returns will appear here when customers submit them."}</p>
+                            </EmptyState>
+                          ) : (
+                            <IndexTable
+                              selectable={false}
+                              itemCount={filteredReturns.length}
+                              headings={[
+                                { title: "Order" },
+                                { title: "Customer" },
+                                { title: "Status" },
+                                { title: "Date" },
+                                { title: "Actions" },
+                              ]}
+                            >
+                              {filteredRowMarkup}
+                            </IndexTable>
+                          )}
             </Card>
           </BlockStack>
         </Layout.Section>

@@ -1,5 +1,5 @@
 import { json, type LoaderFunctionArgs, type ActionFunctionArgs } from "@remix-run/node";
-import { useLoaderData, useFetcher, useNavigate } from "@remix-run/react";
+import { useLoaderData, useFetcher, useNavigate, useNavigation } from "@remix-run/react";
 import {
   Page,
   Layout,
@@ -13,6 +13,7 @@ import {
   Tag,
   Banner,
 } from "@shopify/polaris";
+import { useEffect } from "react";
 import shopify from "../shopify.server";
 import prisma from "../lib/db.server";
 import { issueConfirmationToken, verifyConfirmationToken } from "../lib/confirmation.server";
@@ -324,6 +325,13 @@ export default function ReturnDetailPage() {
   const isSuccess = actionData?.success;
   const isError = actionData?.error;
   const navigate = useNavigate();
+
+  // Auto-refresh after successful action (approve, deny, refund, close)
+  useEffect(() => {
+    if (fetcher.data?.success && fetcher.state === "idle") {
+      window.location.reload();
+    }
+  }, [fetcher.data, fetcher.state]);
 
   return (
     <Page
