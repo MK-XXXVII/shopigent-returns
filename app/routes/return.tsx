@@ -429,6 +429,8 @@ export default function ReturnPortal() {
   const [reason, setReason] = useState("");
   const [orderNumber, setOrderNumber] = useState("");
   const [manualItems, setManualItems] = useState<{ name: string; qty: string; price: string }[]>([]);
+  // Live quantity state per item: key = `${orderId}:${itemId}`, value = qty
+  const [quantities, setQuantities] = useState<Record<string, number>>({});
 
   const data = fetcher.data;
   const isSubmitting = fetcher.state === "submitting";
@@ -576,12 +578,17 @@ export default function ReturnPortal() {
                                 max={item.quantity}
                                 data-price={item.price}
                                 data-item-id={item.id}
-                                onChange={(e) => { const p = parseFloat(e.target.dataset.price || "0"); const q = parseInt(e.target.value) || 1; const total = e.target.closest('[data-line-total]'); if (total) total.textContent = `$${(p*q).toFixed(2)}`; }}
+                                onChange={(e) => {
+                                  const q = Math.min(parseInt(e.target.value) || 1, item.quantity);
+                                  setQuantities(prev => ({ ...prev, [`${order.id}:${item.id}`]: q }));
+                                }}
                                 style={{ width: 50, padding: "4px 8px", borderRadius: 4, border: "1px solid #c1c7cd", fontSize: 13, textAlign: "center" }}
                               />
                               <Text variant="bodySm" as="span" tone="subdued">× {parseFloat(item.price).toFixed(2)}</Text>
                               <Text variant="bodySm" as="span" tone="subdued">= </Text>
-                              <Text variant="bodySm" as="span" fontWeight="bold" data-line-total>${(parseFloat(item.price) * item.quantity).toFixed(2)}</Text>
+                              <Text variant="bodySm" as="span" fontWeight="bold">
+                                ${((quantities[`${order.id}:${item.id}`] ?? item.quantity) * parseFloat(item.price)).toFixed(2)}
+                              </Text>
                             </InlineStack>
                           </InlineStack>
                         ))}
