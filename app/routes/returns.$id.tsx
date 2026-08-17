@@ -12,6 +12,7 @@ import {
   List,
   Tag,
   Banner,
+  Box,
 } from "@shopify/polaris";
 import { useEffect } from "react";
 import shopify from "../shopify.server";
@@ -335,7 +336,8 @@ export default function ReturnDetailPage() {
             {/* Status + Actions */}
             <Card>
               <BlockStack gap="300">
-                <InlineStack align="space-between" wrap={false}>
+                <InlineStack align="space-between" gap="400" wrap={false}>
+                  <div style={{ minWidth: 120 }}>
                   <BlockStack gap="200">
                     <Text variant="headingMd" as="h2" fontWeight="bold">
                       Status
@@ -344,25 +346,63 @@ export default function ReturnDetailPage() {
                       {r.status}
                     </Badge>
                   </BlockStack>
-                  <BlockStack gap="200" style={{ minWidth: 280 }}>
+                  </div>
+
+                  <div style={{ minWidth: 320, flex: 1 }}>
+                  <BlockStack gap="300">
                     {r.status === "PENDING" && (
                       <>
-                        {hasToken ? (
-                          <InlineStack gap="200">
-                            <Button variant="primary" tone="success" fullWidth onClick={() => fetcher.submit({ _action: "approve", confirmationToken: actionData.token }, { method: "post" })} loading={fetcher.state !== "idle"}>
-                              ✅ Confirm Approve
-                            </Button>
-                            <Button tone="critical" fullWidth onClick={() => fetcher.submit({ _action: "deny", confirmationToken: actionData.token }, { method: "post" })} loading={fetcher.state !== "idle"}>
-                              ❌ Confirm Deny
-                            </Button>
-                          </InlineStack>
+                        {!hasToken ? (
+                          <BlockStack gap="200">
+                            <Box background="bg-surface-secondary" borderWidth="025" borderColor="border" padding="400" borderRadius="300">
+                              <BlockStack gap="300">
+                                <InlineStack gap="200" blockAlign="center">
+                                  <span style={{ color: "#b97800" }}>
+                                    <svg viewBox="0 0 20 20" width="20" height="20"><path d="M10 2a1 1 0 0 1 1 1v1a1 1 0 1 1-2 0V3a1 1 0 0 1 1-1Zm0 13a1 1 0 0 1 1 1v1a1 1 0 1 1-2 0v-1a1 1 0 0 1 1-1ZM2.7 6.1a1 1 0 0 1 1.4 0l.7.7a1 1 0 0 1-1.4 1.4l-.7-.7a1 1 0 0 1 0-1.4Zm11.4 0a1 1 0 0 1 1.4 0l.7.7a1 1 0 1 1-1.4 1.4l-.7-.7a1 1 0 0 1 0-1.4ZM2.7 13.9a1 1 0 0 1 0-1.4l.7-.7a1 1 0 0 1 1.4 1.4l-.7.7a1 1 0 0 1-1.4 0Zm11.4 0a1 1 0 0 1 1.4 0l.7.7a1 1 0 1 1-1.4 1.4l-.7-.7a1 1 0 0 1 0-1.4Zm-7 3.25V19a1 1 0 1 1-2 0v-1.85a3.9 3.9 0 0 1-3.4-3.65A1 1 0 0 1 3 12.5h14a1 1 0 0 1 1 1 3.9 3.9 0 0 1-3.4 3.65V19a1 1 0 1 1-2 0v-1.85A3.9 3.9 0 0 1 9.2 19h-2Z"/></svg>
+                                  </span>
+                                  <Text variant="bodySm" as="span" fontWeight="medium">Two-step confirmation</Text>
+                                </InlineStack>
+                                <Text variant="bodySm" as="p" tone="subdued">
+                                  Issue a security token, then confirm your decision to approve or deny this return.
+                                </Text>
+                                <Button
+                                  variant="secondary"
+                                  fullWidth
+                                  onClick={() => fetcher.submit({ _action: "issue_token", target: "approve_return" }, { method: "post" })}
+                                  loading={fetcher.state !== "idle"}
+                                  icon={
+                                    <svg viewBox="0 0 20 20" width="16" height="16"><path fillRule="evenodd" d="M10 2a1 1 0 0 1 1 1v1.1a5 5 0 0 1 3.4 6.6l.94.94a1 1 0 0 1-1.4 1.4l-.95-.95a.75.75 0 0 1-.1-1.04A3.5 3.5 0 0 0 11 5.22V3a1 1 0 0 1 1-1Z" clipRule="evenodd"/></svg>
+                                  }
+                                >
+                                  Issue Confirmation Token
+                                </Button>
+                              </BlockStack>
+                            </Box>
+                          </BlockStack>
                         ) : (
-                          <Button fullWidth onClick={() => fetcher.submit({ _action: "issue_token", target: "approve_return" }, { method: "post" })} loading={fetcher.state !== "idle"}>
-                            🔐 Issue Confirmation Token
-                          </Button>
-                        )}
-                        {hasToken && !isSuccess && (
-                          <Text variant="bodySm" as="p" tone="subdued">Token issued. Click Confirm Approve or Confirm Deny to proceed.</Text>
+                          <BlockStack gap="200">
+                            <InlineStack gap="200" blockAlign="center">
+                              <span style={{ color: "#297260" }}>
+                                <svg viewBox="0 0 20 20" width="18" height="18"><path fillRule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm1-11a1 1 0 1 0-2 0v4a1 1 0 0 0 .3.7l2 2a1 1 0 0 0 1.4-1.4L11 10.6V7Z" clipRule="evenodd"/></svg>
+                              </span>
+                              <Text variant="bodySm" as="span" fontWeight="medium">
+                                Token issued — ready to confirm your decision
+                              </Text>
+                            </InlineStack>
+                            <InlineStack gap="200">
+                              <Button variant="primary" tone="success" fullWidth onClick={() => fetcher.submit({ _action: "approve", confirmationToken: actionData.token }, { method: "post" })} loading={fetcher.state !== "idle"}>
+                                Approve return
+                              </Button>
+                            </InlineStack>
+                            <InlineStack gap="200">
+                              <Button tone="critical" fullWidth disabled={fetcher.state !== "idle"} onClick={() => fetcher.submit({ _action: "deny", confirmationToken: actionData.token }, { method: "post" })}>
+                                Deny return
+                              </Button>
+                            </InlineStack>
+                            <Text variant="bodySm" as="p" tone="subdued">
+                              Approve sends the return label and marks it approved. Deny closes the return without a refund.
+                            </Text>
+                          </BlockStack>
                         )}
                       </>
                     )}
@@ -387,6 +427,7 @@ export default function ReturnDetailPage() {
                       </Button>
                     )}
                   </BlockStack>
+                  </div>
                 </InlineStack>
                 {/* Global action feedback — shows for any action regardless of status */}
                 {isError && <Banner tone="critical">{actionData.error}</Banner>}
