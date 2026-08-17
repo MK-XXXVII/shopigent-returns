@@ -493,12 +493,14 @@ export default function ReturnPortal() {
   return (
     <div style={{ maxWidth: 720, margin: "40px auto", padding: "0 20px" }}>
       {/* Branded header */}
-      <div style={{ textAlign: "center", marginBottom: 24 }}>
-        <img src="/logo-email.svg" alt="Shopigent Returns" style={{ height: 44, marginBottom: 8 }} />
+      <div style={{ textAlign: "center", marginBottom: 28 }}>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
+          <img src="/logo-email.svg" alt="Shopigent Returns" style={{ height: 60, maxWidth: "100%" }} />
+        </div>
         {storeName && (
           <Text variant="headingMd" as="p">{storeName}</Text>
         )}
-        <Text variant="headingSm" as="p" tone="subdued">Returns Portal</Text>
+        <Text variant="headingMd" as="p" fontWeight="bold">Returns Portal</Text>
       </div>
 
       {/* Step indicator */}
