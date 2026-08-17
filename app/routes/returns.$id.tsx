@@ -110,25 +110,13 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       });
       if (claim.count === 0) return json({ error: "Already processed" });
 
-      const amount = (returnReq.items as any[]).reduce((s: number, i: any) => s + (parseFloat(i.price || "0") * (i.quantity || 0)), 0);
-      // Try offline session first, then any available session
+      // Fetch offline session for Shopify sync
       let sess = await prisma.session.findFirst({ where: { shop, isOnline: false } });
       if (!sess?.accessToken) {
         sess = await prisma.session.findFirst({ where: { shop } });
       }
-      if (sess?.accessToken) {
-        try {
-          console.log(`[admin] Attempting refund for ${returnReq.orderId} (${returnReq.orderName}) — amount: $${amount}`);
-          const result = await executeRefund(shop, sess.accessToken, returnReq.orderId, amount, true);
-          console.log(`[admin] Refund executed: ${result?.id || "no ID"}`);
-          await prisma.returnRequest.update({
-            where: { id: returnId },
-            data: { status: "REFUNDED", refundAmount: amount, refundId: result?.id || null },
-          });
-        } catch (err: any) {
-          console.error(`[admin] Refund failed: ${err.message}`);
-        }
-      }
+      // NOTE: Approve does NOT auto-refund. The merchant decides on the refund
+      // separately via the "Process Refund" button after receiving the item back.
       // Sync approve to Shopify if a Shopify return exists
       if (sess?.accessToken && returnReq.shopifyReturnId) {
         try {
