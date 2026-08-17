@@ -475,7 +475,8 @@ export default function ReturnPortal() {
               width: 72, height: 72, borderRadius: "50%",
               background: "linear-gradient(135deg, #10B981, #0d9668)",
               display: "flex", alignItems: "center", justifyContent: "center",
-              boxShadow: "0 8px 24px rgba(16,185,129,.35)"
+              boxShadow: "0 8px 24px rgba(16,185,129,.35)",
+              margin: "0 auto"
             }}>
               <svg viewBox="0 0 24 24" width="36" height="36" fill="none">
                 <path d="M5 13l4 4L19 7" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
