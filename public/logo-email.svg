@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 80" fill="none">
+  <rect width="400" height="80" rx="8" fill="#f8f9fa"/>
+  <path d="M16 24h12v32H16z" fill="#5c6ac4" rx="4"/>
+  <path d="M34 30h12v26H34z" fill="#5c6ac4" opacity="0.7"/>
+  <path d="M52 36h12v20H52z" fill="#5c6ac4" opacity="0.4"/>
+  <text x="80" y="36" font-family="Arial,sans-serif" font-size="22" font-weight="bold" fill="#5c6ac4">Shopigent</text>
+  <text x="80" y="56" font-family="Arial,sans-serif" font-size="14" fill="#6b7280">Returns</text>
+</svg>
