@@ -9,8 +9,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (!authHeader?.startsWith("Bearer ")) return json({ error: "Unauthorized" }, { status: 401 });
   const key = authHeader.slice(7);
   const expectedHash = crypto.createHash("sha256").update(key).digest("hex");
-  const storedHash = process.env.MCP_KEY_HASH;
-  if (expectedHash !== storedHash) return json({ error: "Invalid key" }, { status: 401 });
+  const shop = await prisma.shop.findFirst({ where: { mcpApiKeyHash: expectedHash } });
+  if (!shop) return json({ error: "Invalid key" }, { status: 401 });
 
   await prisma.fraudSignal.deleteMany({});
   await prisma.decisionLog.deleteMany({});
