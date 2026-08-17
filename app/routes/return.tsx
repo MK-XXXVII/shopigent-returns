@@ -579,7 +579,8 @@ export default function ReturnPortal() {
                                 onChange={(e) => { const p = parseFloat(e.target.dataset.price || "0"); const q = parseInt(e.target.value) || 1; const total = e.target.closest('[data-line-total]'); if (total) total.textContent = `$${(p*q).toFixed(2)}`; }}
                                 style={{ width: 50, padding: "4px 8px", borderRadius: 4, border: "1px solid #c1c7cd", fontSize: 13, textAlign: "center" }}
                               />
-                              <Text variant="bodySm" as="span" tone="subdued">{parseFloat(item.price).toFixed(2)} × </Text>
+                              <Text variant="bodySm" as="span" tone="subdued">× {parseFloat(item.price).toFixed(2)}</Text>
+                              <Text variant="bodySm" as="span" tone="subdued">= </Text>
                               <Text variant="bodySm" as="span" fontWeight="bold" data-line-total>${(parseFloat(item.price) * item.quantity).toFixed(2)}</Text>
                             </InlineStack>
                           </InlineStack>
