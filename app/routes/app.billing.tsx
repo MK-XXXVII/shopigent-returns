@@ -107,50 +107,50 @@ export default function BillingPage() {
           <Text as="p" variant="bodyMd">Billing error: {fetcher.data.error}</Text>
         </Banner>
       )}
-      <BlockStack gap="500">
-        <InlineGrid columns={{ xs: 1, sm: 2, md: 3 }} gap="400">
+      <BlockStack gap="400">
+        <Text as="h2" variant="headingLg">Choose your plan</Text>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+            gap: "16px",
+            alignItems: "stretch",
+          }}
+        >
           {PLANS.map((plan) => {
             const isCurrent = currentPlan === plan.key;
             const isPopular = (plan as any).highlight;
             return (
               <Card key={plan.key}>
-                <BlockStack gap="400" align="space-between">
+                <BlockStack gap="400">
                   <BlockStack gap="300">
-                    <InlineStack align="space-between" blockAlign="center">
-                      <InlineStack gap="200" blockAlign="center">
-                        <Text as="h2" variant="headingLg">{plan.name}</Text>
-                        {(plan as any).badge && (
-                          <Badge tone={isPopular ? "success" : "info"}>{(plan as any).badge}</Badge>
-                        )}
-                      </InlineStack>
-                      {isCurrent && <Badge tone="success">Current</Badge>}
+                    <InlineStack align="space-between" blockAlign="center" wrap={false}>
+                      <Text as="h2" variant="headingLg">{plan.name}</Text>
+                      {(plan as any).badge && (
+                        <Badge tone={isPopular ? "success" : "info"}>{(plan as any).badge}</Badge>
+                      )}
                     </InlineStack>
+                    {isCurrent && <Badge tone="success">Current plan</Badge>}
                     <Text as="p" variant="bodySm" tone="subdued">{(plan as any).tagline}</Text>
-                    <Box minHeight="56">
-                      <InlineStack gap="100" blockAlign="baseline">
-                        <Text as="p" variant="heading2xl">
-                          {plan.price === 0 ? "Free" : `$${plan.price}`}
-                        </Text>
-                        {plan.price > 0 && (
-                          <Text as="span" variant="bodyMd" tone="subdued">/month</Text>
-                        )}
-                      </InlineStack>
-                    </Box>
-                    <Box>
-                      <BlockStack gap="150">
-                        {plan.features.map((f) => (
-                          <Box key={f} background="bg-surface-secondary" padding="200" borderRadius="200">
-                            <InlineStack gap="150" align="start">
-                              <span style={{ color: "var(--p-color-text-success)", fontWeight: 700 }}>✓</span>
-                              <Text as="p" variant="bodySm">{f}</Text>
-                            </InlineStack>
-                          </Box>
-                        ))}
-                      </BlockStack>
-                    </Box>
+                    <InlineStack gap="100" blockAlign="baseline">
+                      <Text as="p" variant="heading2xl">
+                        {plan.price === 0 ? "Free" : `$${plan.price}`}
+                      </Text>
+                      {plan.price > 0 && (
+                        <Text as="span" variant="bodyMd" tone="subdued">/month</Text>
+                      )}
+                    </InlineStack>
+                    <BlockStack gap="200">
+                      {plan.features.map((f) => (
+                        <InlineStack key={f} gap="150" align="start" blockAlign="start">
+                          <span style={{ color: "#2c6ecb", fontWeight: 700, lineHeight: "20px" }}>✓</span>
+                          <Text as="p" variant="bodySm">{f}</Text>
+                        </InlineStack>
+                      ))}
+                    </BlockStack>
                   </BlockStack>
                   <Button
-                    variant="secondary"
+                    variant={isPopular ? "primary" : "secondary"}
                     disabled={isCurrent}
                     loading={fetcher.state !== "idle"}
                     onClick={() => choosePlan(plan.key)}
@@ -163,7 +163,7 @@ export default function BillingPage() {
               </Card>
             );
           })}
-        </InlineGrid>
+        </div>
         <Banner tone="info">
           <Text as="p" variant="bodyMd">
             Paid plans include a 7-day free trial. You can upgrade, downgrade, or cancel anytime.
