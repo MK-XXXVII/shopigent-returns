@@ -17,7 +17,13 @@ import { loadFraudRules, evaluateFraudRules } from "../lib/fraud-rules.server";
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   const shop = url.searchParams.get("shop") || "";
-  return json({ shop });
+  // Fetch store display name for branding
+  let storeName = "";
+  if (shop) {
+    const rec = await prisma.shop.findUnique({ where: { shop } }).catch(() => null);
+    storeName = rec?.name || "";
+  }
+  return json({ shop, storeName });
 };
 
 function generateOtpCode(): string {
@@ -420,7 +426,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function ReturnPortal() {
-  const { shop } = useLoaderData<typeof loader>();
+  const { shop, storeName } = useLoaderData<typeof loader>();
   const fetcher = useFetcher();
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -449,18 +455,35 @@ export default function ReturnPortal() {
     );
   };
 
+  // Step indicator state
+  const step = success ? 4 : verified ? 3 : otpSent ? 2 : 1;
+
   if (success) {
     return (
-      <div style={{ maxWidth: 600, margin: "40px auto", padding: 20 }}>
+      <div style={{ maxWidth: 560, margin: "48px auto", padding: "0 20px" }}>
+        <div style={{ textAlign: "center", marginBottom: 24 }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <img src="/logo-email.svg" alt="Shopigent Returns" style={{ height: 40 }} />
+          </div>
+          <Text variant="headingSm" as="p" tone="subdued">Returns Portal</Text>
+        </div>
         <Card>
-          <BlockStack gap="400" align="center">
-            <Text variant="headingXl" as="h1" alignment="center" tone="success">
-              ✅ Return Submitted!
-            </Text>
-            <Text variant="bodyMd" as="p" alignment="center">
-              {data.message}
-            </Text>
-            <Button onClick={() => window.location.reload()}>Submit Another Return</Button>
+          <BlockStack gap="500" align="center">
+            <div style={{
+              width: 72, height: 72, borderRadius: "50%",
+              background: "linear-gradient(135deg, #10B981, #0d9668)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              boxShadow: "0 8px 24px rgba(16,185,129,.35)"
+            }}>
+              <svg viewBox="0 0 24 24" width="36" height="36" fill="none">
+                <path d="M5 13l4 4L19 7" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </div>
+            <BlockStack gap="200" align="center">
+              <Text variant="headingXl" as="h1" alignment="center">Return Submitted</Text>
+              <Text variant="bodyMd" as="p" alignment="center" tone="subdued">{data.message}</Text>
+            </BlockStack>
+            <Button variant="primary" onClick={() => window.location.reload()}>Submit Another Return</Button>
           </BlockStack>
         </Card>
       </div>
@@ -468,20 +491,64 @@ export default function ReturnPortal() {
   }
 
   return (
-    <div style={{ maxWidth: 800, margin: "40px auto", padding: 20 }}>
+    <div style={{ maxWidth: 720, margin: "40px auto", padding: "0 20px" }}>
+      {/* Branded header */}
+      <div style={{ textAlign: "center", marginBottom: 24 }}>
+        <img src="/logo-email.svg" alt="Shopigent Returns" style={{ height: 44, marginBottom: 8 }} />
+        {storeName && (
+          <Text variant="headingMd" as="p">{storeName}</Text>
+        )}
+        <Text variant="headingSm" as="p" tone="subdued">Returns Portal</Text>
+      </div>
+
+      {/* Step indicator */}
+      <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 24, alignItems: "center" }}>
+        {["Email", "Verify", "Items"].map((label, i) => {
+          const num = i + 1;
+          const active = step === num;
+          const done = step > num;
+          return (
+            <div key={label} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{
+                width: 28, height: 28, borderRadius: "50%",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontWeight: 700, fontSize: 13,
+                background: done || active ? "linear-gradient(135deg,#7C3AED,#10B981)" : "transparent",
+                color: done || active ? "#fff" : "#999",
+                border: done || active ? "none" : "1px solid #ccc",
+              }}>
+                {done ? "✓" : num}
+              </div>
+              <Text variant="bodySm" as="span" fontWeight={active ? "semibold" : "regular"} tone={active ? undefined : "subdued"}>
+                {label}
+              </Text>
+              {num < 3 && <div style={{ width: 32, height: 2, background: step > num ? "#10B981" : "#e3e3e3" }} />}
+            </div>
+          );
+        })}
+      </div>
+
       <Card>
         <BlockStack gap="400">
-          <Text variant="headingXl" as="h1" fontWeight="bold">
-            Start a Return
-          </Text>
-          <Text variant="bodyMd" as="p" tone="subdued">
-            {!otpSent && !verified && "Enter your email to receive a verification code."}
-            {otpSent && !verified && "Enter the 6-digit code sent to your email."}
-            {verified && `Welcome, ${customer?.name || ""}! Select an order to return items from.`}
-          </Text>
+          <BlockStack gap="200">
+            <Text variant="headingLg" as="h1" fontWeight="bold" alignment="center">
+              {!otpSent && !verified && "Start a Return"}
+              {otpSent && !verified && "Verify Your Email"}
+              {verified && "Select Items to Return"}
+            </Text>
+            <Text variant="bodyMd" as="p" tone="subdued" alignment="center">
+              {!otpSent && !verified && "Enter your email to receive a verification code."}
+              {otpSent && !verified && `Enter the 6-digit code we sent to ${data.email || email}.`}
+              {verified && `Welcome${customer?.name ? `, ${customer.name}` : ""}! Choose the items you'd like to return.`}
+            </Text>
+          </BlockStack>
 
           {error && (
             <Banner tone="critical">{error}</Banner>
+          )}
+
+          {data?.devMessage && (
+            <Banner tone="info">{data.devMessage}</Banner>
           )}
 
           {/* Step 1: Request OTP */}
