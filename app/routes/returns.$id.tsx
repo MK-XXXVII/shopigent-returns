@@ -370,9 +370,6 @@ export default function ReturnDetailPage() {
                                   fullWidth
                                   onClick={() => fetcher.submit({ _action: "issue_token", target: "approve_return" }, { method: "post" })}
                                   loading={fetcher.state !== "idle"}
-                                  icon={
-                                    <svg viewBox="0 0 20 20" width="16" height="16"><path fillRule="evenodd" d="M10 2a1 1 0 0 1 1 1v1.1a5 5 0 0 1 3.4 6.6l.94.94a1 1 0 0 1-1.4 1.4l-.95-.95a.75.75 0 0 1-.1-1.04A3.5 3.5 0 0 0 11 5.22V3a1 1 0 0 1 1-1Z" clipRule="evenodd"/></svg>
-                                  }
                                 >
                                   Issue Confirmation Token
                                 </Button>
