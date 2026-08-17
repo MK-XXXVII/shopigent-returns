@@ -1,6 +1,6 @@
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
 import { useLoaderData, useFetcher } from "@remix-run/react";
-import { Card, BlockStack, Text, TextField, Button, Banner, Checkbox, InlineStack } from "@shopify/polaris";
+import { Card, BlockStack, Text, TextField, Button, Banner, Checkbox, InlineStack, Select } from "@shopify/polaris";
 import { useState } from "react";
 import prisma from "../lib/db.server";
 import { sendEmail, storeCreditProcessedEmail } from "../lib/email.server";
@@ -555,58 +555,56 @@ export default function ReturnPortal() {
                         <input type="hidden" name="orderName2" value={order.name} />
                         <Text variant="bodySm" as="p" fontWeight="bold">Select items to return:</Text>
                         {order.items.map((item: any) => (
-                          <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: "1px solid #eee" }}>
-                            <input
-                              type="checkbox"
-                              name="selectedItemIds"
-                              value={`${order.id}:${item.id}`}
-                              defaultChecked={false}
-                              style={{ width: 18, height: 18 }}
-                            />
-                            <span style={{ flex: 1, fontSize: 14 }}>{item.title}</span>
-                            <span style={{ color: "#666", fontSize: 13, marginRight: 8 }}>Qty: {item.quantity}</span>
-                            <input
-                              type="number"
-                              name={`returnQty:${order.id}:${item.id}`}
-                              defaultValue={item.quantity}
-                              min="1"
-                              max={item.quantity}
-                              data-price={item.price}
-                              data-item-id={item.id}
-                              onChange={(e) => { const p = parseFloat(e.target.dataset.price || "0"); const q = parseInt(e.target.value) || 1; const total = e.target.parentElement?.querySelector(".line-total"); if (total) total.textContent = `$${(p*q).toFixed(2)}`; }}
-                              style={{ width: 50, padding: "4px 8px", borderRadius: 4, border: "1px solid #ccc", fontSize: 13 }}
-                            />
-                            <span style={{ color: "#666", fontSize: 13 }}>{parseFloat(item.price).toFixed(2)} × </span>
-                            <span className="line-total" style={{ color: "#666", fontSize: 13, fontWeight: "bold" }}>${(parseFloat(item.price) * item.quantity).toFixed(2)}</span>
-                          </div>
+                          <InlineStack key={item.id} gap="200" align="space-between" blockAlign="center" wrap={false}>
+                            <InlineStack gap="100" blockAlign="center">
+                              <input
+                                type="checkbox"
+                                name="selectedItemIds"
+                                value={`${order.id}:${item.id}`}
+                                defaultChecked={false}
+                                style={{ width: 16, height: 16, accentColor: "#5c6ac4" }}
+                              />
+                              <Text variant="bodyMd" as="span" fontWeight="medium">{item.title}</Text>
+                            </InlineStack>
+                            <InlineStack gap="100" blockAlign="center">
+                              <Text variant="bodySm" as="span" tone="subdued">Qty: {item.quantity}</Text>
+                              <input
+                                type="number"
+                                name={`returnQty:${order.id}:${item.id}`}
+                                defaultValue={item.quantity}
+                                min="1"
+                                max={item.quantity}
+                                data-price={item.price}
+                                data-item-id={item.id}
+                                onChange={(e) => { const p = parseFloat(e.target.dataset.price || "0"); const q = parseInt(e.target.value) || 1; const total = e.target.closest('[data-line-total]'); if (total) total.textContent = `$${(p*q).toFixed(2)}`; }}
+                                style={{ width: 50, padding: "4px 8px", borderRadius: 4, border: "1px solid #c1c7cd", fontSize: 13, textAlign: "center" }}
+                              />
+                              <Text variant="bodySm" as="span" tone="subdued">{parseFloat(item.price).toFixed(2)} × </Text>
+                              <Text variant="bodySm" as="span" fontWeight="bold" data-line-total>${(parseFloat(item.price) * item.quantity).toFixed(2)}</Text>
+                            </InlineStack>
+                          </InlineStack>
                         ))}
                       </BlockStack>
                     </Card>
                   );
                 })}
-                <div style={{ marginBottom: 16 }}>
-                  <label htmlFor="return-reason" style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: 14 }}>
-                    Reason for return
-                  </label>
-                  <select
-                    id="return-reason"
-                    name="reason"
-                    value={reason}
-                    onChange={(e) => setReason(e.target.value)}
-                    required
-                    style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #ccc", fontSize: 14, background: "#fff" }}
-                  >
-                    <option value="">Select a reason...</option>
-                    <option value="wrong_size">Wrong size / Doesn't fit</option>
-                    <option value="defective">Damaged or defective</option>
-                    <option value="wrong_item">Received the wrong item</option>
-                    <option value="not_as_described">Not as described</option>
-                    <option value="color_style">Color / style not what I expected</option>
-                    <option value="changed_mind">Changed my mind / No longer wanted</option>
-                    <option value="duplicate">Duplicate order</option>
-                    <option value="other">Other</option>
-                  </select>
-                </div>
+                <Select
+                  label="Reason for return"
+                  name="reason"
+                  value={reason}
+                  onChange={setReason}
+                  options={[
+                    { label: "Select a reason...", value: "" },
+                    { label: "Wrong size / Doesn't fit", value: "wrong_size" },
+                    { label: "Damaged or defective", value: "defective" },
+                    { label: "Received the wrong item", value: "wrong_item" },
+                    { label: "Not as described", value: "not_as_described" },
+                    { label: "Color / style not what I expected", value: "color_style" },
+                    { label: "Changed my mind / No longer wanted", value: "changed_mind" },
+                    { label: "Duplicate order", value: "duplicate" },
+                    { label: "Other", value: "other" },
+                  ]}
+                />
                 <Button submit variant="primary" disabled={!reason} loading={isSubmitting}>
                   Submit Return Request
                 </Button>
