@@ -61,7 +61,7 @@ const LOGO_HTML = `<table width="100%" cellpadding="0" cellspacing="0" style="ma
   <tr>
     <td>
       <a href="${APP_URL}" style="text-decoration:none">
-        <img src="${APP_URL}/logo-email.svg" alt="Shopigent Returns" width="160" height="32" style="display:block" />
+        <img src="${APP_URL}/logo-email.svg" alt="Shopigent Returns" width="200" height="48" style="display:block" />
       </a>
     </td>
   </tr>
