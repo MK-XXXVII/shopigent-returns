@@ -500,10 +500,10 @@ export default function ReturnPortal() {
           <img src="/logo-icon.svg" alt="" style={{ width: 120, height: 120 }} />
         </div>
         <div style={{ fontFamily: "'Inter',Arial,sans-serif" }}>
-          <div style={{ fontSize: 30, fontWeight: 800, letterSpacing: "-0.5px", color: "#452b60" }}>
+          <div style={{ fontSize: 30, fontWeight: 800, letterSpacing: "-0.5px", color: "#452b60", lineHeight: 1.15 }}>
             Shopigent
           </div>
-          <div style={{ fontSize: 20, fontWeight: 600, color: "#269982", letterSpacing: "-0.3px" }}>
+          <div style={{ fontSize: 20, fontWeight: 600, color: "#269982", letterSpacing: "-0.3px", lineHeight: 1.2, marginTop: 8 }}>
             Returns
           </div>
         </div>
