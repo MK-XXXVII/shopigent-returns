@@ -16,9 +16,38 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const targetShop = url.searchParams.get("shop") || shop.shop;
 
   const policies = [
-    { name: "Standard 30-Day Return", description: "Auto-approved for items under $200. 0% restocking fee.", priority: 1, isActive: true, conditions: [{ field: "maxDays", operator: "lte", value: 30 }, { field: "maxAmount", operator: "lte", value: 200 }, { field: "autoApprove", operator: "eq", value: true }, { field: "restockingFee", operator: "eq", value: 0 }] },
-    { name: "High-Value Review", description: "Items over $200 flagged for manual review. 10% restocking fee.", priority: 2, isActive: true, conditions: [{ field: "maxDays", operator: "lte", value: 30 }, { field: "minAmount", operator: "gt", value: 200 }, { field: "autoApprove", operator: "eq", value: false }, { field: "restockingFee", operator: "eq", value: 10 }] },
-    { name: "Final Sale - Electronics", description: "Electronics, clearance, and custom items are non-returnable.", priority: 3, isActive: true, conditions: [{ field: "maxDays", operator: "lte", value: 0 }, { field: "autoApprove", operator: "eq", value: false }, { field: "restockingFee", operator: "eq", value: 0 }] },
+    {
+      name: "Standard 30-Day Return",
+      description: "Auto-approve returns within 30 days for items under $200. 0% restocking fee — the most common policy for general merchandise.",
+      priority: 1, isActive: true,
+      conditions: [
+        { field: "maxDays", operator: "lte", value: 30 },
+        { field: "maxAmount", operator: "lte", value: 200 },
+        { field: "autoApprove", operator: "eq", value: true },
+        { field: "restockingFee", operator: "eq", value: 0 },
+      ],
+    },
+    {
+      name: "High-Value Manual Review",
+      description: "Items over $200 are held for manual review with a 10% restocking fee — protects margins on expensive products.",
+      priority: 2, isActive: true,
+      conditions: [
+        { field: "maxDays", operator: "lte", value: 30 },
+        { field: "minAmount", operator: "gt", value: 200 },
+        { field: "autoApprove", operator: "eq", value: false },
+        { field: "restockingFee", operator: "eq", value: 10 },
+      ],
+    },
+    {
+      name: "Final Sale — Non-Returnable",
+      description: "Clearance, custom, and perishable items are final sale. Returns automatically flagged as non-returnable.",
+      priority: 3, isActive: true,
+      conditions: [
+        { field: "maxDays", operator: "lte", value: 0 },
+        { field: "autoApprove", operator: "eq", value: false },
+        { field: "restockingFee", operator: "eq", value: 0 },
+      ],
+    },
   ];
 
   let created = 0, updated = 0;

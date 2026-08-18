@@ -25,8 +25,13 @@ import { syncReturnFromShopify } from "../lib/shopify-sync.server";
 import { sendEmail, returnApprovedEmail, returnDeniedEmail, refundProcessedEmail } from "../lib/email.server";
 
 const STATUS_COLORS: Record<string, "success" | "warning" | "critical" | "info" | "new"> = {
-  PENDING: "warning", APPROVED: "success", DENIED: "critical",
-  EXCHANGE: "info", SHIPPED: "info", REFUNDED: "success", CLOSED: "new",
+  PENDING: "warning",
+  APPROVED: "info",
+  DENIED: "critical",
+  EXCHANGE: "info",
+  SHIPPED: "new",
+  REFUNDED: "success",
+  CLOSED: "info",
 };
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -349,12 +354,12 @@ export default function ReturnDetailPage() {
                   </div>
 
                   <div style={{ minWidth: 320, flex: 1 }}>
-                  <BlockStack gap="300">
+                  <BlockStack gap="300" align="end">
                     {r.status === "PENDING" && (
                       <>
                         {!hasToken ? (
-                          <BlockStack gap="200">
-                            <Box background="bg-surface-secondary" borderWidth="025" borderColor="border" padding="400" borderRadius="300">
+                          <BlockStack gap="200" align="end">
+                            <Box background="bg-surface-secondary" borderWidth="025" borderColor="border" padding="400" borderRadius="300" width="100%">
                               <BlockStack gap="300">
                                 <InlineStack gap="200" blockAlign="center">
                                   <span style={{ color: "#b97800" }}>
@@ -377,8 +382,8 @@ export default function ReturnDetailPage() {
                             </Box>
                           </BlockStack>
                         ) : (
-                          <BlockStack gap="200">
-                            <InlineStack gap="200" blockAlign="center">
+                          <BlockStack gap="200" align="end">
+                            <InlineStack gap="200" blockAlign="center" align="end">
                               <span style={{ color: "#297260" }}>
                                 <svg viewBox="0 0 20 20" width="18" height="18"><path fillRule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm1-11a1 1 0 1 0-2 0v4a1 1 0 0 0 .3.7l2 2a1 1 0 0 0 1.4-1.4L11 10.6V7Z" clipRule="evenodd"/></svg>
                               </span>
@@ -386,17 +391,15 @@ export default function ReturnDetailPage() {
                                 Token issued — ready to confirm your decision
                               </Text>
                             </InlineStack>
-                            <InlineStack gap="200">
-                              <Button variant="primary" tone="success" fullWidth onClick={() => fetcher.submit({ _action: "approve", confirmationToken: actionData.token }, { method: "post" })} loading={fetcher.state !== "idle"}>
+                            <InlineStack gap="200" align="end">
+                              <Button variant="primary" tone="success" onClick={() => fetcher.submit({ _action: "approve", confirmationToken: actionData.token }, { method: "post" })} loading={fetcher.state !== "idle"}>
                                 Approve return
                               </Button>
-                            </InlineStack>
-                            <InlineStack gap="200">
-                              <Button tone="critical" fullWidth disabled={fetcher.state !== "idle"} onClick={() => fetcher.submit({ _action: "deny", confirmationToken: actionData.token }, { method: "post" })}>
+                              <Button tone="critical" disabled={fetcher.state !== "idle"} onClick={() => fetcher.submit({ _action: "deny", confirmationToken: actionData.token }, { method: "post" })}>
                                 Deny return
                               </Button>
                             </InlineStack>
-                            <Text variant="bodySm" as="p" tone="subdued">
+                            <Text variant="bodySm" as="p" tone="subdued" alignment="end">
                               Approve sends the return label and marks it approved. Deny closes the return without a refund.
                             </Text>
                           </BlockStack>
@@ -404,22 +407,22 @@ export default function ReturnDetailPage() {
                       </>
                     )}
                     {r.status === "APPROVED" && (
-                      <Button variant="primary" fullWidth onClick={() => fetcher.submit({ _action: "process_return" }, { method: "post" })} loading={fetcher.state !== "idle"}>
+                      <Button variant="primary" onClick={() => fetcher.submit({ _action: "process_return" }, { method: "post" })} loading={fetcher.state !== "idle"}>
                         📦 Process Return (Send Label)
                       </Button>
                     )}
                     {(r.status === "SHIPPED" || r.status === "APPROVED") && (
-                      <Button variant="primary" tone="success" fullWidth onClick={() => fetcher.submit({ _action: "process_refund" }, { method: "post" })} loading={fetcher.state !== "idle"}>
+                      <Button variant="primary" tone="success" onClick={() => fetcher.submit({ _action: "process_refund" }, { method: "post" })} loading={fetcher.state !== "idle"}>
                         💰 Process Refund
                       </Button>
                     )}
                     {(r.status === "APPROVED" || r.status === "SHIPPED") && (
-                      <Button tone="critical" fullWidth onClick={() => fetcher.submit({ _action: "cancel_approved" }, { method: "post" })} loading={fetcher.state !== "idle"}>
+                      <Button tone="critical" onClick={() => fetcher.submit({ _action: "cancel_approved" }, { method: "post" })} loading={fetcher.state !== "idle"}>
                         ❌ Cancel Return
                       </Button>
                     )}
                     {r.status === "REFUNDED" && (
-                      <Button fullWidth onClick={() => fetcher.submit({ _action: "close_return" }, { method: "post" })} loading={fetcher.state !== "idle"}>
+                      <Button onClick={() => fetcher.submit({ _action: "close_return" }, { method: "post" })} loading={fetcher.state !== "idle"}>
                         🔒 Close Return on Shopify
                       </Button>
                     )}

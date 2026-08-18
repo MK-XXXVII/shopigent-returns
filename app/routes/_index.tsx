@@ -66,12 +66,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 function statusBadge(status: string) {
   const map: Record<string, { children: string; status: "success" | "warning" | "critical" | "info" | "new" }> = {
     PENDING: { children: "Pending", status: "warning" },
-    APPROVED: { children: "Approved", status: "success" },
+    APPROVED: { children: "Approved", status: "info" },
     DENIED: { children: "Denied", status: "critical" },
     EXCHANGE: { children: "Exchange", status: "info" },
-    SHIPPED: { children: "Shipped", status: "info" },
+    SHIPPED: { children: "Shipped", status: "new" },
     REFUNDED: { children: "Refunded", status: "success" },
-    CLOSED: { children: "Closed", status: "new" },
+    CLOSED: { children: "Closed", status: "info" },
   };
   return map[status] || { children: status, status: "info" as const };
 }
@@ -83,7 +83,6 @@ export default function Dashboard() {
   const rowMarkup = recentReturns.map(
     ({ id, orderName, customerName, status, createdAt }, index) => {
       const badge = statusBadge(status);
-      const isPending = status === "PENDING";
       return (
         <IndexTable.Row
           id={id}
@@ -104,26 +103,12 @@ export default function Dashboard() {
             {new Date(createdAt).toLocaleDateString()}
           </IndexTable.Cell>
           <IndexTable.Cell>
-            <InlineStack gap="200">
-              <Button size="micro" onClick={(e: any) => { e.stopPropagation(); navigate(`/returns/${id}`); }}>
-                View
-              </Button>
-              {isPending && (
-                <>
-                  <Button size="micro" variant="primary" tone="success" onClick={(e: any) => {
-                    e.stopPropagation(); navigate(`/returns/${id}`);
-                  }}>
-                    Approve
-                  </Button>
-                  <Button size="micro" tone="critical" onClick={(e: any) => {
-                    e.stopPropagation(); navigate(`/returns/${id}`);
-                  }}>
-                    Deny
-                  </Button>
-                </>
-              )}
-            </InlineStack>
-          </IndexTable.Cell>
+                      <InlineStack gap="200">
+                        <Button size="micro" onClick={(e: any) => { e.stopPropagation(); navigate(`/returns/${id}`); }}>
+                          Edit / View
+                        </Button>
+                      </InlineStack>
+                    </IndexTable.Cell>
         </IndexTable.Row>
       );
     }

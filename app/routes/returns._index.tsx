@@ -22,12 +22,12 @@ import prisma from "../lib/db.server";
 
 const STATUS_COLORS: Record<string, "success" | "warning" | "critical" | "info" | "new"> = {
   PENDING: "warning",
-  APPROVED: "success",
+  APPROVED: "info",
   DENIED: "critical",
   EXCHANGE: "info",
-  SHIPPED: "info",
+  SHIPPED: "new",
   REFUNDED: "success",
-  CLOSED: "new",
+  CLOSED: "info",
 };
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -81,7 +81,6 @@ export default function ReturnsPage() {
   const filteredRowMarkup = filteredReturns.map(
     ({ id, orderName, customerName, status, createdAt }, index) => {
       const badge = statusBadge(status);
-      const isPending = status === "PENDING";
       return (
         <IndexTable.Row
           id={id}
@@ -104,24 +103,8 @@ export default function ReturnsPage() {
           <IndexTable.Cell>
             <InlineStack gap="100">
               <Button size="micro" onClick={(e: any) => { e.stopPropagation(); navigate(`/returns/${id}`); }}>
-                View
+                Edit / View
               </Button>
-              {isPending && (
-                <>
-                  <Button size="micro" variant="primary" tone="success" onClick={(e: any) => {
-                    e.stopPropagation();
-                    navigate(`/returns/${id}`);
-                  }}>
-                    Approve
-                  </Button>
-                  <Button size="micro" tone="critical" onClick={(e: any) => {
-                    e.stopPropagation();
-                    navigate(`/returns/${id}`);
-                  }}>
-                    Deny
-                  </Button>
-                </>
-              )}
             </InlineStack>
           </IndexTable.Cell>
         </IndexTable.Row>
