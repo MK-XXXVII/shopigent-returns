@@ -226,8 +226,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       return json({ error: "Please select items to return." });
     }
 
-    // Duplicate check: see if any of these order items already have an active return
-    const orderIdsForCheck = Array.from(orderData.keys());
+    // Look up actual items from Shopify API
+    const orderResult = await getOrdersByEmail(shop, session.accessToken, customerEmail);
+    const shopifyOrders = orderResult?.orders || [];
+
+    // Duplicate check: only consider orders that STILL EXIST in Shopify.
+    // If a Shopify order was deleted, its leftover return record in our DB
+    // should NOT block a new return — so we intersect the selected orderIds
+    // with the orders Shopify actually returned for this customer.
+    const liveOrderIds = new Set(shopifyOrders.map((o: any) => String(o.id)));
+    const orderIdsForCheck = Array.from(orderData.keys()).filter((id) => liveOrderIds.has(id));
     const existingReturns = await prisma.returnRequest.findMany({
       where: {
         shop,
@@ -247,10 +255,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           .join(" | "),
       });
     }
-
-    // Look up actual items from Shopify API
-    const orderResult = await getOrdersByEmail(shop, session.accessToken, customerEmail);
-    const shopifyOrders = orderResult?.orders || [];
 
     let createdCount = 0;
     let anyAutoApproved = false;
