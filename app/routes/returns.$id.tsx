@@ -534,7 +534,7 @@ export default function ReturnDetailPage() {
                     )}
                   </BlockStack>
                   </div>
-                </InlineStack>
+                </div>
                 {/* Global action feedback — shows for any action regardless of status */}
                 {isError && <Banner tone="critical">{actionData.error}</Banner>}
                 {isSuccess && <Banner tone="success">{actionData.message}</Banner>}
