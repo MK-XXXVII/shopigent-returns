@@ -209,18 +209,67 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     if (returnReq.status === "PENDING") {
       return json({ error: "Approve the return first before processing" }, { status: 400 });
     }
+
+    // ─── 1. Ensure a Shopify Return exists on the order ───────────────────
+    // The core goal of "Process Return" is to open a return request in Shopify.
+    // This must happen regardless of label generation success, so merchants
+    // can always see the return on the order. If no Shopify return exists yet
+    // (e.g. created before Shopify integration), create it now.
+    let shopifyReturnId = returnReq.shopifyReturnId;
+    let sess = await prisma.session.findFirst({ where: { shop, isOnline: false } });
+    if (!sess?.accessToken) sess = await prisma.session.findFirst({ where: { shop } });
+    if (sess?.accessToken) {
+      if (!shopifyReturnId) {
+        try {
+          const variantItems = (returnReq.items as any[]).map((i: any) => ({
+            variantId: i.variantId || `gid://shopify/ProductVariant/${i.id}`,
+            quantity: i.quantity || 1,
+          }));
+          const created = await createShopifyReturn(shop, sess.accessToken, returnReq.orderId, variantItems, returnReq.reason || undefined);
+          if (created.returnId) {
+            shopifyReturnId = created.returnId;
+            await prisma.returnRequest.update({ where: { id: returnId }, data: { shopifyReturnId } });
+            await prisma.decisionLog.create({ data: { returnId, actor: "admin", action: "shopify_return", details: { returnId: shopifyReturnId } } });
+          } else {
+            console.error(`[admin] ProcessReturn: Shopify return create failed: ${created.error}`);
+          }
+        } catch (e: any) {
+          console.error(`[admin] ProcessReturn: Shopify return create error: ${e.message}`);
+        }
+      }
+    }
+
+    // ─── 2. Generate + email the shipping label (best-effort) ─────────────
+    // Labels need a shipping address. Example/test customers may not have one,
+    // so label failure should NOT block the return being processed. We try it,
+    // log the outcome, but always mark the return SHIPPED so the flow continues.
+    let labelUrl: string | null = null;
+    let trackingNumber: string | null = null;
+    let labelSkipped = false;
     if (returnReq.customerEmail) {
       const labelInfo = await generateAndEmailReturnLabel(shop, returnReq, { allowTest: true });
       if (labelInfo.success && labelInfo.labelUrl) {
-        const labels = (returnReq.labels as any[]) || [];
-        labels.push({ type: "return_shipping", url: labelInfo.labelUrl, trackingNumber: labelInfo.trackingNumber || null, createdAt: new Date().toISOString() });
-        await prisma.returnRequest.update({ where: { id: returnId }, data: { status: "SHIPPED", labels } });
-        await prisma.decisionLog.create({ data: { returnId, actor: "admin", action: "process", details: { url: labelInfo.labelUrl } } });
-        return json({ success: true, message: "📦 Return label sent to customer!", newStatus: "SHIPPED" });
+        labelUrl = labelInfo.labelUrl;
+        trackingNumber = labelInfo.trackingNumber || null;
+      } else {
+        labelSkipped = true;
+        console.error(`[admin] ProcessReturn: label skipped/failed: ${labelInfo.error}`);
       }
-      return json({ error: labelInfo.error || "Failed to generate label" }, { status: 500 });
     }
-    return json({ error: "No customer email on file" }, { status: 400 });
+
+    // ─── 3. Persist the result ────────────────────────────────────────────
+    const labels = (returnReq.labels as any[]) || [];
+    if (labelUrl) {
+      labels.push({ type: "return_shipping", url: labelUrl, trackingNumber, createdAt: new Date().toISOString() });
+    }
+    await prisma.returnRequest.update({ where: { id: returnId }, data: { status: "SHIPPED", labels, shopifyReturnId: shopifyReturnId || returnReq.shopifyReturnId } });
+    await prisma.decisionLog.create({
+      data: { returnId, actor: "admin", action: "process", details: { url: labelUrl, trackingNumber, labelSkipped, shopifyReturnId: shopifyReturnId || null } },
+    });
+
+    const shippedToShopify = shopifyReturnId ? " Shopify return opened on the order." : " (could not open Shopify return — check logs).";
+    const labelMsg = labelUrl ? " Return label sent to customer." : " Label skipped (no shipping address / not configured).";
+    return json({ success: true, message: `📦 Return processed!${shippedToShopify}${labelMsg}`, newStatus: "SHIPPED" });
   }
 
   // Process refund from the app — execute Shopify refund + email customer
