@@ -176,6 +176,7 @@ export default function Dashboard() {
                 </Banner>
               ) : (
                 <IndexTable
+                  selectable={false}
                   resourceName={{ singular: "return", plural: "returns" }}
                   itemCount={recentReturns.length}
                   headings={[
