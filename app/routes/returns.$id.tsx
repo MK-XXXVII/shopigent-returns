@@ -439,14 +439,13 @@ export default function ReturnDetailPage() {
                 <div className="return-actions-row">
                   {/* Status column — full width on mobile, auto on desktop */}
                   <div className="return-actions-status">
-                    <BlockStack gap="200">
+                    {/* Status header (start) + pill badge (end) on the SAME line */}
+                    <InlineStack align="space-between" blockAlign="center" gap="200" wrap={false}>
                       <Text variant="headingMd" as="h2" fontWeight="bold">
                         Status
                       </Text>
-                      <Badge tone={STATUS_COLORS[r.status] || "info"}>
-                        {r.status}
-                      </Badge>
-                    </BlockStack>
+                      <Badge tone={STATUS_COLORS[r.status] || "info"}>{r.status}</Badge>
+                    </InlineStack>
                   </div>
 
                   {/* Actions column — stretches on mobile, right on desktop */}
