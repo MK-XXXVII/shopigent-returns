@@ -1,5 +1,5 @@
 import { json, type LoaderFunctionArgs, type ActionFunctionArgs } from "@remix-run/node";
-import { useLoaderData, useFetcher, useNavigate, useNavigation } from "@remix-run/react";
+import { useLoaderData, useFetcher, useNavigate, useNavigation, useRevalidator } from "@remix-run/react";
 import {
   Page,
   Layout,
@@ -393,11 +393,14 @@ export default function ReturnDetailPage() {
   const isSuccess = actionData?.success;
   const isError = actionData?.error;
   const navigate = useNavigate();
+  const { revalidate } = useRevalidator();
 
-  // Auto-refresh after successful action (approve, deny, refund, close)
+  // After a successful action, softly re-fetch the loader data via client-side
+  // revalidation (NOT window.location.reload, which triggers a hard page reload
+  // and can flicker through the root ErrorBoundary — the "null page" issue).
   useEffect(() => {
     if (fetcher.data?.success && fetcher.state === "idle") {
-      window.location.reload();
+      revalidate();
     }
   }, [fetcher.data, fetcher.state]);
 
