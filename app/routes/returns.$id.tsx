@@ -418,19 +418,30 @@ export default function ReturnDetailPage() {
             {/* Status + Actions */}
             <Card>
               <BlockStack gap="300">
-                <InlineStack align="space-between" gap="400" wrap={false}>
-                  <div style={{ minWidth: 120 }}>
-                  <BlockStack gap="200">
-                    <Text variant="headingMd" as="h2" fontWeight="bold">
-                      Status
-                    </Text>
-                    <Badge tone={STATUS_COLORS[r.status] || "info"}>
-                      {r.status}
-                    </Badge>
-                  </BlockStack>
+                <style>{`
+                  .return-actions-row { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; align-items: flex-start; }
+                  .return-actions-status { flex: 1 1 100%; min-width: 0; }
+                  .return-actions-cols { flex: 1 1 100%; min-width: 0; }
+                  @media (min-width: 640px) {
+                    .return-actions-status { flex: 0 1 auto; }
+                    .return-actions-cols { flex: 0 1 auto; margin-left: auto; min-width: 320px; }
+                  }
+                `}</style>
+                <div className="return-actions-row">
+                  {/* Status column — full width on mobile, auto on desktop */}
+                  <div className="return-actions-status">
+                    <BlockStack gap="200">
+                      <Text variant="headingMd" as="h2" fontWeight="bold">
+                        Status
+                      </Text>
+                      <Badge tone={STATUS_COLORS[r.status] || "info"}>
+                        {r.status}
+                      </Badge>
+                    </BlockStack>
                   </div>
 
-                  <div style={{ minWidth: 320, flex: 1 }}>
+                  {/* Actions column — stretches on mobile, right on desktop */}
+                  <div className="return-actions-cols">
                   <BlockStack gap="300" align="end">
                     {r.status === "PENDING" && (
                       <>
@@ -469,7 +480,7 @@ export default function ReturnDetailPage() {
                               </Text>
                             </InlineStack>
                             <div style={{ minWidth: 240, maxWidth: 260 }}>
-                              <InlineStack gap="200" align="end">
+                              <InlineStack gap="200" align="end" wrap={true}>
                               <Button variant="primary" tone="success" onClick={() => fetcher.submit({ _action: "approve", confirmationToken: actionData.token }, { method: "post" })} loading={fetcher.state !== "idle"}>
                                 Approve return
                               </Button>
@@ -556,11 +567,11 @@ export default function ReturnDetailPage() {
                 </Text>
                 {items.map((item: any, i: number) => (
                   <BlockStack key={i} gap="200">
-                    <InlineStack align="space-between">
+                    <InlineStack align="space-between" wrap={true} gap="200" blockAlign="center">
                       <Text variant="bodyMd" as="span" fontWeight="bold">
                         {item.title}
                       </Text>
-                      <Text variant="bodyMd" as="span">
+                      <Text variant="bodyMd" as="span" style={{ whiteSpace: "nowrap" }}>
                         x{item.quantity} {item.price && `$${item.price}`}
                       </Text>
                     </InlineStack>
@@ -603,12 +614,12 @@ export default function ReturnDetailPage() {
                   </Text>
                   {logs.map((log) => (
                     <BlockStack key={log.id} gap="200">
-                      <InlineStack gap="200">
+                      <InlineStack gap="200" wrap={true} blockAlign="start">
                         <Text variant="bodySm" as="span" fontWeight="bold">
                           {log.actor}
                         </Text>
                         <Tag>{log.action}</Tag>
-                        <Text variant="bodySm" as="span" tone="subdued">
+                        <Text variant="bodySm" as="span" tone="subdued" style={{ marginLeft: "auto" }}>
                           {new Date(log.createdAt).toLocaleString()}
                         </Text>
                       </InlineStack>
