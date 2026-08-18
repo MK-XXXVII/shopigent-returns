@@ -19,7 +19,7 @@ import shopify from "../shopify.server";
 import prisma from "../lib/db.server";
 import { issueConfirmationToken, verifyConfirmationToken } from "../lib/confirmation.server";
 import { executeRefund, shopifyAdminQuery } from "../lib/shopify-admin.server";
-import { approveShopifyReturn, declineShopifyReturn, closeShopifyReturn } from "../lib/shopify-return.server";
+import { createShopifyReturn, approveShopifyReturn, declineShopifyReturn, closeShopifyReturn } from "../lib/shopify-return.server";
 import { generateAndEmailReturnLabel } from "../lib/return-label-notify.server";
 import { syncReturnFromShopify } from "../lib/shopify-sync.server";
 import { sendEmail, returnApprovedEmail, returnDeniedEmail, refundProcessedEmail } from "../lib/email.server";
@@ -123,17 +123,42 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       }
       // NOTE: Approve does NOT auto-refund. The merchant decides on the refund
       // separately via the "Process Refund" button after receiving the item back.
-      // Sync approve to Shopify if a Shopify return exists
-      if (sess?.accessToken && returnReq.shopifyReturnId) {
-        try {
-          const approved = await approveShopifyReturn(shop, sess.accessToken, returnReq.shopifyReturnId);
-          if (approved.success) {
-            await prisma.decisionLog.create({ data: { returnId, actor: "admin", action: "shopify_approve", details: { returnId: returnReq.shopifyReturnId } } });
-          } else {
-            console.error(`[admin] Shopify approve failed: ${approved.error}`);
+      // ─── Ensure a Shopify Return exists for this order ───────────────────
+      // If the return was created without a Shopify Return (e.g. it was auto-created
+      // in our DB before Shopify integration, or approved manually), create one now
+      // so the order reflects the return. This keeps the app and Shopify in sync.
+      if (sess?.accessToken) {
+        let shopifyReturnId = returnReq.shopifyReturnId;
+        if (!shopifyReturnId) {
+          try {
+            const variantItems = (returnReq.items as any[]).map((i: any) => ({
+              variantId: i.variantId || `gid://shopify/ProductVariant/${i.id}`,
+              quantity: i.quantity || 1,
+            }));
+            const created = await createShopifyReturn(shop, sess.accessToken, returnReq.orderId, variantItems, returnReq.reason || undefined);
+            if (created.returnId) {
+              shopifyReturnId = created.returnId;
+              await prisma.returnRequest.update({ where: { id: returnId }, data: { shopifyReturnId } });
+              await prisma.decisionLog.create({ data: { returnId, actor: "admin", action: "shopify_return", details: { returnId: shopifyReturnId } } });
+            } else {
+              console.error(`[admin] Shopify return create failed: ${created.error}`);
+            }
+          } catch (e: any) {
+            console.error(`[admin] Shopify return create error: ${e.message}`);
           }
-        } catch (e: any) {
-          console.error(`[admin] Shopify approve error: ${e.message}`);
+        }
+        // Sync approve to Shopify if a Shopify return exists (created or pre-existing)
+        if (shopifyReturnId) {
+          try {
+            const approved = await approveShopifyReturn(shop, sess.accessToken, shopifyReturnId);
+            if (approved.success) {
+              await prisma.decisionLog.create({ data: { returnId, actor: "admin", action: "shopify_approve", details: { returnId: shopifyReturnId } } });
+            } else {
+              console.error(`[admin] Shopify approve failed: ${approved.error}`);
+            }
+          } catch (e: any) {
+            console.error(`[admin] Shopify approve error: ${e.message}`);
+          }
         }
       }
       await prisma.decisionLog.create({ data: { returnId, actor: "admin", action: "approve", details: { source: "detail_page" } } });
