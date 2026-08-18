@@ -138,7 +138,7 @@ export default function ReturnsPage() {
                       const params = new URLSearchParams(window.location.search);
                       if (key === "all") params.delete("status");
                       else params.set("status", key);
-                      window.location.search = params.toString();
+                      navigate(`/returns?${params.toString()}`, { replace: true });
                     }}
                   >
                     <Text variant="headingXl" as="p" fontWeight="bold">
