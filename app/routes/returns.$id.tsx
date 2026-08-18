@@ -426,6 +426,15 @@ export default function ReturnDetailPage() {
                     .return-actions-status { flex: 0 1 auto; }
                     .return-actions-cols { flex: 0 1 auto; margin-left: auto; min-width: 320px; }
                   }
+                  /* Mobile (<640px): force everything left-aligned so buttons
+                     stay under the status tag like the surrounding text */
+                  @media (max-width: 639px) {
+                    .return-actions-cols,
+                    .return-actions-cols > *,
+                    .return-actions-cols .Polaris-BlockStack,
+                    .return-actions-cols .Polaris-InlineStack { align-items: flex-start !important; text-align: left; }
+                    .return-actions-cols [style*="flex-end"] { justify-content: flex-start !important; }
+                  }
                 `}</style>
                 <div className="return-actions-row">
                   {/* Status column — full width on mobile, auto on desktop */}
