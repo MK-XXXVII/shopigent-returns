@@ -391,7 +391,8 @@ export default function ReturnDetailPage() {
                                 Token issued — ready to confirm your decision
                               </Text>
                             </InlineStack>
-                            <InlineStack gap="200" align="end">
+                            <div style={{ minWidth: 240, maxWidth: 260 }}>
+                              <InlineStack gap="200" align="end">
                               <Button variant="primary" tone="success" onClick={() => fetcher.submit({ _action: "approve", confirmationToken: actionData.token }, { method: "post" })} loading={fetcher.state !== "idle"}>
                                 Approve return
                               </Button>
@@ -399,6 +400,7 @@ export default function ReturnDetailPage() {
                                 Deny return
                               </Button>
                             </InlineStack>
+                            </div>
                             <Text variant="bodySm" as="p" tone="subdued" alignment="end">
                               Approve sends the return label and marks it approved. Deny closes the return without a refund.
                             </Text>
@@ -408,30 +410,38 @@ export default function ReturnDetailPage() {
                     )}
                     {r.status === "APPROVED" && (
                       <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                        <Button variant="primary" onClick={() => fetcher.submit({ _action: "process_return" }, { method: "post" })} loading={fetcher.state !== "idle"}>
-                          📦 Process Return (Send Label)
-                        </Button>
+                        <div style={{ minWidth: 240, maxWidth: 260 }}>
+                          <Button variant="primary" fullWidth onClick={() => fetcher.submit({ _action: "process_return" }, { method: "post" })} loading={fetcher.state !== "idle"}>
+                            📦 Process Return (Send Label)
+                          </Button>
+                        </div>
                       </div>
                     )}
                     {(r.status === "SHIPPED" || r.status === "APPROVED") && (
                       <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                        <Button variant="primary" tone="success" onClick={() => fetcher.submit({ _action: "process_refund" }, { method: "post" })} loading={fetcher.state !== "idle"}>
-                          💰 Process Refund
-                        </Button>
+                        <div style={{ minWidth: 240, maxWidth: 260 }}>
+                          <Button variant="primary" tone="success" fullWidth onClick={() => fetcher.submit({ _action: "process_refund" }, { method: "post" })} loading={fetcher.state !== "idle"}>
+                            💰 Process Refund
+                          </Button>
+                        </div>
                       </div>
                     )}
                     {(r.status === "APPROVED" || r.status === "SHIPPED") && (
                       <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                        <Button tone="critical" onClick={() => fetcher.submit({ _action: "cancel_approved" }, { method: "post" })} loading={fetcher.state !== "idle"}>
-                          ❌ Cancel Return
-                        </Button>
+                        <div style={{ minWidth: 240, maxWidth: 260 }}>
+                          <Button tone="critical" fullWidth onClick={() => fetcher.submit({ _action: "cancel_approved" }, { method: "post" })} loading={fetcher.state !== "idle"}>
+                            ❌ Cancel Return
+                          </Button>
+                        </div>
                       </div>
                     )}
                     {r.status === "REFUNDED" && (
                       <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                        <Button onClick={() => fetcher.submit({ _action: "close_return" }, { method: "post" })} loading={fetcher.state !== "idle"}>
-                          🔒 Close Return on Shopify
-                        </Button>
+                        <div style={{ minWidth: 240, maxWidth: 260 }}>
+                          <Button fullWidth onClick={() => fetcher.submit({ _action: "close_return" }, { method: "post" })} loading={fetcher.state !== "idle"}>
+                            🔒 Close Return on Shopify
+                          </Button>
+                        </div>
                       </div>
                     )}
                   </BlockStack>
