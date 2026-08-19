@@ -435,14 +435,12 @@ export default function ReturnDetailPage() {
                     .return-actions-cols .Polaris-InlineStack { align-items: flex-start !important; text-align: left; }
                     .return-actions-cols [style*="flex-end"] { justify-content: flex-start !important; }
                   }
-                  /* Action button rows — consistent width + breathing room */
-                  .return-btn-row { display: flex; justify-content: flex-end; margin-top: 16px; }
-                  @media (max-width: 639px) { .return-btn-row { justify-content: center; margin-top: 12px; } }
-                  .return-btn-row .Polaris-Button { width: 100%; min-width: 0; }
-                  @media (min-width: 640px) { .return-btn-row .Polaris-Button { width: auto; min-width: 260px; max-width: 260px; } }
-                  /* Uniform width + slightly taller buttons (adds ~4px height) */
-                  .return-btn-row .Polaris-Button,
-                  .return-actions-cols .Polaris-Button { box-sizing: border-box; min-height: 40px; }
+                  /* Action button rows — clean, uniform, close spacing */
+                  .return-btn-row { display: flex; justify-content: center; }
+                  .return-btn-row .Polaris-Button { box-sizing: border-box; width: 240px; min-width: 240px; max-width: 240px; min-height: 40px; }
+                  @media (min-width: 640px) {
+                    .return-btn-row { justify-content: flex-end; }
+                  }
                 `}</style>
                 <div className="return-actions-row">
                   {/* Status column — full width on mobile, auto on desktop */}
@@ -458,7 +456,7 @@ export default function ReturnDetailPage() {
 
                   {/* Actions column — stretches on mobile, right on desktop */}
                   <div className="return-actions-cols">
-                  <BlockStack gap="300" align="end">
+                  <BlockStack gap="200" align="end">
                     {r.status === "PENDING" && (
                       <>
                         {!hasToken ? (
