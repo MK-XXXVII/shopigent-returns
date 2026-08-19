@@ -437,9 +437,12 @@ export default function ReturnDetailPage() {
                   }
                   /* Action button rows — consistent width + breathing room */
                   .return-btn-row { display: flex; justify-content: flex-end; margin-top: 16px; }
-                  @media (max-width: 639px) { .return-btn-row { justify-content: flex-start; margin-top: 12px; } }
+                  @media (max-width: 639px) { .return-btn-row { justify-content: center; margin-top: 12px; } }
                   .return-btn-row .Polaris-Button { width: 100%; min-width: 0; }
-                  @media (min-width: 640px) { .return-btn-row .Polaris-Button { width: auto; min-width: 240px; max-width: 260px; } }
+                  @media (min-width: 640px) { .return-btn-row .Polaris-Button { width: auto; min-width: 260px; max-width: 260px; } }
+                  /* Uniform width + slightly taller buttons (adds ~4px height) */
+                  .return-btn-row .Polaris-Button,
+                  .return-actions-cols .Polaris-Button { box-sizing: border-box; min-height: 40px; }
                 `}</style>
                 <div className="return-actions-row">
                   {/* Status column — full width on mobile, auto on desktop */}
