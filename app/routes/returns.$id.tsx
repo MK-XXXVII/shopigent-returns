@@ -450,7 +450,13 @@ export default function ReturnDetailPage() {
                       <Text variant="headingMd" as="h2" fontWeight="bold">
                         Status
                       </Text>
-                      <Badge tone={STATUS_COLORS[r.status] || "info"}>{r.status}</Badge>
+                      {/* Auto-approved returns get a distinct badge so the merchant
+                          can tell them apart from manual approvals at a glance. */}
+                      {r.status === "APPROVED" && r.decidedBy === "auto" ? (
+                        <Badge tone="new">Auto-Approved</Badge>
+                      ) : (
+                        <Badge tone={STATUS_COLORS[r.status] || "info"}>{r.status}</Badge>
+                      )}
                     </InlineStack>
                   </div>
 

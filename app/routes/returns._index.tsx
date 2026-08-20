@@ -79,8 +79,16 @@ export default function ReturnsPage() {
   const totalCount = Object.values(counts).reduce((a, b) => a + b, 0);
 
   const filteredRowMarkup = filteredReturns.map(
-    ({ id, orderName, customerName, status, createdAt }, index) => {
+    ({ id, orderName, customerName, status, decidedBy, createdAt }, index) => {
       const badge = statusBadge(status);
+      // Auto-approved returns (decidedBy === "auto") get a distinct badge so
+      // the merchant can immediately tell them apart from manual approvals.
+      const isAutoApproved = status === "APPROVED" && decidedBy === "auto";
+      const statusBadgeEl = isAutoApproved ? (
+        <Badge tone="new">Auto-Approved</Badge>
+      ) : (
+        <Badge tone={badge.tone}>{badge.children}</Badge>
+      );
       return (
         <IndexTable.Row
           id={id}
@@ -95,7 +103,7 @@ export default function ReturnsPage() {
           </IndexTable.Cell>
           <IndexTable.Cell>{customerName || "—"}</IndexTable.Cell>
           <IndexTable.Cell>
-            <Badge tone={badge.tone}>{badge.children}</Badge>
+            {statusBadgeEl}
           </IndexTable.Cell>
           <IndexTable.Cell>
             {new Date(createdAt).toLocaleDateString()}
