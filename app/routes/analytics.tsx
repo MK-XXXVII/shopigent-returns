@@ -165,12 +165,22 @@ function StatCard({ label, value, tone, prefix, suffix, icon, gradient }: {
     <Card>
       <BlockStack gap="200">
         {icon && gradient && (
+          // Gradient ring with white interior: the outer span carries the
+          // gradient as padding (creating the colored border), while the
+          // inner chip is white so the emoji stays fully visible.
           <div style={{
-            width: 38, height: 38, borderRadius: 11, display: "flex",
-            alignItems: "center", justifyContent: "center", fontSize: 18,
-            background: gradient, boxShadow: "0 2px 6px rgba(0,0,0,.12)",
+            width: 44, height: 44, borderRadius: 12, padding: 2,   // 2px ring = gradient
+            background: gradient,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            boxShadow: "0 2px 6px rgba(0,0,0,.1)",
           }}>
-            <span>{icon}</span>
+            <div style={{
+              width: "100%", height: "100%", borderRadius: 10,
+              background: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 18,
+            }}>
+              <span>{icon}</span>
+            </div>
           </div>
         )}
         <Text variant="bodySm" as="span" tone="subdued">{label}</Text>
