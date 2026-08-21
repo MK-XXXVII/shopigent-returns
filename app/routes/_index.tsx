@@ -76,6 +76,44 @@ function statusBadge(status: string) {
   return map[status] || { children: status, status: "info" as const };
 }
 
+// ─────────────────────────────────────────────────────────────
+// PremiumKPI — a polished stat/kpi card with a gradient icon
+// accent and colored value, so the dashboard reads at a glance.
+// ─────────────────────────────────────────────────────────────
+function PremiumKPI({ label, value, icon, gradient, tone }: {
+  label: string;
+  value: string | number;
+  icon: string;            // single emoji/symbol, simple & clean
+  gradient: string;        // css background for the icon chip
+  tone?: "default" | "success" | "warning" | "critical";
+}) {
+  const valueColor =
+    tone === "success" ? "#008060"
+    : tone === "warning" ? "#B98900"
+    : tone === "critical" ? "#D72C0D"
+    : "#202123";
+  return (
+    <Card>
+      <BlockStack gap="200">
+        <InlineStack gap="200" blockAlign="center">
+          {/* Gradient icon chip */}
+          <div style={{
+            width: 40, height: 40, borderRadius: 12, display: "flex",
+            alignItems: "center", justifyContent: "center", fontSize: 20,
+            background: gradient, boxShadow: "0 2px 6px rgba(0,0,0,.12)",
+          }}>
+            <span>{icon}</span>
+          </div>
+          <Text variant="bodySm" as="span" tone="subdued">{label}</Text>
+        </InlineStack>
+        <div style={{ color: valueColor, fontSize: 28, fontWeight: 700, lineHeight: 1.1 }}>
+          {value}
+        </div>
+      </BlockStack>
+    </Card>
+  );
+}
+
 export default function Dashboard() {
   const { stats, recentReturns } = useLoaderData<typeof loader>();
   const navigate = useNavigate();
@@ -126,58 +164,28 @@ export default function Dashboard() {
     <Page title="Dashboard">
       <TitleBar title="Shopigent Returns" />
       <Layout>
+        {/* ─── KPI Overview row ─────────────────────────────── */}
         <Layout.Section>
           <BlockStack gap="400">
-            <Text variant="headingMd" as="h2">
-              Overview
-            </Text>
-            <Layout>
-              <Layout.Section variant="oneThird">
-                <Card>
-                  <BlockStack gap="200">
-                    <Text variant="headingXl" as="p" fontWeight="bold">
-                      {stats.totalReturns}
-                    </Text>
-                    <Text variant="bodySm" as="span" tone="subdued">
-                      Total Returns
-                    </Text>
-                  </BlockStack>
-                </Card>
-              </Layout.Section>
-              <Layout.Section variant="oneThird">
-                <Card>
-                  <BlockStack gap="200">
-                    <Text variant="headingXl" as="p" fontWeight="bold" tone="critical">
-                      {stats.pendingReturns}
-                    </Text>
-                    <Text variant="bodySm" as="span" tone="subdued">
-                      Pending Review
-                    </Text>
-                  </BlockStack>
-                </Card>
-              </Layout.Section>
-              <Layout.Section variant="oneThird">
-                <Card>
-                  <BlockStack gap="200">
-                    <Text variant="headingXl" as="p" fontWeight="bold" tone="success">
-                      ${Number(stats.totalRefunded).toFixed(2)}
-                    </Text>
-                    <Text variant="bodySm" as="span" tone="subdued">
-                      Total Refunded
-                    </Text>
-                  </BlockStack>
-                </Card>
-              </Layout.Section>
-            </Layout>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16 }}>
+              <PremiumKPI label="Total Returns" value={stats.totalReturns} icon="📦" gradient="linear-gradient(135deg,#7C3AED,#10B981)" />
+              <PremiumKPI label="Pending Review" value={stats.pendingReturns} icon="⏳" gradient="linear-gradient(135deg,#F59E0B,#F97316)" tone={stats.pendingReturns > 0 ? "warning" : "default"} />
+              <PremiumKPI label="Approved Today" value={stats.approvedToday} icon="✅" gradient="linear-gradient(135deg,#3B82F6,#06B6D4)" />
+              <PremiumKPI label="Total Refunded" value={`$${Number(stats.totalRefunded).toFixed(2)}`} icon="💰" gradient="linear-gradient(135deg,#10B981,#059669)" tone="success" />
+            </div>
           </BlockStack>
         </Layout.Section>
 
+        {/* ─── Recent Returns table ─────────────────────────── */}
         <Layout.Section>
           <Card>
-            <BlockStack gap="200">
-              <Text variant="headingMd" as="h2">
-                Recent Returns
-              </Text>
+            <BlockStack gap="300">
+              <InlineStack align="space-between" blockAlign="center">
+                <Text variant="headingMd" as="h2" fontWeight="bold">
+                  Recent Returns
+                </Text>
+                <Button variant="plain" onClick={() => navigate("/returns")}>View all →</Button>
+              </InlineStack>
               {recentReturns.length === 0 ? (
                 <Banner tone="info">
                   <p>No returns yet. Returns will appear here when customers submit them.</p>

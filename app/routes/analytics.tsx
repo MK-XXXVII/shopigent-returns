@@ -149,36 +149,55 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   });
 };
 
-function StatCard({ label, value, tone, prefix, suffix }: {
+// ─────────────────────────────────────────────────────────────
+// PremiumStatCard — a polished KPI with a gradient icon chip.
+// ─────────────────────────────────────────────────────────────
+function StatCard({ label, value, tone, prefix, suffix, icon, gradient }: {
   label: string; value: string | number; tone?: string; prefix?: string; suffix?: string;
+  icon?: string; gradient?: string;
 }) {
+  const valueColor =
+    tone === "success" ? "#008060"
+    : tone === "warning" ? "#B98900"
+    : tone === "critical" ? "#D72C0D"
+    : "#202123";
   return (
     <Card>
       <BlockStack gap="200">
+        {icon && gradient && (
+          <div style={{
+            width: 38, height: 38, borderRadius: 11, display: "flex",
+            alignItems: "center", justifyContent: "center", fontSize: 18,
+            background: gradient, boxShadow: "0 2px 6px rgba(0,0,0,.12)",
+          }}>
+            <span>{icon}</span>
+          </div>
+        )}
         <Text variant="bodySm" as="span" tone="subdued">{label}</Text>
-        <Text variant="headingXl" as="p" fontWeight="bold" tone={tone as any}>
+        <div style={{ color: valueColor, fontSize: 26, fontWeight: 700, lineHeight: 1.1 }}>
           {prefix}{typeof value === "number" ? value.toLocaleString() : value}{suffix}
-        </Text>
+        </div>
       </BlockStack>
     </Card>
   );
 }
 
-function MiniBar({ value, max, label, color }: { value: number; max: number; label: string; color?: string }) {
+// Premium progress bar with a gradient fill
+function MiniBar({ value, max, label, color, gradient }: { value: number; max: number; label: string; color?: string; gradient?: string }) {
   const pct = max > 0 ? (value / max) * 100 : 0;
   return (
-    <div style={{ marginBottom: 8 }}>
+    <div style={{ marginBottom: 10 }}>
       <InlineStack align="space-between">
         <Text variant="bodySm" as="span">{label}</Text>
         <Text variant="bodySm" as="span" fontWeight="bold">{value}</Text>
       </InlineStack>
       <div style={{
-        height: 8, background: "#e0e0e0", borderRadius: 4, overflow: "hidden",
+        height: 10, background: "#eceef1", borderRadius: 6, overflow: "hidden", marginTop: 4,
       }}>
         <div style={{
           width: `${pct}%`, height: "100%",
-          background: color || "#5c6ac4", borderRadius: 4,
-          transition: "width 0.3s",
+          background: gradient || color || "#7C3AED",
+          borderRadius: 6, transition: "width .4s ease",
         }} />
       </div>
     </div>
@@ -196,21 +215,21 @@ export default function AnalyticsPage() {
         <Layout.Section>
           <BlockStack gap="400">
             {/* Top stats row */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12 }}>
-              <StatCard label="Total Returns" value={stats.totalReturns} />
-              <StatCard label="Pending" value={stats.pending} tone="warning" />
-              <StatCard label="Approved" value={stats.approved} tone="success" />
-              <StatCard label="Denied" value={stats.denied} tone="critical" />
-              <StatCard label="Refunded" value={stats.refunded} />
-              <StatCard label="Total Refunded" value={stats.totalRefunded} prefix="$" />
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 16 }}>
+              <StatCard label="Total Returns" value={stats.totalReturns} icon="📦" gradient="linear-gradient(135deg,#7C3AED,#10B981)" />
+              <StatCard label="Pending" value={stats.pending} tone="warning" icon="⏳" gradient="linear-gradient(135deg,#F59E0B,#F97316)" />
+              <StatCard label="Approved" value={stats.approved} tone="success" icon="✅" gradient="linear-gradient(135deg,#10B981,#059669)" />
+              <StatCard label="Denied" value={stats.denied} tone="critical" icon="🚫" gradient="linear-gradient(135deg,#F43F5E,#DC2626)" />
+              <StatCard label="Refunded" value={stats.refunded} icon="💸" gradient="linear-gradient(135deg,#3B82F6,#06B6D4)" />
+              <StatCard label="Total Refunded" value={stats.totalRefunded} prefix="$" icon="💰" gradient="linear-gradient(135deg,#8B5CF6,#7C3AED)" />
             </div>
 
-            {/* Auto-resolution rate */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12 }}>
-              <StatCard label="Auto-Resolution Rate" value={stats.autoRate} suffix="%" tone={stats.autoRate > 50 ? "success" : "warning"} />
-              <StatCard label="Avg Resolution Time" value={stats.avgResolutionHours} suffix="h" />
-              <StatCard label="Fraud Signals Detected" value={stats.fraudCount} tone={stats.fraudCount > 0 ? "warning" : undefined} />
-              <StatCard label="High Risk Alerts" value={stats.highRiskFraud} tone={stats.highRiskFraud > 0 ? "critical" : undefined} />
+            {/* Auto-resolution / risk metrics */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 16 }}>
+              <StatCard label="Auto-Resolution Rate" value={stats.autoRate} suffix="%" tone={stats.autoRate > 50 ? "success" : "warning"} icon="⚡" gradient="linear-gradient(135deg,#A855F7,#7C3AED)" />
+              <StatCard label="Avg Resolution Time" value={stats.avgResolutionHours} suffix="h" icon="⏱" gradient="linear-gradient(135deg,#64748B,#475569)" />
+              <StatCard label="Fraud Signals" value={stats.fraudCount} tone={stats.fraudCount > 0 ? "warning" : undefined} icon="🛡️" gradient="linear-gradient(135deg,#EF4444,#B91C1C)" />
+              <StatCard label="High Risk Alerts" value={stats.highRiskFraud} tone={stats.highRiskFraud > 0 ? "critical" : undefined} icon="⚠️" gradient="linear-gradient(135deg,#F97316,#EA580C)" />
             </div>
 
             {/* Daily trend chart */}
@@ -226,10 +245,11 @@ export default function AnalyticsPage() {
                         <div style={{
                           width: "100%", maxWidth: 40,
                           height: `${(data.total / maxDaily) * 100}%`,
-                          background: "#5c6ac4",
+                          background: "linear-gradient(180deg,#8B5CF6,#7C3AED)",
                           borderRadius: "4px 4px 0 0",
                           minHeight: data.total > 0 ? 4 : 0,
                           position: "relative",
+                          boxShadow: "0 2px 6px rgba(124,58,237,.3)",
                         }}>
                           {data.total > 0 && (
                             <Text variant="bodyXs" as="span" style={{
@@ -265,7 +285,7 @@ export default function AnalyticsPage() {
                         label={reason}
                         value={count}
                         max={topReasons[0]?.count || 1}
-                        color="#ecc134"
+                        gradient="linear-gradient(90deg,#F59E0B,#F97316)"
                       />
                     ))
                   )}

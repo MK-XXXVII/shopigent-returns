@@ -125,39 +125,46 @@ export default function ReturnsPage() {
       <Layout>
         <Layout.Section>
           <BlockStack gap="400">
-            {/* Summary cards */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 12 }}>
+            {/* ─── Status filter cards ─────────────────────────── */}
+            {/* Clicking a card filters the list by status. The active
+                filter is highlighted with a soft background + border. */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 12 }}>
               {[
-                { label: "All", count: totalCount, key: "all", color: "#5c6ac4" },
-                { label: "Pending", count: counts.PENDING || 0, key: "PENDING", color: "#ecc134" },
-                { label: "Approved", count: counts.APPROVED || 0, key: "APPROVED", color: "#50b83c" },
-                { label: "Denied", count: counts.DENIED || 0, key: "DENIED", color: "#de3617" },
-                { label: "Refunded", count: counts.REFUNDED || 0, key: "REFUNDED", color: "#47c1bf" },
-              ].map(({ label, count, key, color }) => (
-                <Card key={key}>
-                  <div
-                    style={{
-                      cursor: "pointer",
-                      borderLeft: `3px solid ${color}`,
-                      paddingLeft: 8,
-                      opacity: currentStatus === key ? 1 : 0.7,
-                    }}
-                    onClick={() => {
-                      const params = new URLSearchParams(window.location.search);
-                      if (key === "all") params.delete("status");
-                      else params.set("status", key);
-                      navigate(`/returns?${params.toString()}`, { replace: true });
-                    }}
-                  >
-                    <Text variant="headingXl" as="p" fontWeight="bold">
-                      {count}
-                    </Text>
-                    <Text variant="bodySm" as="span" tone="subdued">
-                      {label}
-                    </Text>
-                  </div>
-                </Card>
-              ))}
+                { label: "All", count: totalCount, key: "all", color: "#7C3AED" },
+                { label: "Pending", count: counts.PENDING || 0, key: "PENDING", color: "#E5A50A" },
+                { label: "Approved", count: counts.APPROVED || 0, key: "APPROVED", color: "#2563EB" },
+                { label: "Denied", count: counts.DENIED || 0, key: "DENIED", color: "#D72C0D" },
+                { label: "Refunded", count: counts.REFUNDED || 0, key: "REFUNDED", color: "#10B981" },
+              ].map(({ label, count, key, color }) => {
+                const active = currentStatus === key;
+                return (
+                  <Card key={key}>
+                    <div
+                      style={{
+                        cursor: "pointer",
+                        borderLeft: `4px solid ${color}`,
+                        paddingLeft: 12,
+                        background: active ? `${color}14` : "transparent",
+                        borderRadius: 4,
+                        transition: "background .2s",
+                      }}
+                      onClick={() => {
+                        const params = new URLSearchParams(window.location.search);
+                        if (key === "all") params.delete("status");
+                        else params.set("status", key);
+                        navigate(`/returns?${params.toString()}`, { replace: true });
+                      }}
+                    >
+                      <div style={{ color, fontSize: 24, fontWeight: 700, lineHeight: 1.1 }}>
+                        {count}
+                      </div>
+                      <Text variant="bodySm" as="span" tone={active ? undefined : "subdued"}>
+                        {label}
+                      </Text>
+                    </div>
+                  </Card>
+                );
+              })}
             </div>
 
             {/* Search bar */}
