@@ -170,16 +170,27 @@ export default function Dashboard() {
   return (
     <Page title="Dashboard">
       <TitleBar title="Shopigent Returns" />
+      <style>{`
+        /* ── KPI grid ── 2 cards per line on mobile, 4 on desktop ── */
+        .dash-kpi-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+        @media (min-width: 640px) { .dash-kpi-grid { grid-template-columns: repeat(4, 1fr); gap: 16px; } }
+        @media (min-width: 900px) { .dash-kpi-grid { grid-template-columns: repeat(4, 1fr); } }
+      `}</style>
       <Layout>
         {/* ─── KPI Overview row ─────────────────────────────── */}
         <Layout.Section>
           <BlockStack gap="400">
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16 }}>
+            <div className="dash-kpi-grid">
               <PremiumKPI label="Total Returns" value={stats.totalReturns} icon="📦" gradient="linear-gradient(135deg,#7C3AED,#10B981)" />
               <PremiumKPI label="Pending Review" value={stats.pendingReturns} icon="⏳" gradient="linear-gradient(135deg,#F59E0B,#F97316)" tone={stats.pendingReturns > 0 ? "warning" : "default"} />
               <PremiumKPI label="Approved Today" value={stats.approvedToday} icon="✅" gradient="linear-gradient(135deg,#3B82F6,#06B6D4)" />
               <PremiumKPI label="Total Refunded" value={`$${Number(stats.totalRefunded).toFixed(2)}`} icon="💰" gradient="linear-gradient(135deg,#10B981,#059669)" tone="success" />
             </div>
+            {/*
+  NOTE: auto-fit/minmax caused 1 card per line on narrow mobile.
+  Switching to an explicit repeat(2,1fr) on mobile (via media query)
+  gives exactly 2 cards per line, then 4 across on desktop.
+*/}
           </BlockStack>
         </Layout.Section>
 
