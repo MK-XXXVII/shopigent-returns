@@ -1,7 +1,10 @@
 // DEV ONLY — Seed real Shopify orders into return requests across statuses.
-// Opens as a simple HTML page in the Shopify admin (requires auth).
+// Renders as a normal Polaris page inside the Shopify admin (requires auth).
 // Use this to generate data for listing screenshots, then clear when done.
 import { json, type LoaderFunctionArgs, type ActionFunctionArgs } from "@remix-run/node";
+import { useLoaderData, useFetcher } from "@remix-run/react";
+import { Page, Card, BlockStack, Text, Banner, Button, InlineStack } from "@shopify/polaris";
+import { TitleBar } from "@shopify/app-bridge-react";
 import shopify from "../shopify.server";
 import prisma from "../lib/db.server";
 import { shopifyAdminQuery } from "../lib/shopify-admin.server";
@@ -25,8 +28,8 @@ async function fetchOrders(shop: string, token: string) {
     gid: e.node.id,
     name: e.node.name,
     email: e.node.email || "customer@example.com",
+    displayName: e.node.displayName || e.node.name,
     createdAt: e.node.createdAt,
-    status: e.node.displayFinancialStatus,
     lineItems: (e.node.lineItems?.edges || []).map((li: any) => ({
       id: String(li.node.id).replace("gid://shopify/LineItem/", ""),
       title: li.node.title,
@@ -46,18 +49,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const shop = session.shop;
   const sess = await prisma.session.findFirst({ where: { shop, isOnline: false } });
   const token = sess?.accessToken || session.accessToken;
-  if (!token) return json({ error: "No access token" }, { status: 500 });
-  const orders = await fetchOrders(shop, token);
-
-  // Render a tiny bootstrap page with a "Seed demo data" button
-  const host = `${request.headers.get("x-forwarded-proto") || "https"}://returns.greeknous.com`;
-  return new Response(`<!doctype html><html><body>
-    <h2>Shopigent Returns — Dev Seed</h2>
-    <p>Store: <b>${shop}</b> · Orders found: <b>${orders.length}</b></p>
-    <p>Orders: ${orders.map((o: any) => o.name + " (" + o.email + ")").join(", ") || "none"}</p>
-    <form method="post"><button type="submit" style="padding:12px 24px;font-size:16px">Seed ${Math.min(SEED_STATUSES.length, orders.length)} demo returns</button></form>
-    <p style="color:#888">After seeding, refresh the Dashboard/Returns/Analytics pages to capture screenshots.</p>
-  </body></html>`, { headers: { "Content-Type": "text/html" } });
+  const orders = token ? await fetchOrders(shop, token) : [];
+  return json({ shop, orders, existing: await prisma.returnRequest.count({ where: { shop } }) });
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -65,22 +58,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const shop = session.shop;
   const sess = await prisma.session.findFirst({ where: { shop, isOnline: false } });
   const token = sess?.accessToken || session.accessToken;
-  if (!token) return json({ error: "No access token" }, { status: 500 });
+  const orders = token ? await fetchOrders(shop, token) : [];
 
-  const orders = await fetchOrders(shop, token);
   let created = 0;
   for (let i = 0; i < Math.min(SEED_STATUSES.length, orders.length); i++) {
     const o = orders[i];
     const st = SEED_STATUSES[i];
+    // Reuse the order id basis but make each seeded return reference a unique order
     const items = o.lineItems.slice(0, Math.min(3, o.lineItems.length)).map((li: any) => ({
       id: li.id, variantId: li.variantId, title: li.title,
       quantity: li.quantity, price: li.price, sku: li.sku,
     }));
     if (items.length === 0) continue;
-    const customerName = o.email.split("@")[0].replace(/[._]/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
+    const customerName = (o.email || o.displayName).split("@")[0].replace(/[._]/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
     await prisma.returnRequest.create({
       data: {
-        shop, orderId: o.id, orderName: o.name, customerEmail: o.email, customerName, items,
+        shop, orderId: `${o.id}-${i}`, orderName: o.name, customerEmail: o.email, customerName, items,
         reason: st === "DENIED" ? "changed_mind" : "sizing_issue",
         status: st as any,
         decidedBy: ["APPROVED", "REFUNDED", "SHIPPED"].includes(st) ? "auto" : st === "DENIED" ? "admin" : null,
@@ -91,5 +84,39 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     });
     created++;
   }
-  return json({ ok: true, shop, ordersAvailable: orders.length, created });
+  return json({ ok: true, shop, created });
 };
+
+export default function DevSeed() {
+  const { shop, orders, existing } = useLoaderData<typeof loader>();
+  const fetcher = useFetcher();
+  const seeded = fetcher.data?.ok;
+  const total = (orders as any[]).length;
+
+  return (
+    <Page>
+      <TitleBar title="Dev Seed (screenshots)" />
+      <BlockStack gap="400">
+        <Card>
+          <BlockStack gap="300">
+            <InlineStack align="space-between">
+              <Text variant="headingLg" as="h2" fontWeight="bold">Seed Demo Returns</Text>
+              <Button variant="primary" onClick={() => fetcher.submit(null, { method: "post" })}>Seed demo data</Button>
+            </InlineStack>
+            <Text variant="bodyMd" as="p">
+              Store: <b>{shop}</b> · Orders found: <b>{total}</b> · Existing returns in DB: <b>{existing}</b>
+            </Text>
+            {total === 0 && <Banner tone="warning"><p>No orders found in this store. Create test orders in Shopify first.</p></Banner>}
+            {seeded && fetcher.data?.ok && <Banner tone="success"><p>Seeded {fetcher.data.created} returns! Refresh Dashboard/Returns/Analytics to see them.</p></Banner>}
+            <Text as="h3" variant="headingMd">Orders visible:</Text>
+            {orders.length === 0 ? (
+              <Text as="p" tone="subdued">None</Text>
+            ) : (
+              (orders as any[]).map((o) => <Text key={o.id} as="p" tone="subdued">• {o.name} — {o.email} ({o.lineItems?.length} items)</Text>)
+            )}
+          </BlockStack>
+        </Card>
+      </BlockStack>
+    </Page>
+  );
+}
