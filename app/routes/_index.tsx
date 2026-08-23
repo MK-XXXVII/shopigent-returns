@@ -95,6 +95,9 @@ function PremiumKPI({ label, value, icon, gradient, tone }: {
   return (
     <Card>
       <BlockStack gap="200">
+        {/* Card name on top */}
+        <Text variant="bodySm" as="span" tone="subdued">{label}</Text>
+        {/* Icon + value on the SAME row */}
         <InlineStack gap="200" blockAlign="center">
           {/* Gradient ring with white interior — icon stays visible */}
           <div style={{
@@ -111,11 +114,10 @@ function PremiumKPI({ label, value, icon, gradient, tone }: {
               <span>{icon}</span>
             </div>
           </div>
-          <Text variant="bodySm" as="span" tone="subdued">{label}</Text>
+          <div style={{ color: valueColor, fontSize: 28, fontWeight: 700, lineHeight: 1.1 }}>
+            {value}
+          </div>
         </InlineStack>
-        <div style={{ color: valueColor, fontSize: 28, fontWeight: 700, lineHeight: 1.1 }}>
-          {value}
-        </div>
       </BlockStack>
     </Card>
   );

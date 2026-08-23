@@ -164,29 +164,33 @@ function StatCard({ label, value, tone, prefix, suffix, icon, gradient }: {
   return (
     <Card>
       <BlockStack gap="200">
-        {icon && gradient && (
-          // Gradient ring with white interior: the outer span carries the
-          // gradient as padding (creating the colored border), while the
-          // inner chip is white so the emoji stays fully visible.
-          <div style={{
-            width: 44, height: 44, borderRadius: 12, padding: 2,   // 2px ring = gradient
-            background: gradient,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            boxShadow: "0 2px 6px rgba(0,0,0,.1)",
-          }}>
-            <div style={{
-              width: "100%", height: "100%", borderRadius: 10,
-              background: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 18,
-            }}>
-              <span>{icon}</span>
-            </div>
-          </div>
-        )}
+        {/* Card name on top */}
         <Text variant="bodySm" as="span" tone="subdued">{label}</Text>
-        <div style={{ color: valueColor, fontSize: 26, fontWeight: 700, lineHeight: 1.1 }}>
-          {prefix}{typeof value === "number" ? value.toLocaleString() : value}{suffix}
-        </div>
+        {/* Icon + value on the SAME row */}
+        <InlineStack gap="200" blockAlign="center">
+          {icon && gradient && (
+            // Gradient ring with white interior: the outer span carries the
+            // gradient as padding (creating the colored border), while the
+            // inner chip is white so the emoji stays fully visible.
+            <div style={{
+              width: 44, height: 44, borderRadius: 12, padding: 2,   // 2px ring = gradient
+              background: gradient,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              boxShadow: "0 2px 6px rgba(0,0,0,.1)",
+            }}>
+              <div style={{
+                width: "100%", height: "100%", borderRadius: 10,
+                background: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 18,
+              }}>
+                <span>{icon}</span>
+              </div>
+            </div>
+          )}
+          <div style={{ color: valueColor, fontSize: 26, fontWeight: 700, lineHeight: 1.1 }}>
+            {prefix}{typeof value === "number" ? value.toLocaleString() : value}{suffix}
+          </div>
+        </InlineStack>
       </BlockStack>
     </Card>
   );
@@ -223,9 +227,18 @@ export default function AnalyticsPage() {
     <Page title="Analytics" subtitle="Return performance overview">
       <Layout>
         <Layout.Section>
+          <style>{`
+            /* Analytics stat grids — avoid orphan last card (Total Refunded).
+               6 cards → 2/line on mobile, 3/line on tablet+, 6/line wide. */
+            .ana-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+            @media (min-width: 768px) { .ana-grid { grid-template-columns: repeat(3, 1fr); } }
+            @media (min-width: 1200px) { .ana-grid { grid-template-columns: repeat(4, 1fr); } }
+            .ana-grid-wide { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+            @media (min-width: 768px) { .ana-grid-wide { grid-template-columns: repeat(4, 1fr); } }
+          `}</style>
           <BlockStack gap="400">
             {/* Top stats row */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 16 }}>
+            <div className="ana-grid">
               <StatCard label="Total Returns" value={stats.totalReturns} icon="📦" gradient="linear-gradient(135deg,#7C3AED,#10B981)" />
               <StatCard label="Pending" value={stats.pending} tone="warning" icon="⏳" gradient="linear-gradient(135deg,#F59E0B,#F97316)" />
               <StatCard label="Approved" value={stats.approved} tone="success" icon="✅" gradient="linear-gradient(135deg,#10B981,#059669)" />
@@ -235,7 +248,7 @@ export default function AnalyticsPage() {
             </div>
 
             {/* Auto-resolution / risk metrics */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 16 }}>
+            <div className="ana-grid-wide">
               <StatCard label="Auto-Resolution Rate" value={stats.autoRate} suffix="%" tone={stats.autoRate > 50 ? "success" : "warning"} icon="⚡" gradient="linear-gradient(135deg,#A855F7,#7C3AED)" />
               <StatCard label="Avg Resolution Time" value={stats.avgResolutionHours} suffix="h" icon="⏱" gradient="linear-gradient(135deg,#64748B,#475569)" />
               <StatCard label="Fraud Signals" value={stats.fraudCount} tone={stats.fraudCount > 0 ? "warning" : undefined} icon="🛡️" gradient="linear-gradient(135deg,#EF4444,#B91C1C)" />

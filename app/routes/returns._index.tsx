@@ -155,12 +155,12 @@ export default function ReturnsPage() {
                         navigate(`/returns?${params.toString()}`, { replace: true });
                       }}
                     >
-                      <div style={{ color, fontSize: 24, fontWeight: 700, lineHeight: 1.1 }}>
-                        {count}
-                      </div>
                       <Text variant="bodySm" as="span" tone={active ? undefined : "subdued"}>
                         {label}
                       </Text>
+                      <div style={{ color, fontSize: 24, fontWeight: 700, lineHeight: 1.1, marginTop: 4 }}>
+                        {count}
+                      </div>
                     </div>
                   </Card>
                 );
