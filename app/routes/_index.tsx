@@ -1,5 +1,6 @@
 import { json, type LoaderFunctionArgs } from "@remix-run/node";
 import { useLoaderData, useNavigate } from "@remix-run/react";
+import { useState } from "react";
 import {
   Page,
   Layout,
@@ -164,154 +165,156 @@ function TrendChart({ counts }: { counts: { label: string; value: number }[] }) 
 export default function Dashboard() {
   const { stats, recentReturns } = useLoaderData<typeof loader>();
   const navigate = useNavigate();
+  // Client-side status filter for the Recent Returns table (click a KPI card)
+  const [activeFilter, setActiveFilter] = useState<string>("all");
 
-  const rowMarkup = recentReturns.map(
-      ({ id, orderName, customerName, status, decidedBy, createdAt }, index) => {
-        const isAutoApproved = status === "APPROVED" && decidedBy === "auto";
-        return (
-          <IndexTable.Row
-            id={id}
-            key={id}
-            position={index}
-            onClick={() => navigate(`/returns/${id}`)}
-          >
-            <IndexTable.Cell>
-              <Link url={`/returns/${id}`} onClick={(e: any) => { e.stopPropagation(); navigate(`/returns/${id}`); }}>
-                {orderName || "—"}
-              </Link>
-            </IndexTable.Cell>
-            <IndexTable.Cell>
-              <Text as="span" variant="bodyMd">{customerName || "—"}</Text>
-            </IndexTable.Cell>
-            <IndexTable.Cell>
-              <StatusPill status={status} auto={isAutoApproved} />
-            </IndexTable.Cell>
-            <IndexTable.Cell>
-              <Text as="span" variant="bodySm" tone="subdued">{new Date(createdAt).toLocaleDateString()}</Text>
-            </IndexTable.Cell>
-            <IndexTable.Cell>
-              <Button size="micro" variant="primary" onClick={(e: any) => { e.stopPropagation(); navigate(`/returns/${id}`); }}>
-                Edit / View
-              </Button>
-            </IndexTable.Cell>
-          </IndexTable.Row>
-        );
-      }
-    );
+  const filtered = activeFilter === "all"
+    ? recentReturns
+    : recentReturns.filter((r) => r.status === activeFilter);
 
-    // Build trend chart data from the recent returns (last 7 by day)
-    const trendData = (() => {
-      const days: { key: string; label: string; value: number }[] = [];
-      for (let i = 6; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(d.getDate() - i);
-        days.push({ key: d.toISOString().slice(0, 10), label: d.toLocaleDateString(undefined, { weekday: "short" }).slice(0, 3), value: 0 });
-      }
-      recentReturns.forEach((r) => {
-        const key = new Date(r.createdAt).toISOString().slice(0, 10);
-        const day = days.find((x) => x.key === key);
-        if (day) day.value++;
+  const rowMarkup = filtered.map(
+    ({ id, orderName, customerName, status, decidedBy, createdAt }, index) => {
+      const isAutoApproved = status === "APPROVED" && decidedBy === "auto";
+      return (
+        <IndexTable.Row
+          id={id}
+          key={id}
+          position={index}
+          onClick={() => navigate(`/returns/${id}`)}
+        >
+          <IndexTable.Cell>
+            <Link url={`/returns/${id}`} onClick={(e: any) => { e.stopPropagation(); navigate(`/returns/${id}`); }}>
+              {orderName || "—"}
+            </Link>
+          </IndexTable.Cell>
+          <IndexTable.Cell>
+            <Text as="span" variant="bodyMd">{customerName || "—"}</Text>
+          </IndexTable.Cell>
+          <IndexTable.Cell>
+            <StatusPill status={status} auto={isAutoApproved} />
+          </IndexTable.Cell>
+          <IndexTable.Cell>
+            <Text as="span" variant="bodySm" tone="subdued">{new Date(createdAt).toLocaleDateString()}</Text>
+          </IndexTable.Cell>
+          <IndexTable.Cell>
+            <Button size="micro" variant="primary" onClick={(e: any) => { e.stopPropagation(); navigate(`/returns/${id}`); }}>
+              Edit / View
+            </Button>
+          </IndexTable.Cell>
+        </IndexTable.Row>
+      );
+    }
+  );
+
+  // Returns Trend chart — last 7 days, ENGLISH day labels (consistent with app)
+  const trendData = (() => {
+    const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    const days: { key: string; label: string; value: number }[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      days.push({
+        key: d.toISOString().slice(0, 10),
+        label: DAYS[d.getDay() === 0 ? 6 : d.getDay() - 1],
+        value: 0,
       });
-      return days;
-    })();
+    }
+    recentReturns.forEach((r) => {
+      const key = new Date(r.createdAt).toISOString().slice(0, 10);
+      const day = days.find((x) => x.key === key);
+      if (day) day.value++;
+    });
+    return days;
+  })();
 
-    // Status filter pills for the dashboard (navigating to the filtered returns page)
-    const filters = [
-      { label: "All", key: "all", color: "#1A202C" },
-      { label: "Pending", key: "PENDING", color: "#B45309" },
-      { label: "Approved", key: "APPROVED", color: "#0284C7" },
-      { label: "Denied", key: "DENIED", color: "#DC2626" },
-      { label: "Refunded", key: "REFUNDED", color: "#059669" },
-    ];
+  // Add "Approved Today" to the KPI filter keys
+  const kpis = [
+    { label: "Total Returns", value: stats.totalReturns, icon: "📦", gradient: "linear-gradient(135deg,#2A9D8F,#10B981)", filter: "all", tone: undefined as any },
+    { label: "Pending Review", value: stats.pendingReturns, icon: "⏳", gradient: "linear-gradient(135deg,#B45309,#F97316)", filter: "PENDING", tone: (stats.pendingReturns > 0 ? "warning" : "default") as any },
+    { label: "Approved Today", value: stats.approvedToday, icon: "✅", gradient: "linear-gradient(135deg,#3B82F6,#06B6D4)", filter: "APPROVED", tone: undefined },
+    { label: "Total Refunded", value: `$${Number(stats.totalRefunded).toFixed(2)}`, icon: "💰", gradient: "linear-gradient(135deg,#10B981,#059669)", filter: "REFUNDED", tone: "success" },
+  ];
 
-    return (
-      <Page title="Dashboard">
-        <TitleBar title="Shopigent Returns" />
-        <style>{`
-          /* ── KPI grid ── 2 cards per line on mobile, 4 on desktop ── */
-          .dash-kpi-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
-          @media (min-width: 640px) { .dash-kpi-grid { grid-template-columns: repeat(4, 1fr); gap: 16px; } }
-          /* ── Split layout: table (left) + chart (right) ── */
-          .dash-split { display: grid; grid-template-columns: 1fr; gap: 16px; }
-          @media (min-width: 900px) { .dash-split { grid-template-columns: 1.6fr 1fr; } }
-          /* ── Filter pills ── */
-          .dash-filter-pill { border: 1px solid #E2E8F0; background: #fff; color: #334155;
-            padding: 6px 16px; border-radius: 999px; font-size: 13px; font-weight: 600;
-            cursor: pointer; transition: all .15s; }
-          .dash-filter-pill.active { border-color: transparent; }
-          /* ── Shared card shell + helpers ── */
-          .dash-card { background: #fff; border-radius: 16px; padding: 20px;
-            box-shadow: 0 4px 12px rgba(0,0,0,.03); border: 1px solid #EDF2F7; }
-          .padded-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-          .chart-card { background: #fff; border-radius: 16px; padding: 20px;
-            box-shadow: 0 4px 12px rgba(0,0,0,.03); border: 1px solid #EDF2F7; }
-          .chart-sub { font-size: 13px; color: #718096; margin: 4px 0 8px; }
-        `}</style>
-        <Layout>
-          <Layout.Section>
-            <BlockStack gap="400">
-              {/* ─── KPI Overview row ─────────────────────────────── */}
-              <div className="dash-kpi-grid">
-                <PremiumKPI label="Total Returns" value={stats.totalReturns} icon="📦" gradient="linear-gradient(135deg,#2A9D8F,#10B981)" />
-                <PremiumKPI label="Pending Review" value={stats.pendingReturns} icon="⏳" gradient="linear-gradient(135deg,#F59E0B,#F97316)" tone={stats.pendingReturns > 0 ? "warning" : "default"} />
-                <PremiumKPI label="Approved Today" value={stats.approvedToday} icon="✅" gradient="linear-gradient(135deg,#3B82F6,#06B6D4)" />
-                <PremiumKPI label="Total Refunded" value={`$${Number(stats.totalRefunded).toFixed(2)}`} icon="💰" gradient="linear-gradient(135deg,#10B981,#059669)" tone="success" />
-              </div>
+  return (
+    <Page title="Dashboard">
+      <TitleBar title="Shopigent Returns" />
+      <style>{`
+        /* ── KPI grid ── 2 cards per line on mobile, 4 on desktop ── */
+        .dash-kpi-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+        @media (min-width: 640px) { .dash-kpi-grid { grid-template-columns: repeat(4, 1fr); gap: 16px; } }
+        /* Active-filter highlight on the clicked KPI card */
+        .dash-kpi-grid .filter-active > div { outline: 2px solid #7C3AED; outline-offset: 1px; border-radius: 16px; }
+        /* ── Split layout: table (left) + chart (right) ── */
+        .dash-split { display: grid; grid-template-columns: 1fr; gap: 16px; }
+        @media (min-width: 900px) { .dash-split { grid-template-columns: 1.6fr 1fr; } }
+        /* ── Shared card shell + helpers ── */
+        .padded-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .chart-card { background: #fff; border-radius: 16px; padding: 20px;
+          box-shadow: 0 4px 12px rgba(0,0,0,.03); border: 1px solid #EDF2F7; }
+        .chart-sub { font-size: 13px; color: #718096; margin: 4px 0 8px; }
+      `}</style>
+      <Layout>
+        <Layout.Section>
+          <BlockStack gap="400">
+            {/* ─── KPI Overview row — click a card to filter ──────── */}
+            <div className="dash-kpi-grid">
+              {kpis.map((k) => (
+                <div
+                  key={k.filter}
+                  onClick={() => setActiveFilter(activeFilter === k.filter ? "all" : k.filter)}
+                  style={{ cursor: "pointer" }}
+                  className={activeFilter === k.filter ? "filter-active" : ""}
+                >
+                  <PremiumKPI label={k.label} value={k.value} icon={k.icon} gradient={k.gradient} tone={k.tone} />
+                </div>
+              ))}
+            </div>
 
-              {/* ─── Filter pills ─────────────────────────────────── */}
-              <InlineStack gap="200" wrap={true}>
-                {filters.map((f) => (
-                  <button
-                    key={f.key}
-                    className={`dash-filter-pill${f.key === "all" ? " active" : ""}`}
-                    style={f.key === "all" ? { background: "#FDE8D0", color: "#793B10" } : { borderColor: "#E2E8F0" }}
-                    onClick={() => navigate(f.key === "all" ? "/returns" : `/returns?status=${f.key}`)}
-                  >
-                    {f.label}
-                  </button>
-                ))}
-              </InlineStack>
-
-              {/* ─── Split: Recent Returns table + Trend chart ─────── */}
-              <div className="dash-split">
-                {/* Recent Returns table */}
-                <div style={{ background: "#fff", borderRadius: 16, padding: 20, boxShadow: "0 4px 12px rgba(0,0,0,.03)", border: "1px solid #EDF2F7" }}>
-                  <div className="padded-header">
+            {/* ─── Split: Recent Returns table + Trend chart ─────── */}
+            <div className="dash-split">
+              {/* Recent Returns table */}
+              <div style={{ background: "#fff", borderRadius: 16, padding: 20, boxShadow: "0 4px 12px rgba(0,0,0,.03)", border: "1px solid #EDF2F7" }}>
+                <div className="padded-header">
+                  <div>
                     <Text variant="headingMd" as="h2" fontWeight="bold">Recent Returns</Text>
-                    <Button variant="plain" onClick={() => navigate("/returns")}>View all →</Button>
+                    {activeFilter !== "all" && (
+                      <Text variant="bodySm" as="span" tone="subdued">Filtered: {activeFilter} — <Button variant="plain" onClick={() => setActiveFilter("all")}>Show all</Button></Text>
+                    )}
                   </div>
-                  {recentReturns.length === 0 ? (
-                    <Banner tone="info">
-                      <p>No returns yet. Returns will appear here when customers submit them.</p>
-                    </Banner>
-                  ) : (
-                    <IndexTable
-                      selectable={false}
-                      resourceName={{ singular: "return", plural: "returns" }}
-                      itemCount={recentReturns.length}
-                      headings={[
-                        { title: "Order" },
-                        { title: "Customer" },
-                        { title: "Status" },
-                        { title: "Date" },
-                        { title: "" },
-                      ]}
-                    >
-                      {rowMarkup}
-                    </IndexTable>
-                  )}
+                  <Button variant="plain" onClick={() => navigate("/returns")}>View all →</Button>
                 </div>
-
-                {/* Returns Trend chart */}
-                <div className="chart-card">
-                  <Text variant="headingMd" as="h2" fontWeight="bold">Returns Trend</Text>
-                  <div className="chart-sub">Last 7 days</div>
-                  <TrendChart counts={trendData} />
-                </div>
+                {filtered.length === 0 ? (
+                  <Banner tone="info">
+                    <p>{activeFilter === "all" ? "No returns yet. Returns will appear here when customers submit them." : `No ${activeFilter.toLowerCase()} returns right now.`}</p>
+                  </Banner>
+                ) : (
+                  <IndexTable
+                    selectable={false}
+                    resourceName={{ singular: "return", plural: "returns" }}
+                    itemCount={filtered.length}
+                    headings={[
+                      { title: "Order" },
+                      { title: "Customer" },
+                      { title: "Status" },
+                      { title: "Date" },
+                      { title: "" },
+                    ]}
+                  >
+                    {rowMarkup}
+                  </IndexTable>
+                )}
               </div>
-            </BlockStack>
-          </Layout.Section>
-        </Layout>
-      </Page>
-    );
-  }
+
+              {/* Returns Trend chart */}
+              <div className="chart-card">
+                <Text variant="headingMd" as="h2" fontWeight="bold">Returns Trend</Text>
+                <div className="chart-sub">Last 7 days</div>
+                <TrendChart counts={trendData} />
+              </div>
+            </div>
+          </BlockStack>
+        </Layout.Section>
+      </Layout>
+    </Page>
+  );
+}

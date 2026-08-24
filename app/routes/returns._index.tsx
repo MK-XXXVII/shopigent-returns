@@ -10,7 +10,6 @@ import {
   SkeletonBodyText,
   TextField,
   IndexTable,
-  Badge,
   Link,
   Button,
   InlineStack,
@@ -63,32 +62,105 @@ function statusBadge(status: string) {
   };
 }
 
+// ─────────────────────────────────────────────────────────────
+// PremiumFilterCard — premium KPI-style filter card with icon.
+// Clicking filters the list client-side (no page redirect).
+// ─────────────────────────────────────────────────────────────
+function PremiumFilterCard({ label, value, icon, gradient, active, onClickOn }: {
+  label: string;
+  value: string | number;
+  icon: string;
+  gradient: string;
+  active: boolean;
+  onClickOn: () => void;
+}) {
+  return (
+    <div
+      onClick={onClickOn}
+      style={{
+        cursor: "pointer", background: "#fff", borderRadius: 16, padding: 16,
+        boxShadow: active ? "0 4px 12px rgba(124,58,237,.2)" : "0 2px 8px rgba(0,0,0,.04)",
+        border: active ? "2px solid #7C3AED" : "1px solid #EDF2F7",
+        transition: "all .2s",
+        display: "flex", flexDirection: "column", gap: 8,
+      }}
+    >
+      <Text variant="bodySm" as="span" tone="subdued">{label}</Text>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        {/* Gradient ring icon chip (white interior, icon visible) */}
+        <div style={{
+          width: 40, height: 40, borderRadius: 12, padding: 2, background: gradient,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          boxShadow: "0 2px 6px rgba(0,0,0,.1)",
+        }}>
+          <div style={{
+            width: "100%", height: "100%", borderRadius: 10, background: "#fff",
+            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17,
+          }}>
+            <span>{icon}</span>
+          </div>
+        </div>
+        <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1.1, color: "#1A202C" }}>
+          {value}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// StatusPill — rounded pastel status badge (matches dashboard).
+// ─────────────────────────────────────────────────────────────
+const PILL_STYLES: Record<string, { bg: string; fg: string }> = {
+  PENDING:    { bg: "#FDE8D0", fg: "#793B10" },
+  APPROVED:   { bg: "#E0F2FE", fg: "#075985" },
+  AUTOAPPROVED: { bg: "#EDE9FE", fg: "#5B21B6" },
+  DENIED:     { bg: "#FEE2E2", fg: "#991B1B" },
+  REFUNDED:   { bg: "#D1FAE5", fg: "#065F46" },
+  SHIPPED:    { bg: "#E0E7FF", fg: "#3730A3" },
+  EXCHANGE:   { bg: "#E0F2FE", fg: "#075985" },
+  CLOSED:     { bg: "#E2E8F0", fg: "#334155" },
+};
+const PILL_LABELS: Record<string, string> = {
+  PENDING: "Pending", APPROVED: "Approved", DENIED: "Denied",
+  REFUNDED: "Refunded", SHIPPED: "Shipped", EXCHANGE: "Exchange", CLOSED: "Closed",
+};
+function StatusPill({ status, auto }: { status: string; auto?: boolean }) {
+  const style = auto ? PILL_STYLES.AUTOAPPROVED : (PILL_STYLES[status] || { bg: "#E2E8F0", fg: "#334155" });
+  return (
+    <span style={{
+      display: "inline-block", padding: "4px 12px", borderRadius: 999,
+      background: style.bg, color: style.fg, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap",
+    }}>
+      {auto ? "Auto-Approved" : (PILL_LABELS[status] || status)}
+    </span>
+  );
+}
+
 export default function ReturnsPage() {
-  const { returns, counts, currentStatus } = useLoaderData<typeof loader>();
+  const { returns, counts } = useLoaderData<typeof loader>();
   const navigate = useNavigate();
   const navigation = useNavigation();
   const isLoading = navigation.state === "loading";
 
+  // Client-side status filter (click a KPI card) + search query
+  const [activeFilter, setActiveFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
 
   const q = searchQuery.toLowerCase();
-  const filteredReturns = q
-    ? returns.filter((r) => (r.orderName || "").toLowerCase().includes(q) || (r.customerName || "").toLowerCase().includes(q))
-    : returns;
+  const filteredReturns = returns.filter((r) => {
+    const statusOk = activeFilter === "all" || r.status === activeFilter;
+    const textOk = !q
+      || (r.orderName || "").toLowerCase().includes(q)
+      || (r.customerName || "").toLowerCase().includes(q);
+    return statusOk && textOk;
+  });
 
   const totalCount = Object.values(counts).reduce((a, b) => a + b, 0);
 
   const filteredRowMarkup = filteredReturns.map(
     ({ id, orderName, customerName, status, decidedBy, createdAt }, index) => {
-      const badge = statusBadge(status);
-      // Auto-approved returns (decidedBy === "auto") get a distinct badge so
-      // the merchant can immediately tell them apart from manual approvals.
       const isAutoApproved = status === "APPROVED" && decidedBy === "auto";
-      const statusBadgeEl = isAutoApproved ? (
-        <Badge tone="new">Auto-Approved</Badge>
-      ) : (
-        <Badge tone={badge.tone}>{badge.children}</Badge>
-      );
       return (
         <IndexTable.Row
           id={id}
@@ -103,10 +175,10 @@ export default function ReturnsPage() {
           </IndexTable.Cell>
           <IndexTable.Cell>{customerName || "—"}</IndexTable.Cell>
           <IndexTable.Cell>
-            {statusBadgeEl}
+            <StatusPill status={status} auto={isAutoApproved} />
           </IndexTable.Cell>
           <IndexTable.Cell>
-            {new Date(createdAt).toLocaleDateString()}
+            <Text as="span" variant="bodySm" tone="subdued">{new Date(createdAt).toLocaleDateString()}</Text>
           </IndexTable.Cell>
           <IndexTable.Cell>
             <InlineStack gap="100">
@@ -120,94 +192,81 @@ export default function ReturnsPage() {
     }
   );
 
+  const filterCards = [
+    { label: "All", count: totalCount, key: "all", icon: "📦", gradient: "linear-gradient(135deg,#2A9D8F,#10B981)" },
+    { label: "Pending", count: counts.PENDING || 0, key: "PENDING", icon: "⏳", gradient: "linear-gradient(135deg,#B45309,#F97316)" },
+    { label: "Approved", count: counts.APPROVED || 0, key: "APPROVED", icon: "✅", gradient: "linear-gradient(135deg,#3B82F6,#06B6D4)" },
+    { label: "Denied", count: counts.DENIED || 0, key: "DENIED", icon: "🚫", gradient: "linear-gradient(135deg,#DC2626,#EF4444)" },
+    { label: "Refunded", count: counts.REFUNDED || 0, key: "REFUNDED", icon: "💰", gradient: "linear-gradient(135deg,#10B981,#059669)" },
+  ];
+
   return (
     <Page title="Returns">
+      <style>{`
+        /* Filter cards: 2/line on mobile, all 5 across on wide */
+        .returns-filter-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+        @media (min-width: 640px) { .returns-filter-grid { grid-template-columns: repeat(3, 1fr); } }
+        @media (min-width: 1024px) { .returns-filter-grid { grid-template-columns: repeat(5, 1fr); } }
+      `}</style>
       <Layout>
         <Layout.Section>
           <BlockStack gap="400">
-            {/* ─── Status filter cards ─────────────────────────── */}
-            {/* Clicking a card filters the list by status. The active
-                filter is highlighted with a soft background + border. */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 12 }}>
-              {[
-                { label: "All", count: totalCount, key: "all", color: "#7C3AED" },
-                { label: "Pending", count: counts.PENDING || 0, key: "PENDING", color: "#E5A50A" },
-                { label: "Approved", count: counts.APPROVED || 0, key: "APPROVED", color: "#2563EB" },
-                { label: "Denied", count: counts.DENIED || 0, key: "DENIED", color: "#D72C0D" },
-                { label: "Refunded", count: counts.REFUNDED || 0, key: "REFUNDED", color: "#10B981" },
-              ].map(({ label, count, key, color }) => {
-                const active = currentStatus === key;
-                return (
-                  <Card key={key}>
-                    <div
-                      style={{
-                        cursor: "pointer",
-                        borderLeft: `4px solid ${color}`,
-                        paddingLeft: 12,
-                        background: active ? `${color}14` : "transparent",
-                        borderRadius: 4,
-                        transition: "background .2s",
-                      }}
-                      onClick={() => {
-                        const params = new URLSearchParams(window.location.search);
-                        if (key === "all") params.delete("status");
-                        else params.set("status", key);
-                        navigate(`/returns?${params.toString()}`, { replace: true });
-                      }}
-                    >
-                      <Text variant="bodySm" as="span" tone={active ? undefined : "subdued"}>
-                        {label}
-                      </Text>
-                      <div style={{ color, fontSize: 24, fontWeight: 700, lineHeight: 1.1, marginTop: 4 }}>
-                        {count}
-                      </div>
-                    </div>
-                  </Card>
-                );
-              })}
+            {/* ─── Premium KPI filter cards (client-side filter, icons) ── */}
+            <div className="returns-filter-grid">
+              {filterCards.map((c) => (
+                <PremiumFilterCard
+                  key={c.key}
+                  label={c.label}
+                  value={c.count}
+                  icon={c.icon}
+                  gradient={c.gradient}
+                  active={activeFilter === c.key}
+                  onClickOn={() => setActiveFilter(activeFilter === c.key ? "all" : c.key)}
+                />
+              ))}
             </div>
 
             {/* Search bar */}
-                        {returns.length > 0 && (
-                          <TextField
-                            label="Search returns"
-                            placeholder="Search by order name or customer..."
-                            value={searchQuery}
-                            onChange={setSearchQuery}
-                            autoComplete="off"
-                            clearButton
-                            onClearButtonClick={() => setSearchQuery("")}
-                          />
-                        )}
+            {returns.length > 0 && (
+              <TextField
+                label="Search returns"
+                placeholder="Search by order name or customer..."
+                value={searchQuery}
+                onChange={setSearchQuery}
+                autoComplete="off"
+                clearButton
+                onClearButtonClick={() => setSearchQuery("")}
+              />
+            )}
 
-                        {/* Returns table */}
-                        <Card>
-                          {isLoading ? (
-                            <div style={{ padding: 20 }}>
-                              <SkeletonBodyText lines={5} />
-                            </div>
-                          ) : filteredReturns.length === 0 ? (
-                            <EmptyState
-                              heading={searchQuery ? "No matching returns" : "No returns yet"}
-                              image=""
-                            >
-                              <p>{searchQuery ? "Try a different search term." : "Returns will appear here when customers submit them."}</p>
-                            </EmptyState>
-                          ) : (
-                            <IndexTable
-                              selectable={false}
-                              itemCount={filteredReturns.length}
-                              headings={[
-                                { title: "Order" },
-                                { title: "Customer" },
-                                { title: "Status" },
-                                { title: "Date" },
-                                { title: "Actions" },
-                              ]}
-                            >
-                              {filteredRowMarkup}
-                            </IndexTable>
-                          )}
+            {/* Returns table */}
+            <Card>
+              {isLoading ? (
+                <div style={{ padding: 20 }}>
+                  <SkeletonBodyText lines={5} />
+                </div>
+              ) : filteredReturns.length === 0 ? (
+                <EmptyState
+                  heading={searchQuery ? "No matching returns" : activeFilter !== "all" ? `No ${activeFilter.toLowerCase()} returns` : "No returns yet"}
+                  image=""
+                >
+                  <p>{searchQuery ? "Try a different search term." : activeFilter !== "all" ? `No ${activeFilter.toLowerCase()} returns match this filter.` : "Returns will appear here when customers submit them."}</p>
+                </EmptyState>
+              ) : (
+                <IndexTable
+                  selectable={false}
+                  itemCount={filteredReturns.length}
+                  headings={[
+                    { title: "Order" },
+                    { title: "Customer" },
+                    { title: "Status" },
+                    { title: "Date" },
+                    { title: "Actions" },
+                  ]}
+                >
+                  {filteredRowMarkup}
+                </IndexTable>
+              )}
             </Card>
           </BlockStack>
         </Layout.Section>
