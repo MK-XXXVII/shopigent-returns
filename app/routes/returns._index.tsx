@@ -207,6 +207,13 @@ export default function ReturnsPage() {
         .returns-filter-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
         @media (min-width: 640px) { .returns-filter-grid { grid-template-columns: repeat(3, 1fr); } }
         @media (min-width: 1024px) { .returns-filter-grid { grid-template-columns: repeat(5, 1fr); } }
+        /* ── MOBILE HARDENING ── */
+        @media (max-width: 639px) {
+          /* Filter cards: keep 2/line but shrink padding so nothing clips */
+          .returns-filter-grid { gap: 8px; }
+          /* Let the table scroll horizontally inside its card, not break page */
+          .returns-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
+        }
       `}</style>
       <Layout>
         <Layout.Section>
@@ -253,19 +260,21 @@ export default function ReturnsPage() {
                   <p>{searchQuery ? "Try a different search term." : activeFilter !== "all" ? `No ${activeFilter.toLowerCase()} returns match this filter.` : "Returns will appear here when customers submit them."}</p>
                 </EmptyState>
               ) : (
-                <IndexTable
-                  selectable={false}
-                  itemCount={filteredReturns.length}
-                  headings={[
-                    { title: "Order" },
-                    { title: "Customer" },
-                    { title: "Status" },
-                    { title: "Date" },
-                    { title: "Actions" },
-                  ]}
-                >
-                  {filteredRowMarkup}
-                </IndexTable>
+                <div className="returns-table-wrap">
+                  <IndexTable
+                    selectable={false}
+                    itemCount={filteredReturns.length}
+                    headings={[
+                      { title: "Order" },
+                      { title: "Customer" },
+                      { title: "Status" },
+                      { title: "Date" },
+                      { title: "Actions" },
+                    ]}
+                  >
+                    {filteredRowMarkup}
+                  </IndexTable>
+                </div>
               )}
             </Card>
           </BlockStack>

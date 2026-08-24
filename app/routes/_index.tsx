@@ -252,6 +252,15 @@ export default function Dashboard() {
         .chart-card { background: #fff; border-radius: 16px; padding: 20px;
           box-shadow: 0 4px 12px rgba(0,0,0,.03); border: 1px solid #EDF2F7; }
         .chart-sub { font-size: 13px; color: #718096; margin: 4px 0 8px; }
+        /* ── MOBILE HARDENING: prevent horizontal overflow ── */
+        @media (max-width: 639px) {
+          .dash-split, .dash-kpi-grid { width: 100%; max-width: 100vw; }
+          .padded-header { flex-wrap: wrap; gap: 8px; }
+          /* Let the IndexTable scroll horizontally inside its card instead of
+             breaking the whole page layout on narrow screens */
+          .dash-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+          .chart-card { padding: 16px; }
+        }
       `}</style>
       <Layout>
         <Layout.Section>
@@ -288,20 +297,22 @@ export default function Dashboard() {
                     <p>{activeFilter === "all" ? "No returns yet. Returns will appear here when customers submit them." : `No ${activeFilter.toLowerCase()} returns right now.`}</p>
                   </Banner>
                 ) : (
-                  <IndexTable
-                    selectable={false}
-                    resourceName={{ singular: "return", plural: "returns" }}
-                    itemCount={filtered.length}
-                    headings={[
-                      { title: "Order" },
-                      { title: "Customer" },
-                      { title: "Status" },
-                      { title: "Date" },
-                      { title: "" },
-                    ]}
-                  >
-                    {rowMarkup}
-                  </IndexTable>
+                  <div className="dash-table-wrap">
+                    <IndexTable
+                      selectable={false}
+                      resourceName={{ singular: "return", plural: "returns" }}
+                      itemCount={filtered.length}
+                      headings={[
+                        { title: "Order" },
+                        { title: "Customer" },
+                        { title: "Status" },
+                        { title: "Date" },
+                        { title: "" },
+                      ]}
+                    >
+                      {rowMarkup}
+                    </IndexTable>
+                  </div>
                 )}
               </div>
 
