@@ -177,10 +177,10 @@ export default function ReturnsPage() {
           <IndexTable.Cell>
             <StatusPill status={status} auto={isAutoApproved} />
           </IndexTable.Cell>
-          <IndexTable.Cell>
+          <IndexTable.Cell className="ret-col-hide-mobile">
             <Text as="span" variant="bodySm" tone="subdued">{new Date(createdAt).toLocaleDateString()}</Text>
           </IndexTable.Cell>
-          <IndexTable.Cell>
+          <IndexTable.Cell className="ret-col-hide-mobile">
             <InlineStack gap="100">
               <Button size="micro" onClick={(e: any) => { e.stopPropagation(); navigate(`/returns/${id}`); }}>
                 Edit / View
@@ -211,8 +211,14 @@ export default function ReturnsPage() {
         @media (max-width: 639px) {
           /* Filter cards: keep 2/line but shrink padding so nothing clips */
           .returns-filter-grid { gap: 8px; }
-          /* Let the table scroll horizontally inside its card, not break page */
+          /* Don't let the table horizontally scroll the whole page — hide the
+             less-critical Date & Actions columns so Order/Customer/Status
+             stay fully visible without a slide bar. */
           .returns-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
+          .ret-col-hide-mobile { display: none; }
+          /* Hide the Date + Actions header cells too (positions 4 & 5) */
+          .Polaris-IndexTable__TableHeaderCell:nth-child(4),
+          .Polaris-IndexTable__TableHeaderCell:nth-child(5) { display: none; }
         }
       `}</style>
       <Layout>

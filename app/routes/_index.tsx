@@ -193,10 +193,10 @@ export default function Dashboard() {
           <IndexTable.Cell>
             <StatusPill status={status} auto={isAutoApproved} />
           </IndexTable.Cell>
-          <IndexTable.Cell>
+          <IndexTable.Cell className="dash-col-hide-mobile">
             <Text as="span" variant="bodySm" tone="subdued">{new Date(createdAt).toLocaleDateString()}</Text>
           </IndexTable.Cell>
-          <IndexTable.Cell>
+          <IndexTable.Cell className="dash-col-hide-mobile">
             <Button size="micro" variant="primary" onClick={(e: any) => { e.stopPropagation(); navigate(`/returns/${id}`); }}>
               Edit / View
             </Button>
@@ -259,6 +259,11 @@ export default function Dashboard() {
           /* Let the IndexTable scroll horizontally inside its card instead of
              breaking the whole page layout on narrow screens */
           .dash-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+          /* Hide Date & Actions columns on mobile so Order/Customer/Status
+             fit with no slide bar */
+          .dash-col-hide-mobile { display: none; }
+          .Polaris-IndexTable__TableHeaderCell:nth-child(4),
+          .Polaris-IndexTable__TableHeaderCell:nth-child(5) { display: none; }
           .chart-card { padding: 16px; }
         }
       `}</style>
