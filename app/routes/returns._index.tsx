@@ -261,10 +261,13 @@ export default function ReturnsPage() {
           .ret-col-hide-mobile { display: none; }
           .Polaris-IndexTable__TableHeaderCell:nth-child(4),
           .Polaris-IndexTable__TableHeaderCell:nth-child(5) { display: none; }
+          /* Side padding so filter cards don't touch screen edges on mobile */
+          .returns-page-content { padding-left: 10px; padding-right: 10px; }
         }
       `}</style>
       <Layout>
         <Layout.Section>
+          <div className="returns-page-content">
           <BlockStack gap="400">
             {/* ─── Premium KPI filter cards (client-side filter, icons) ── */}
             <div className="returns-filter-grid">
@@ -339,6 +342,7 @@ export default function ReturnsPage() {
               </>
             )}
           </BlockStack>
+          </div>
         </Layout.Section>
       </Layout>
     </Page>

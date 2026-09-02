@@ -296,7 +296,10 @@ export default function Dashboard() {
         .dash-mo-only { display: none; }
         /* ── MOBILE HARDENING: prevent horizontal overflow ── */
         @media (max-width: 639px) {
-          .dash-split, .dash-kpi-grid { width: 100%; max-width: 100vw; }
+          /* Give the content breathing room on the sides so cards don't touch
+             the screen edges on compact views */
+          .dash-page-content { padding-left: 10px; padding-right: 10px; }
+          .dash-split, .dash-kpi-grid { width: 100%; max-width: 100%; }
           .padded-header { flex-wrap: wrap; gap: 8px; }
           /* Let the IndexTable scroll horizontally inside its card instead of
              breaking the whole page layout on narrow screens */
@@ -314,6 +317,7 @@ export default function Dashboard() {
       `}</style>
       <Layout>
         <Layout.Section>
+          <div className="dash-page-content">
           <BlockStack gap="400">
             {/* ─── KPI Overview row — click a card to filter ──────── */}
             <div className="dash-kpi-grid">
@@ -381,6 +385,7 @@ export default function Dashboard() {
               </div>
             </div>
           </BlockStack>
+          </div>
         </Layout.Section>
       </Layout>
     </Page>
