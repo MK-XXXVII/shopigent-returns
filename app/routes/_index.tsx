@@ -82,10 +82,11 @@ function PremiumKPI({ label, value, icon, gradient, tone }: {
     <div style={{
       background: "#fff", borderRadius: 16, padding: 20,
       boxShadow: "0 4px 12px rgba(0,0,0,.03)", border: "1px solid #EDF2F7",
-      minWidth: 0,
+      minWidth: 0, height: "100%", minHeight: 116, boxSizing: "border-box",
+      display: "flex", flexDirection: "column",
     }}>
       <BlockStack gap="200">
-        <Text variant="bodySm" as="span" tone="subdued">{label}</Text>
+        <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontSize: 13, color: "#718096" }}>{label}</div>
         {/* Reduced value size/weight so even 5-char amounts ($209.87) fit on
             the same line as the icon — no wrapping, uniform card heights */}
         <InlineStack gap="200" blockAlign="center" wrap={false}>
