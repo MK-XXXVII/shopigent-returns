@@ -235,6 +235,39 @@ export default function Dashboard() {
     { label: "Total Refunded", value: `$${Number(stats.totalRefunded).toFixed(2)}`, icon: "💰", gradient: "linear-gradient(135deg,#10B981,#059669)", filter: "REFUNDED", tone: "success" },
   ];
 
+  // ── MOBILE STACKED CARDS for Recent Returns ────────────────
+  // On small screens each return becomes a tappable card instead of a
+  // horizontally-scrolled row: Order + Status on top, Customer + Date below,
+  // full-width action button.
+  const dashMobileCards = filtered.map((r) => {
+    const isAutoApproved = r.status === "APPROVED" && r.decidedBy === "auto";
+    return (
+      <div
+        key={r.id}
+        onClick={() => navigate(`/returns/${r.id}`)}
+        style={{
+          background: "#fff", borderRadius: 16, padding: 16, marginBottom: 12,
+          boxShadow: "0 2px 8px rgba(0,0,0,.04)", border: "1px solid #EDF2F7",
+          cursor: "pointer",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          <Link url={`/returns/${r.id}`} onClick={(e: any) => { e.stopPropagation(); navigate(`/returns/${r.id}`); }} style={{ fontWeight: 700 }}>
+            {r.orderName || "—"}
+          </Link>
+          <StatusPill status={r.status} auto={isAutoApproved} />
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <Text variant="bodySm" as="span">{r.customerName || "—"}</Text>
+          <Text variant="bodySm" as="span" tone="subdued">{new Date(r.createdAt).toLocaleDateString()}</Text>
+        </div>
+        <Button size="slim" fullWidth onClick={(e: any) => { e.stopPropagation(); navigate(`/returns/${r.id}`); }}>
+          Edit / View
+        </Button>
+      </div>
+    );
+  });
+
   return (
     <Page title="Dashboard">
       <TitleBar title="Shopigent Returns" />
@@ -252,6 +285,9 @@ export default function Dashboard() {
         .chart-card { background: #fff; border-radius: 16px; padding: 20px;
           box-shadow: 0 4px 12px rgba(0,0,0,.03); border: 1px solid #EDF2F7; }
         .chart-sub { font-size: 13px; color: #718096; margin: 4px 0 8px; }
+        /* Desktop-only vs mobile-only toggling (default: table shown, cards hidden) */
+        .dash-dt-only { display: block; }
+        .dash-mo-only { display: none; }
         /* ── MOBILE HARDENING: prevent horizontal overflow ── */
         @media (max-width: 639px) {
           .dash-split, .dash-kpi-grid { width: 100%; max-width: 100vw; }
@@ -265,6 +301,9 @@ export default function Dashboard() {
           .Polaris-IndexTable__TableHeaderCell:nth-child(4),
           .Polaris-IndexTable__TableHeaderCell:nth-child(5) { display: none; }
           .chart-card { padding: 16px; }
+          /* Mobile: show stacked cards, hide the desktop table */
+          .dash-dt-only { display: none; }
+          .dash-mo-only { display: block; }
         }
       `}</style>
       <Layout>
@@ -302,22 +341,29 @@ export default function Dashboard() {
                     <p>{activeFilter === "all" ? "No returns yet. Returns will appear here when customers submit them." : `No ${activeFilter.toLowerCase()} returns right now.`}</p>
                   </Banner>
                 ) : (
-                  <div className="dash-table-wrap">
-                    <IndexTable
-                      selectable={false}
-                      resourceName={{ singular: "return", plural: "returns" }}
-                      itemCount={filtered.length}
-                      headings={[
-                        { title: "Order" },
-                        { title: "Customer" },
-                        { title: "Status" },
-                        { title: "Date" },
-                        { title: "" },
-                      ]}
-                    >
-                      {rowMarkup}
-                    </IndexTable>
-                  </div>
+                  <>
+                    {/* Desktop table */}
+                    <div className="dash-dt-only dash-table-wrap">
+                      <IndexTable
+                        selectable={false}
+                        resourceName={{ singular: "return", plural: "returns" }}
+                        itemCount={filtered.length}
+                        headings={[
+                          { title: "Order" },
+                          { title: "Customer" },
+                          { title: "Status" },
+                          { title: "Date" },
+                          { title: "" },
+                        ]}
+                      >
+                        {rowMarkup}
+                      </IndexTable>
+                    </div>
+                    {/* Mobile stacked cards */}
+                    <div className="dash-mo-only">
+                      {dashMobileCards}
+                    </div>
+                  </>
                 )}
               </div>
 

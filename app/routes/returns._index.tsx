@@ -200,6 +200,42 @@ export default function ReturnsPage() {
     { label: "Refunded", count: counts.REFUNDED || 0, key: "REFUNDED", icon: "💰", gradient: "linear-gradient(135deg,#10B981,#059669)" },
   ];
 
+  // ── MOBILE STACKED CARDS ──────────────────────────────────
+  // On small screens (instead of a horizontally-scrolled table) each return
+  // is rendered as a tappable card. Rows expand vertically: Order + Status on
+  // the first line, Customer + Date below, and a full-width action button.
+  const mobileCardsMarkup = filteredReturns.map((r) => {
+    const isAutoApproved = r.status === "APPROVED" && r.decidedBy === "auto";
+    return (
+      <div
+        key={r.id}
+        onClick={() => navigate(`/returns/${r.id}`)}
+        style={{
+          background: "#fff", borderRadius: 16, padding: 16, marginBottom: 12,
+          boxShadow: "0 2px 8px rgba(0,0,0,.04)", border: "1px solid #EDF2F7",
+          cursor: "pointer", transition: "box-shadow .15s",
+        }}
+      >
+        {/* Row 1: order + status */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          <Link url={`/returns/${r.id}`} onClick={(e: any) => { e.stopPropagation(); navigate(`/returns/${r.id}`); }} style={{ fontWeight: 700 }}>
+            {r.orderName || "—"}
+          </Link>
+          <StatusPill status={r.status} auto={isAutoApproved} />
+        </div>
+        {/* Row 2: customer + date */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <Text variant="bodySm" as="span">{r.customerName || "—"}</Text>
+          <Text variant="bodySm" as="span" tone="subdued">{new Date(r.createdAt).toLocaleDateString()}</Text>
+        </div>
+        {/* Action button */}
+        <Button size="slim" fullWidth onClick={(e: any) => { e.stopPropagation(); navigate(`/returns/${r.id}`); }}>
+          Edit / View
+        </Button>
+      </div>
+    );
+  });
+
   return (
     <Page title="Returns">
       <style>{`
@@ -208,15 +244,17 @@ export default function ReturnsPage() {
         @media (min-width: 640px) { .returns-filter-grid { grid-template-columns: repeat(3, 1fr); } }
         @media (min-width: 1024px) { .returns-filter-grid { grid-template-columns: repeat(5, 1fr); } }
         /* ── MOBILE HARDENING ── */
+        /* Desktop-only vs mobile-only toggling (ret-dt-only = table, ret-mo-only = cards) */
+        .ret-dt-only { display: block; }
+        .ret-mo-only { display: none; }
         @media (max-width: 639px) {
           /* Filter cards: keep 2/line but shrink padding so nothing clips */
           .returns-filter-grid { gap: 8px; }
-          /* Don't let the table horizontally scroll the whole page — hide the
-             less-critical Date & Actions columns so Order/Customer/Status
-             stay fully visible without a slide bar. */
+          /* On mobile show stacked cards, hide the desktop table */
+          .ret-dt-only { display: none; }
+          .ret-mo-only { display: block; }
           .returns-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
           .ret-col-hide-mobile { display: none; }
-          /* Hide the Date + Actions header cells too (positions 4 & 5) */
           .Polaris-IndexTable__TableHeaderCell:nth-child(4),
           .Polaris-IndexTable__TableHeaderCell:nth-child(5) { display: none; }
         }
@@ -252,37 +290,50 @@ export default function ReturnsPage() {
               />
             )}
 
-            {/* Returns table */}
-            <Card>
-              {isLoading ? (
+            {/* Returns list — table on desktop, stacked cards on mobile */}
+            {isLoading ? (
+              <Card>
                 <div style={{ padding: 20 }}>
                   <SkeletonBodyText lines={5} />
                 </div>
-              ) : filteredReturns.length === 0 ? (
+              </Card>
+            ) : filteredReturns.length === 0 ? (
+              <Card>
                 <EmptyState
                   heading={searchQuery ? "No matching returns" : activeFilter !== "all" ? `No ${activeFilter.toLowerCase()} returns` : "No returns yet"}
                   image=""
                 >
                   <p>{searchQuery ? "Try a different search term." : activeFilter !== "all" ? `No ${activeFilter.toLowerCase()} returns match this filter.` : "Returns will appear here when customers submit them."}</p>
                 </EmptyState>
-              ) : (
-                <div className="returns-table-wrap">
-                  <IndexTable
-                    selectable={false}
-                    itemCount={filteredReturns.length}
-                    headings={[
-                      { title: "Order" },
-                      { title: "Customer" },
-                      { title: "Status" },
-                      { title: "Date" },
-                      { title: "Actions" },
-                    ]}
-                  >
-                    {filteredRowMarkup}
-                  </IndexTable>
+              </Card>
+            ) : (
+              <>
+                {/* Desktop table (hidden on mobile) */}
+                <div className="ret-dt-only">
+                  <Card>
+                    <div className="returns-table-wrap">
+                      <IndexTable
+                        selectable={false}
+                        itemCount={filteredReturns.length}
+                        headings={[
+                          { title: "Order" },
+                          { title: "Customer" },
+                          { title: "Status" },
+                          { title: "Date" },
+                          { title: "Actions" },
+                        ]}
+                      >
+                        {filteredRowMarkup}
+                      </IndexTable>
+                    </div>
+                  </Card>
                 </div>
-              )}
-            </Card>
+                {/* Mobile stacked cards (hidden on desktop) */}
+                <div className="ret-mo-only">
+                  {mobileCardsMarkup}
+                </div>
+              </>
+            )}
           </BlockStack>
         </Layout.Section>
       </Layout>
