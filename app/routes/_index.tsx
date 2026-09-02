@@ -82,13 +82,16 @@ function PremiumKPI({ label, value, icon, gradient, tone }: {
     <div style={{
       background: "#fff", borderRadius: 16, padding: 20,
       boxShadow: "0 4px 12px rgba(0,0,0,.03)", border: "1px solid #EDF2F7",
+      minWidth: 0,
     }}>
       <BlockStack gap="200">
         <Text variant="bodySm" as="span" tone="subdued">{label}</Text>
-        <InlineStack gap="200" blockAlign="center">
+        {/* Reduced value size/weight so even 5-char amounts ($209.87) fit on
+            the same line as the icon — no wrapping, uniform card heights */}
+        <InlineStack gap="200" blockAlign="center" wrap={false}>
           {/* Gradient ring with white interior — icon stays visible */}
           <div style={{
-            width: 44, height: 44, borderRadius: 12, padding: 2,
+            width: 40, height: 40, borderRadius: 12, padding: 2, flexShrink: 0,
             background: gradient, display: "flex",
             alignItems: "center", justifyContent: "center",
             boxShadow: "0 2px 6px rgba(0,0,0,.1)",
@@ -96,12 +99,15 @@ function PremiumKPI({ label, value, icon, gradient, tone }: {
             <div style={{
               width: "100%", height: "100%", borderRadius: 10,
               background: "#fff", display: "flex",
-              alignItems: "center", justifyContent: "center", fontSize: 18,
+              alignItems: "center", justifyContent: "center", fontSize: 17,
             }}>
               <span>{icon}</span>
             </div>
           </div>
-          <div style={{ color: valueColor, fontSize: 28, fontWeight: 800, lineHeight: 1.1 }}>
+          <div style={{
+            color: valueColor, fontSize: 22, fontWeight: 700, lineHeight: 1.15,
+            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0,
+          }}>
             {value}
           </div>
         </InlineStack>
