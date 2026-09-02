@@ -12,7 +12,8 @@ import {
   Box,
   Banner,
 } from "@shopify/polaris";
-import { TitleBar } from "@shopify/app-bridge-react";
+import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
+import { useEffect } from "react";
 import { authenticate } from "../shopify.server";
 import prisma from "../lib/db.server";
 
@@ -92,12 +93,26 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 export default function BillingPage() {
   const { currentPlan } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
+  const shopify = useAppBridge();
 
   const choosePlan = (planKey: string) => fetcher.submit({ planKey }, { method: "POST" });
 
-  if (fetcher.data?.ok === true && fetcher.data.redirectUrl) {
-    window.top!.location.href = fetcher.data.redirectUrl;
-  }
+  // After a successful plan change, navigate to the Shopify pricing page the
+  // SAFE way. `window.top.location.href` to an external admin URL throws inside
+  // the embedded iframe and surfaces the root ErrorBoundary ("Unexpected Server
+  // Error") even though the DB plan already updated. App Bridge's redirect is
+  // the correct mechanism; if it's not available we fall back gracefully.
+  useEffect(() => {
+    if (fetcher.data?.ok === true && fetcher.data.redirectUrl) {
+      try {
+        const R = (shopify as any)?.Redirect?.Action ?? { REMOTE: "REMOTE", APP: "APP" };
+        (shopify as any)?.redirect?.({ path: fetcher.data.redirectUrl });
+      } catch {
+        // Fallback: plain navigation as a last resort
+        window.location.assign(fetcher.data.redirectUrl);
+      }
+    }
+  }, [fetcher.data, shopify]);
 
   return (
     <Page>
@@ -105,6 +120,11 @@ export default function BillingPage() {
       {fetcher.data?.ok === false && (
         <Banner tone="critical">
           <Text as="p" variant="bodyMd">Billing error: {fetcher.data.error}</Text>
+        </Banner>
+      )}
+      {fetcher.data?.ok === true && (
+        <Banner tone="success">
+          <Text as="p" variant="bodyMd">Plan updated! Opening Shopify billing…</Text>
         </Banner>
       )}
       <BlockStack gap="400">
