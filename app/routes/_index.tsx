@@ -105,9 +105,9 @@ function PremiumKPI({ label, value, icon, gradient, tone }: {
               <span>{icon}</span>
             </div>
           </div>
-          <div style={{
-            color: valueColor, fontSize: 22, fontWeight: 700, lineHeight: 1.15,
-            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0,
+          <div className="kpi-value" style={{
+            color: valueColor, fontSize: 20, fontWeight: 700, lineHeight: 1.15,
+            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0, flex: 1,
           }}>
             {value}
           </div>
@@ -301,6 +301,9 @@ export default function Dashboard() {
              the screen edges on compact views */
           .dash-page-content { padding-left: 10px; padding-right: 10px; }
           .dash-split, .dash-kpi-grid { width: 100%; max-width: 100%; }
+          /* Shrink the KPI value further on phones so long amounts ($209.87)
+             always fit beside the icon without clipping */
+          .kpi-value { font-size: 17px !important; }
           .padded-header { flex-wrap: wrap; gap: 8px; }
           /* Let the IndexTable scroll horizontally inside its card instead of
              breaking the whole page layout on narrow screens */
