@@ -91,7 +91,7 @@ function PremiumFilterCard({ label, value, icon, gradient, active, onClickOn }: 
         <div style={{
           width: 40, height: 40, borderRadius: 12, padding: 2, background: gradient,
           display: "flex", alignItems: "center", justifyContent: "center",
-          boxShadow: "0 2px 6px rgba(0,0,0,.1)",
+          boxShadow: "0 2px 6px rgba(0,0,0,.1)", flexShrink: 0,
         }}>
           <div style={{
             width: "100%", height: "100%", borderRadius: 10, background: "#fff",
@@ -100,7 +100,11 @@ function PremiumFilterCard({ label, value, icon, gradient, active, onClickOn }: 
             <span>{icon}</span>
           </div>
         </div>
-        <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1.1, color: "#1A202C" }}>
+        {/* Matches the Dashboard KPI value styling: 22px / 700, no wrapping */}
+        <div style={{
+          fontSize: 22, fontWeight: 700, lineHeight: 1.15, color: "#1A202C",
+          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0,
+        }}>
           {value}
         </div>
       </div>
