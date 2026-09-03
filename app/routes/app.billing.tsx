@@ -1,4 +1,5 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
+import { json } from "@remix-run/node";
 import { useFetcher, useLoaderData } from "@remix-run/react";
 import {
   Page,
@@ -74,7 +75,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const formData = await request.formData();
   const planKey = String(formData.get("planKey"));
   const plan = PLANS.find((p) => p.key === planKey);
-  if (!plan) return Response.json({ ok: false, error: "Unknown plan" });
+  if (!plan) return json({ ok: false, error: "Unknown plan" });
 
   const appHandle = process.env.SHOPIFY_APP_HANDLE || "shopigent-returns";
   const shopName = session.shop.replace(/\.myshopify\.com$/, "");
@@ -87,7 +88,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     create: { shop: session.shop, id: session.shop, planName: planKey, planStatus: "active" },
   }).catch(() => {});
 
-  return Response.json({ ok: true, redirectUrl: pricingUrl });
+  return json({ ok: true, redirectUrl: pricingUrl });
 };
 
 export default function BillingPage() {
