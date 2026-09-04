@@ -81,11 +81,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const shopName = session.shop.replace(/\.myshopify\.com$/, "");
   const pricingUrl = `https://admin.shopify.com/store/${shopName}/charges/${appHandle}/pricing_plans`;
 
-  // Optimistic update — webhook reconciles later
+  // Optimistic update — webhook reconciles later.
+  // Match the approved shopigent app: set "trialing" until Shopify confirms.
   await prisma.shop.upsert({
     where: { shop: session.shop },
-    update: { planName: planKey, planStatus: "active" },
-    create: { shop: session.shop, id: session.shop, planName: planKey, planStatus: "active" },
+    update: { planName: planKey, planStatus: "trialing" },
+    create: { shop: session.shop, id: session.shop, planName: planKey, planStatus: "trialing" },
   }).catch(() => {});
 
   return json({ ok: true, redirectUrl: pricingUrl });

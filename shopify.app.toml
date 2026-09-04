@@ -24,6 +24,10 @@ api_version = "2026-07"
   topics = ["returns/update"]
   uri = "/api/webhooks"
 
+  [[webhooks.subscriptions]]
+  topics = ["app/subscriptions_update"]
+  uri = "/api/webhooks"
+
 [auth]
 redirect_urls = ["/api/auth/callback"]
 

@@ -77,6 +77,44 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         break;
       }
 
+      case "APP_SUBSCRIPTIONS_UPDATE": {
+        // Reconcile billing after a merchant approves/cancels/expires a plan.
+        // Shopify owns the subscription lifecycle via Managed pricing; this
+        // webhook keeps our local plan row in sync (mirrors the approved
+        // shopigent app pattern).
+        const sub = (payload as any).app_subscription;
+        if (sub) {
+          const planName = String(sub.name || "").toLowerCase();
+          const statusMap: Record<string, string> = {
+            ACTIVE: "active",
+            CANCELLED: "cancelled",
+            EXPIRED: "cancelled",
+            FROZEN: "past_due",
+            PENDING: "trialing",
+          };
+          const status = statusMap[sub.status] ?? "active";
+          // Guard: don't let a stale CANCELLED webhook downgrade a newer
+          // active/trialing subscription.
+          const current = await prisma.shop.findUnique({ where: { shop } });
+          if (
+            status === "cancelled" &&
+            (current?.planStatus === "active" || current?.planStatus === "trialing")
+          ) {
+            console.log(`[webhook] Skipping CANCELLED subscription webhook for ${shop} (newer active)`);
+            break;
+          }
+          await prisma.shop.updateMany({
+            where: { shop },
+            data: {
+              planName: status === "cancelled" ? "free" : (planName || current?.planName || "free"),
+              planStatus: status,
+            },
+          });
+          console.log(`[webhook] Plan reconciled for ${shop}: ${planName || "free"} (${status})`);
+        }
+        break;
+      }
+
       default:
         console.log(`[webhook] Unhandled topic: ${topic}`);
     }
