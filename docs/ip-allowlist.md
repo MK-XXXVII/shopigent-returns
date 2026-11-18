@@ -15,6 +15,7 @@ Enforcement was turned **ON** on 18 Nov 2026 at 22:34 Europe/Amsterdam
 208.77.244.242/32
 152.55.184.240/32
 152.55.185.190/32
+86.106.181.129/32
 ```
 
 **Railway**
@@ -22,7 +23,7 @@ Enforcement was turned **ON** on 18 Nov 2026 at 22:34 Europe/Amsterdam
 - Region: EU West (Amsterdam).
 - One web service. Static outbound IPs (HA, three IPv4) were enabled on
   18 Nov 2026 around 21:10 Europe/Amsterdam (CET), then the service was
-  redeployed. The three addresses above are that set.
+  redeployed. The first three addresses in the list above are that set; the fourth is the VPS, added later the same evening.
 - Admin API callers all run inside this web service: embedded admin
   routes, `shopifyAdminQuery` / refunds / sync, and the in-process MCP
   handler (`app/routes/api.mcp.ts`). There is no separate worker or
@@ -35,9 +36,10 @@ is pre-static-IP egress and is expected to appear in the 30-day window.
 
 Manual diagnostic scripts in `scripts/` (`check-webhooks.mjs`,
 `test-orders-by-email.mjs`) call the Admin API from whatever machine
-runs them. They are not covered by this list unless that machine's
-egress is added. Do not run them against a live shop from a laptop
-while enforcement is on.
+runs them. `86.106.181.129/32` (the VPS) was added to the list later
+the same evening (18 Nov 2026) and saved; Enforcement stayed **ON**.
+Scripts run from that VPS are now covered. Do not run them against a
+live shop from a laptop while enforcement is on.
 
 ## Rollback
 
